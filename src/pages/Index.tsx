@@ -1,4 +1,4 @@
-import { ArrowUpRight, TrendingUp, AlertOctagon, Scale, ShieldAlert } from 'lucide-react'
+import { ArrowUpRight, TrendingUp, AlertOctagon, Scale, ShieldAlert, Landmark } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts'
