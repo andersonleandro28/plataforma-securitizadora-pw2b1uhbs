@@ -1,4 +1,5 @@
-import { Calculator, AlertTriangle, CalendarDays, TrendingDown } from 'lucide-react'
+import { useState } from 'react'
+import { Calculator, AlertTriangle, CalendarDays, FileUp } from 'lucide-react'
 import {
   Card,
   CardContent,
@@ -19,15 +20,24 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { DeedUploadDialog } from '@/components/debentures/DeedUploadDialog'
 
 export default function Debentures() {
+  const [uploadOpen, setUploadOpen] = useState(false)
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Gestão de Passivos (Debêntures)</h1>
-        <p className="text-muted-foreground">
-          Acompanhamento de séries, cálculo de PU e amortizações.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Gestão de Passivos (Debêntures)</h1>
+          <p className="text-muted-foreground">
+            Acompanhamento de séries, cálculo de PU e amortizações.
+          </p>
+        </div>
+        <Button onClick={() => setUploadOpen(true)} className="gap-2 shadow-sm">
+          <FileUp className="h-4 w-4" />
+          Upload Inteligente de Escritura
+        </Button>
       </div>
 
       <Alert
@@ -159,6 +169,8 @@ export default function Debentures() {
           </CardContent>
         </Card>
       </div>
+
+      <DeedUploadDialog open={uploadOpen} onOpenChange={setUploadOpen} />
     </div>
   )
 }

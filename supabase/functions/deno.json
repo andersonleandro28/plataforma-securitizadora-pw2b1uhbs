@@ -1,9 +1,10 @@
 {
   "_versions": {
-    "serasa-integration": 2,
+    "serasa-integration": 3,
     "send-login-notification": 1,
     "invite-user": 2,
     "public-signup": 1,
-    "delete-user": 1
+    "delete-user": 1,
+    "extract-debenture-data": 1
   }
 }
