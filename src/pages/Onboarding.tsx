@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react'
-import { Building2, User as UserIcon, Eye, Search, ShieldCheck, FileText } from 'lucide-react'
+import {
+  Building2,
+  User as UserIcon,
+  Eye,
+  Search,
+  ShieldCheck,
+  FileText,
+  CheckCircle,
+  AlertTriangle,
+} from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
@@ -15,31 +24,23 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 export default function Onboarding() {
   const [profiles, setProfiles] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
 
+  const [selectedProfile, setSelectedProfile] = useState<any>(null)
+  const [userDocs, setUserDocs] = useState<any[]>([])
+  const [docsLoading, setDocsLoading] = useState(false)
+  const [dialogOpen, setDialogOpen] = useState(false)
+
   const loadProfiles = async () => {
     setLoading(true)
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, full_name, email, role, kyc_status, entity_type, document_number, phone')
+      .select('*')
       .neq('role', 'admin')
       .order('created_at', { ascending: false })
 
@@ -58,6 +59,10 @@ export default function Onboarding() {
     } else {
       toast.success('Parecer de Compliance atualizado com sucesso.')
       setProfiles(profiles.map((p) => (p.id === id ? { ...p, kyc_status: status } : p)))
+      if (selectedProfile?.id === id) {
+        setSelectedProfile({ ...selectedProfile, kyc_status: status })
+      }
+      setDialogOpen(false)
     }
   }
 
@@ -71,7 +76,7 @@ export default function Onboarding() {
         return (
           <Badge
             variant="secondary"
-            className="bg-warning text-warning-foreground hover:bg-warning/80"
+            className="bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 border-amber-200"
           >
             Em Análise
           </Badge>
@@ -84,8 +89,49 @@ export default function Onboarding() {
   const filteredProfiles = profiles.filter(
     (p) =>
       p.full_name?.toLowerCase().includes(search.toLowerCase()) ||
-      p.document_number?.includes(search),
+      p.document_number?.includes(search) ||
+      p.email?.toLowerCase().includes(search.toLowerCase()),
   )
+
+  const openDossier = async (profile: any) => {
+    setSelectedProfile(profile)
+    setDialogOpen(true)
+    setDocsLoading(true)
+
+    const { data, error } = await supabase
+      .from('kyc_documents')
+      .select('*')
+      .eq('user_id', profile.id)
+
+    if (!error && data) {
+      setUserDocs(data)
+    } else {
+      setUserDocs([])
+    }
+    setDocsLoading(false)
+  }
+
+  const handleViewDoc = async (path: string) => {
+    const { data, error } = await supabase.storage.from('kyc-documents').createSignedUrl(path, 300)
+    if (error) {
+      toast.error('Erro ao gerar link do documento.')
+      return
+    }
+    if (data?.signedUrl) {
+      window.open(data.signedUrl, '_blank')
+    }
+  }
+
+  const getDocName = (type: string) => {
+    switch (type) {
+      case 'id_document':
+        return 'Documento de Identificação'
+      case 'proof_address':
+        return 'Comprovante de Endereço'
+      default:
+        return type
+    }
+  }
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up">
@@ -174,86 +220,14 @@ export default function Onboarding() {
                         </TableCell>
                         <TableCell>{getStatusBadge(p.kyc_status)}</TableCell>
                         <TableCell className="text-right">
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button variant="ghost" size="sm" className="gap-2">
-                                <Eye className="h-4 w-4" /> Revisar Dossiê
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent className="max-w-md">
-                              <DialogHeader>
-                                <DialogTitle>Análise de Dossiê de Cliente</DialogTitle>
-                              </DialogHeader>
-                              <div className="space-y-5 py-4">
-                                <div className="space-y-1">
-                                  <p className="text-sm font-medium text-muted-foreground">
-                                    Nome da Entidade
-                                  </p>
-                                  <p className="font-medium">{p.full_name}</p>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                  <div className="space-y-1">
-                                    <p className="text-sm font-medium text-muted-foreground">
-                                      CPF/CNPJ
-                                    </p>
-                                    <p className="font-mono text-sm">
-                                      {p.document_number || 'N/A'}
-                                    </p>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <p className="text-sm font-medium text-muted-foreground">
-                                      Telefone
-                                    </p>
-                                    <p className="text-sm">{p.phone || 'N/A'}</p>
-                                  </div>
-                                </div>
-                                <div className="space-y-2">
-                                  <p className="text-sm font-medium text-muted-foreground">
-                                    Documentos Submetidos (Storage Privado)
-                                  </p>
-                                  <div className="bg-muted p-3 rounded-md flex items-center justify-between text-sm border">
-                                    <span className="flex items-center gap-2">
-                                      <FileText className="w-4 h-4 text-primary" /> RG / CNH /
-                                      Contrato Social
-                                    </span>
-                                    <Button variant="link" size="sm" className="h-auto p-0">
-                                      Download
-                                    </Button>
-                                  </div>
-                                  <div className="bg-muted p-3 rounded-md flex items-center justify-between text-sm border">
-                                    <span className="flex items-center gap-2">
-                                      <FileText className="w-4 h-4 text-primary" /> Comprovante de
-                                      Endereço
-                                    </span>
-                                    <Button variant="link" size="sm" className="h-auto p-0">
-                                      Download
-                                    </Button>
-                                  </div>
-                                </div>
-                                <div className="space-y-2 pt-4 border-t">
-                                  <p className="text-sm font-medium">Parecer Final de Compliance</p>
-                                  <Select
-                                    value={p.kyc_status}
-                                    onValueChange={(v) => handleUpdateStatus(p.id, v)}
-                                  >
-                                    <SelectTrigger>
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="pending">Pendente (Incompleto)</SelectItem>
-                                      <SelectItem value="under_review">
-                                        Em Análise (Aguardando)
-                                      </SelectItem>
-                                      <SelectItem value="approved">Aprovado (Liberado)</SelectItem>
-                                      <SelectItem value="rejected">
-                                        Rejeitado (Necessita Ajustes)
-                                      </SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                              </div>
-                            </DialogContent>
-                          </Dialog>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="gap-2"
+                            onClick={() => openDossier(p)}
+                          >
+                            <Eye className="h-4 w-4" /> Revisar Dossiê
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))
@@ -305,6 +279,150 @@ export default function Onboarding() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Análise de Dossiê de Cliente</DialogTitle>
+          </DialogHeader>
+          {selectedProfile && (
+            <div className="space-y-6 py-2">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-muted-foreground">Nome / Razão Social</p>
+                  <p className="font-medium">{selectedProfile.full_name || 'N/A'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-muted-foreground">Email</p>
+                  <p className="text-sm">{selectedProfile.email}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-muted-foreground">CPF / CNPJ</p>
+                  <p className="font-mono text-sm">{selectedProfile.document_number || 'N/A'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-muted-foreground">Telefone</p>
+                  <p className="text-sm">{selectedProfile.phone || 'N/A'}</p>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-muted-foreground">Endereço Completo</p>
+                <p className="text-sm bg-muted/30 p-3 rounded-md border border-border/50">
+                  {selectedProfile.address_street ? (
+                    <>
+                      {selectedProfile.address_street}, {selectedProfile.address_number}
+                      {selectedProfile.address_complement
+                        ? ` - ${selectedProfile.address_complement}`
+                        : ''}
+                      <br />
+                      {selectedProfile.address_neighborhood
+                        ? `${selectedProfile.address_neighborhood}, `
+                        : ''}
+                      {selectedProfile.address_city} - {selectedProfile.address_state}
+                      <br />
+                      CEP: {selectedProfile.address_zip}
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground italic">Endereço não informado</span>
+                  )}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 bg-muted/30 p-3 rounded-lg border">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Pessoa Exposta Politicamente
+                  </p>
+                  <div className="flex items-center gap-2">
+                    {selectedProfile.is_pep ? (
+                      <>
+                        <AlertTriangle className="w-4 h-4 text-amber-500" />
+                        <span className="text-sm font-medium text-amber-600">Sim (Atenção)</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-4 h-4 text-emerald-500" />
+                        <span className="text-sm">Não</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-muted-foreground">Termos LGPD</p>
+                  <div className="flex items-center gap-2">
+                    {selectedProfile.lgpd_accepted ? (
+                      <>
+                        <CheckCircle className="w-4 h-4 text-emerald-500" />
+                        <span className="text-sm">Aceito</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle className="w-4 h-4 text-destructive" />
+                        <span className="text-sm text-destructive">Pendente</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Documentos Submetidos</p>
+                {docsLoading ? (
+                  <div className="p-4 text-center text-sm text-muted-foreground bg-muted/20 border rounded-md">
+                    Carregando documentos...
+                  </div>
+                ) : userDocs.length > 0 ? (
+                  <div className="space-y-2">
+                    {userDocs.map((doc) => (
+                      <div
+                        key={doc.id}
+                        className="bg-background p-3 rounded-md flex items-center justify-between text-sm border shadow-sm"
+                      >
+                        <span className="flex items-center gap-2 font-medium">
+                          <FileText className="w-4 h-4 text-primary" />{' '}
+                          {getDocName(doc.document_type)}
+                        </span>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="h-8 gap-2"
+                          onClick={() => handleViewDoc(doc.file_path)}
+                        >
+                          <Eye className="w-3.5 h-3.5" /> Visualizar
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-4 text-center text-sm text-muted-foreground bg-muted/20 border rounded-md border-dashed">
+                    Nenhum documento encontrado no repositório.
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-3 pt-4 border-t">
+                <p className="text-sm font-medium">Decisão de Compliance</p>
+                <div className="flex gap-3">
+                  <Button
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                    onClick={() => handleUpdateStatus(selectedProfile.id, 'approved')}
+                  >
+                    Aprovar Cadastro
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 border-destructive text-destructive hover:bg-destructive/10"
+                    onClick={() => handleUpdateStatus(selectedProfile.id, 'rejected')}
+                  >
+                    Reprovar / Pedir Ajustes
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
