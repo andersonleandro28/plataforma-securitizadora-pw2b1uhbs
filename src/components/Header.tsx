@@ -20,20 +20,28 @@ export function Header() {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
   const [profileName, setProfileName] = useState('')
+  const [avatarUrl, setAvatarUrl] = useState('')
 
   useEffect(() => {
-    if (user) {
-      ;(supabase as any)
+    const loadHeaderProfile = async () => {
+      if (!user) return
+      const { data } = await supabase
         .from('profiles')
-        .select('full_name')
+        .select('full_name, avatar_url')
         .eq('id', user.id)
         .single()
-        .then(({ data }: any) => {
-          if (data?.full_name) {
-            setProfileName(data.full_name)
-          }
-        })
+
+      if (data) {
+        setProfileName(data.full_name || '')
+        setAvatarUrl(data.avatar_url || '')
+      }
     }
+
+    loadHeaderProfile()
+
+    const handleUpdate = () => loadHeaderProfile()
+    window.addEventListener('profile-updated', handleUpdate)
+    return () => window.removeEventListener('profile-updated', handleUpdate)
   }, [user])
 
   const handleLogout = async () => {
@@ -72,9 +80,13 @@ export function Header() {
                   </span>
                 </div>
                 <Avatar className="h-9 w-9 border">
-                  <AvatarImage src={`https://img.usecurling.com/ppl/thumbnail?seed=${user.id}`} />
-                  <AvatarFallback>
-                    <User className="h-4 w-4" />
+                  <AvatarImage src={avatarUrl} />
+                  <AvatarFallback className="bg-primary/10 text-primary">
+                    {profileName ? (
+                      profileName.charAt(0).toUpperCase()
+                    ) : (
+                      <User className="h-4 w-4" />
+                    )}
                   </AvatarFallback>
                 </Avatar>
               </div>
