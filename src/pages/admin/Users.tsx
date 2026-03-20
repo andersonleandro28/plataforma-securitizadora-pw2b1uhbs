@@ -21,13 +21,24 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Shield, UserPlus, Mail, Loader2, Key } from 'lucide-react'
+import { Shield, UserPlus, Mail, Loader2, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/use-auth'
@@ -42,6 +53,7 @@ export default function Users() {
   const [inviteRole, setInviteRole] = useState('investor')
   const [inviting, setInviting] = useState(false)
   const [open, setOpen] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const loadUsers = async () => {
     setLoading(true)
@@ -75,7 +87,6 @@ export default function Users() {
 
     setInviting(true)
 
-    // Pass JWT via headers to edge function so it can verify the caller is admin
     const { data, error } = await supabase.functions.invoke('invite-user', {
       body: { email: inviteEmail, fullName: inviteName, role: inviteRole },
       headers: { Authorization: `Bearer ${session.access_token}` },
@@ -92,6 +103,30 @@ export default function Users() {
       loadUsers()
     }
     setInviting(false)
+  }
+
+  const handleDeleteUser = async (userId: string) => {
+    if (!session?.access_token) return toast.error('Sessão expirada')
+
+    setDeletingId(userId)
+
+    const promise = supabase.functions
+      .invoke('delete-user', {
+        body: { targetUserId: userId },
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+      .then(({ data, error }) => {
+        if (error) throw error
+        if (data?.error) throw new Error(data.error)
+        setUsers((prev) => prev.filter((u) => u.id !== userId))
+      })
+      .finally(() => setDeletingId(null))
+
+    toast.promise(promise, {
+      loading: 'Excluindo usuário...',
+      success: 'Usuário excluído com sucesso.',
+      error: (err) => err.message || 'Erro ao excluir usuário.',
+    })
   }
 
   return (
@@ -183,18 +218,22 @@ export default function Users() {
                 <TableHead>E-mail / Contato</TableHead>
                 <TableHead>Perfil de Acesso (Role)</TableHead>
                 <TableHead>Data de Entrada</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8">
+                  <TableCell colSpan={5} className="text-center py-8">
                     <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                   </TableCell>
                 </TableRow>
               ) : (
                 users.map((u) => (
-                  <TableRow key={u.id}>
+                  <TableRow
+                    key={u.id}
+                    className={deletingId === u.id ? 'opacity-50 pointer-events-none' : ''}
+                  >
                     <TableCell className="font-medium">
                       {u.full_name || 'Usuário Pendente'}
                     </TableCell>
@@ -218,6 +257,38 @@ export default function Users() {
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {u.created_at ? new Date(u.created_at).toLocaleDateString('pt-BR') : '-'}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            disabled={session?.user?.id === u.id}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Excluir usuário?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Esta ação não pode ser desfeita. O usuário perderá permanentemente o
+                              acesso à plataforma e seus dados de perfil serão removidos.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              onClick={() => handleDeleteUser(u.id)}
+                            >
+                              Sim, excluir
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </TableCell>
                   </TableRow>
                 ))

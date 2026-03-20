@@ -3,7 +3,6 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 
 Deno.serve(async (req: Request) => {
-  // Respond to CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -37,7 +36,7 @@ Deno.serve(async (req: Request) => {
       })
     }
 
-    // 2. Initialize Service Role client to bypass RLS and perform admin actions
+    // 2. Initialize Service Role client to bypass RLS
     const adminClient = createClient(supabaseUrl, supabaseServiceKey)
 
     // 3. Verify Caller is Admin
@@ -48,49 +47,44 @@ Deno.serve(async (req: Request) => {
       .single()
     if (callerProfile?.role !== 'admin') {
       return new Response(
-        JSON.stringify({ error: 'Forbidden: Only administrators can invite users' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        JSON.stringify({ error: 'Forbidden: Only administrators can delete users' }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        },
       )
     }
 
-    // 4. Extract Payload
-    const { email, role, fullName } = await req.json()
+    // 4. Extract target user id
+    const { targetUserId } = await req.json()
 
-    if (!email || !role) {
-      return new Response(JSON.stringify({ error: 'Bad Request: Email and role are required' }), {
+    if (!targetUserId) {
+      return new Response(JSON.stringify({ error: 'Bad Request: targetUserId is required' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    // 5. Send Invite Link via Supabase Auth
-    const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
-      email,
-      {
-        data: { name: fullName },
-      },
-    )
-
-    if (inviteError) throw inviteError
-
-    // 6. Assign the selected role to the newly created profile
-    // Note: The handle_new_user trigger creates the profile row almost instantly, so we update it.
-    if (inviteData.user) {
-      const { error: profileError } = await adminClient
-        .from('profiles')
-        .update({ role: role, full_name: fullName })
-        .eq('id', inviteData.user.id)
-
-      if (profileError) {
-        console.error('Error updating invited user profile:', profileError)
-      }
+    if (caller.id === targetUserId) {
+      return new Response(
+        JSON.stringify({ error: 'Não é possível excluir o seu próprio usuário.' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        },
+      )
     }
 
-    return new Response(JSON.stringify({ success: true, user: inviteData.user }), {
+    // 5. Delete user from auth.users (cascades to profiles)
+    const { error: deleteError } = await adminClient.auth.admin.deleteUser(targetUserId)
+
+    if (deleteError) throw deleteError
+
+    return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (error) {
-    console.error('Edge function invite-user error:', error)
+    console.error('Edge function delete-user error:', error)
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Internal Server Error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
