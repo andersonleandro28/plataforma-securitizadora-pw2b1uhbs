@@ -27,9 +27,10 @@ type Step = 'upload' | 'processing' | 'review' | 'success'
 interface DeedUploadDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onSuccess?: () => void
 }
 
-export function DeedUploadDialog({ open, onOpenChange }: DeedUploadDialogProps) {
+export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDialogProps) {
   const [step, setStep] = useState<Step>('upload')
   const [data, setData] = useState<any>(null)
   const [saving, setSaving] = useState(false)
@@ -94,6 +95,7 @@ export function DeedUploadDialog({ open, onOpenChange }: DeedUploadDialogProps) 
 
       setStep('success')
       toast.success('Escritura cadastrada com sucesso!')
+      onSuccess?.()
     } catch (err) {
       console.error(err)
       toast.error('Erro ao salvar os dados no banco.')
@@ -143,9 +145,6 @@ export function DeedUploadDialog({ open, onOpenChange }: DeedUploadDialogProps) 
               <h3 className="font-semibold text-lg animate-pulse">
                 Analisando documento com IA...
               </h3>
-              <p className="text-sm text-muted-foreground">
-                Extraindo emissor, séries e condições.
-              </p>
             </div>
           )}
 
@@ -171,15 +170,15 @@ export function DeedUploadDialog({ open, onOpenChange }: DeedUploadDialogProps) 
 
               <div>
                 <Label className="text-base font-semibold mb-3 block">Séries Identificadas</Label>
-                <div className="border rounded-md">
+                <div className="border rounded-md overflow-auto max-h-[250px]">
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Série</TableHead>
-                        <TableHead>Indexador</TableHead>
-                        <TableHead>Taxa (%)</TableHead>
+                        <TableHead>Idx</TableHead>
+                        <TableHead>Taxa(%)</TableHead>
                         <TableHead>Vencimento</TableHead>
-                        <TableHead className="text-right">Volume (R$)</TableHead>
+                        <TableHead className="text-right">Volume(R$)</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -202,7 +201,7 @@ export function DeedUploadDialog({ open, onOpenChange }: DeedUploadDialogProps) 
                           <TableCell>
                             <Input
                               type="number"
-                              className="h-8 w-20"
+                              className="h-8 w-16"
                               value={s.rate}
                               onChange={(e) => updateSeries(i, 'rate', Number(e.target.value))}
                             />
@@ -210,7 +209,7 @@ export function DeedUploadDialog({ open, onOpenChange }: DeedUploadDialogProps) 
                           <TableCell>
                             <Input
                               type="date"
-                              className="h-8"
+                              className="h-8 w-32"
                               value={s.maturity_date}
                               onChange={(e) => updateSeries(i, 'maturity_date', e.target.value)}
                             />
@@ -218,7 +217,7 @@ export function DeedUploadDialog({ open, onOpenChange }: DeedUploadDialogProps) 
                           <TableCell className="text-right">
                             <Input
                               type="number"
-                              className="h-8 w-32 ml-auto"
+                              className="h-8 w-28 ml-auto"
                               value={s.volume}
                               onChange={(e) => updateSeries(i, 'volume', Number(e.target.value))}
                             />
@@ -239,10 +238,10 @@ export function DeedUploadDialog({ open, onOpenChange }: DeedUploadDialogProps) 
               </div>
               <h3 className="font-semibold text-xl">Escritura Cadastrada!</h3>
               <p className="text-sm text-muted-foreground text-center">
-                Todas as séries foram registradas no sistema com sucesso.
+                As séries foram registradas no sistema com sucesso.
               </p>
               <Button onClick={() => handleOpenChange(false)} className="mt-4">
-                Voltar para Debêntures
+                Fechar
               </Button>
             </div>
           )}
