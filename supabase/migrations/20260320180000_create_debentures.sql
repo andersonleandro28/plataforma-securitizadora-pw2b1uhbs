@@ -24,7 +24,7 @@ ALTER TABLE public.debentures ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.debenture_series ENABLE ROW LEVEL SECURITY;
 
 -- Idempotent policy creation
-DO $ policies $
+DO $$
 BEGIN
   -- Debentures policies
   DROP POLICY IF EXISTS "auth_all_debentures" ON public.debentures;
@@ -35,4 +35,4 @@ BEGIN
   DROP POLICY IF EXISTS "auth_all_series" ON public.debenture_series;
   CREATE POLICY "auth_all_series" ON public.debenture_series
     FOR ALL TO authenticated USING (true) WITH CHECK (true);
-END $ policies $;
+END $$;
