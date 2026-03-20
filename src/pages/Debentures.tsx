@@ -11,6 +11,7 @@ import {
   Layers,
   FileText,
   Loader2,
+  ListFilter,
 } from 'lucide-react'
 import {
   Card,
@@ -38,6 +39,9 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { supabase } from '@/lib/supabase/client'
 import { format } from 'date-fns'
+
+import { SeriesListTab } from '@/components/debentures/SeriesListTab'
+import { HistoryTab } from '@/components/debentures/HistoryTab'
 
 export default function Debentures() {
   const [uploadOpen, setUploadOpen] = useState(false)
@@ -149,12 +153,15 @@ export default function Debentures() {
       </div>
 
       <Tabs defaultValue="dashboard" className="w-full">
-        <TabsList className="mb-4">
+        <TabsList className="mb-4 flex-wrap h-auto justify-start">
           <TabsTrigger value="dashboard" className="gap-2">
             <BarChart3 className="h-4 w-4" /> Dashboard de Emissões
           </TabsTrigger>
           <TabsTrigger value="history" className="gap-2">
             <History className="h-4 w-4" /> Histórico e Documentos
+          </TabsTrigger>
+          <TabsTrigger value="series" className="gap-2">
+            <ListFilter className="h-4 w-4" /> Visão de Séries
           </TabsTrigger>
           <TabsTrigger value="calculator" className="gap-2">
             <Calculator className="h-4 w-4" /> Calculadora PU
@@ -273,60 +280,15 @@ export default function Debentures() {
         </TabsContent>
 
         <TabsContent value="history">
-          <Card>
-            <CardHeader>
-              <CardTitle>Histórico de Uploads e Documentos</CardTitle>
-              <CardDescription>Visualização de todas as escrituras processadas.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Data Processamento</TableHead>
-                    <TableHead>Emissor</TableHead>
-                    <TableHead>Data Emissão</TableHead>
-                    <TableHead className="text-right">Volume Total</TableHead>
-                    <TableHead className="text-center">Séries</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8">
-                        <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
-                      </TableCell>
-                    </TableRow>
-                  ) : debentures.length > 0 ? (
-                    debentures.map((deb) => (
-                      <TableRow key={deb.id}>
-                        <TableCell className="whitespace-nowrap">
-                          {format(new Date(deb.created_at), 'dd/MM/yyyy HH:mm')}
-                        </TableCell>
-                        <TableCell className="font-medium">{deb.issuer_name}</TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          {deb.issue_date ? format(new Date(deb.issue_date), 'dd/MM/yyyy') : '-'}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-sm">
-                          {formatCurrency(deb.total_volume)}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className="bg-primary/10 text-primary px-2.5 py-0.5 rounded text-xs font-semibold">
-                            {deb.series?.length || 0}
-                          </span>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground h-32">
-                        Nenhum documento processado ainda.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+          <HistoryTab debentures={debentures} loading={loading} formatCurrency={formatCurrency} />
+        </TabsContent>
+
+        <TabsContent value="series">
+          <SeriesListTab
+            debentures={debentures}
+            loading={loading}
+            formatCurrency={formatCurrency}
+          />
         </TabsContent>
 
         <TabsContent value="calculator" className="space-y-6">
