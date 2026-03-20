@@ -1,9 +1,8 @@
 import { useAuth } from '@/hooks/use-auth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ShieldAlert } from 'lucide-react'
+import { ShieldAlert, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useNavigate } from 'react-router-dom'
-import { useEffect } from 'react'
 
 interface RoleGuardProps {
   children: React.ReactNode
@@ -11,24 +10,37 @@ interface RoleGuardProps {
 }
 
 export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
-  const { user, profile, loading, signOut } = useAuth()
+  const { user, profile, loading } = useAuth()
   const navigate = useNavigate()
-
-  useEffect(() => {
-    // Redirecionamento Inteligente: Tratamento de erro quando perfil falha ao carregar
-    // Pode indicar sessão ou refresh token inválido que não disparou o evento de logout principal.
-    // Garante que a sessão corrompida seja encerrada e o usuário não fique preso em uma tela de erro em branco.
-    if (!loading && user && !profile) {
-      signOut().then(() => {
-        navigate('/signup', { replace: true })
-      })
-    }
-  }, [loading, user, profile, signOut, navigate])
 
   if (loading) return null
 
-  // Impede renderização da tela de erro de acesso enquanto o componente estiver redirecionando devido a sessão corrompida
-  if (user && !profile) return null
+  // Se o usuário está logado mas o perfil ainda não foi sincronizado pela base de dados,
+  // não forçamos mais o logout (evitando loop). Exibimos um aviso amigável e damos a opção de atualizar.
+  if (user && !profile) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full shadow-sm animate-fade-in-up border-warning/20">
+          <CardHeader className="text-center pb-2">
+            <div className="flex justify-center mb-4">
+              <div className="w-12 h-12 bg-warning/10 rounded-full flex items-center justify-center">
+                <AlertCircle className="h-6 w-6 text-warning" />
+              </div>
+            </div>
+            <CardTitle>Configurando seu acesso</CardTitle>
+            <CardDescription>
+              Seu perfil está sendo preparado pelo nosso sistema. Isso pode levar alguns instantes.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex justify-center pt-4">
+            <Button onClick={() => window.location.reload()} variant="outline">
+              Atualizar Página
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   if (!profile || !allowedRoles.includes(profile.role)) {
     return (
