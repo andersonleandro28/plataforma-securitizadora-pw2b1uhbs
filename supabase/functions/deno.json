@@ -1,6 +1,7 @@
 {
   "_versions": {
     "serasa-integration": 2,
-    "send-login-notification": 1
+    "send-login-notification": 1,
+    "invite-user": 1
   }
 }
