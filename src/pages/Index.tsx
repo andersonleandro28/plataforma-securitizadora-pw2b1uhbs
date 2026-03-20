@@ -71,6 +71,9 @@ export default function Index() {
     )
   }
 
+  // Ensure strict rendering based on the exact same boolean flags used in RoleGuard
+  // The priority check ensures that if a user has multiple profiles (e.g. admin testing borrower views),
+  // they see the highest priority dashboard, but never see an incorrect one.
   return (
     <div className="space-y-6">
       {renderKycBanner()}
@@ -81,8 +84,15 @@ export default function Index() {
       ) : profile?.is_investor ? (
         <InvestorDashboard />
       ) : (
-        <div className="text-center py-10 text-muted-foreground">
-          Nenhum perfil ativo associado à sua conta.
+        <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+          <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+            <AlertCircle className="w-8 h-8 text-muted-foreground" />
+          </div>
+          <h2 className="text-xl font-semibold">Perfil Não Configurado</h2>
+          <p className="text-muted-foreground max-w-md">
+            Seu usuário ainda não possui um perfil de acesso definido. Aguarde a liberação por um
+            administrador.
+          </p>
         </div>
       )}
     </div>
