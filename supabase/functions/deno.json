@@ -3,6 +3,7 @@
     "serasa-integration": 2,
     "send-login-notification": 1,
     "invite-user": 1,
-    "public-signup": 1
+    "public-signup": 1,
+    "delete-user": 1
   }
 }
