@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import {
   Calculator,
   AlertTriangle,
-  CalendarDays,
   FileUp,
   Download,
   History,
@@ -13,32 +12,24 @@ import {
   Loader2,
   ListFilter,
 } from 'lucide-react'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  CardFooter,
-} from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DeedUploadDialog } from '@/components/debentures/DeedUploadDialog'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { supabase } from '@/lib/supabase/client'
 import { format } from 'date-fns'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 import { SeriesListTab } from '@/components/debentures/SeriesListTab'
 import { HistoryTab } from '@/components/debentures/HistoryTab'
@@ -47,6 +38,7 @@ export default function Debentures() {
   const [uploadOpen, setUploadOpen] = useState(false)
   const [debentures, setDebentures] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [selectedSeriesId, setSelectedSeriesId] = useState<string>('')
 
   const fetchDebentures = async () => {
     setLoading(true)
@@ -73,7 +65,10 @@ export default function Debentures() {
 
   const totalVolume = debentures.reduce((sum, deb) => sum + Number(deb.total_volume), 0)
   const totalDocuments = debentures.length
-  const totalSeries = debentures.reduce((sum, deb) => sum + deb.series.length, 0)
+  const allSeries = debentures.flatMap((d) =>
+    (d.series || []).map((s: any) => ({ ...s, issuer_name: d.issuer_name })),
+  )
+  const totalSeries = allSeries.length
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
@@ -128,13 +123,15 @@ export default function Debentures() {
     link.click()
   }
 
+  const selectedSeries = allSeries.find((s) => s.id === selectedSeriesId)
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Gestão de Debêntures</h1>
           <p className="text-muted-foreground">
-            Controle de emissões, extração inteligente de escrituras e análise de portfólio.
+            Extração real de escrituras e análise de portfólio via IA.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -147,7 +144,7 @@ export default function Debentures() {
             <Download className="h-4 w-4" /> Exportar Lote
           </Button>
           <Button onClick={() => setUploadOpen(true)} className="gap-2 shadow-sm">
-            <FileUp className="h-4 w-4" /> Upload de Escritura
+            <FileUp className="h-4 w-4" /> Processar Escritura
           </Button>
         </div>
       </div>
@@ -155,16 +152,16 @@ export default function Debentures() {
       <Tabs defaultValue="dashboard" className="w-full">
         <TabsList className="mb-4 flex-wrap h-auto justify-start">
           <TabsTrigger value="dashboard" className="gap-2">
-            <BarChart3 className="h-4 w-4" /> Dashboard de Emissões
+            <BarChart3 className="h-4 w-4" /> Dashboard
           </TabsTrigger>
           <TabsTrigger value="history" className="gap-2">
-            <History className="h-4 w-4" /> Histórico e Documentos
+            <History className="h-4 w-4" /> Histórico de Uploads
           </TabsTrigger>
           <TabsTrigger value="series" className="gap-2">
             <ListFilter className="h-4 w-4" /> Visão de Séries
           </TabsTrigger>
           <TabsTrigger value="calculator" className="gap-2">
-            <Calculator className="h-4 w-4" /> Calculadora PU
+            <Calculator className="h-4 w-4" /> Calculadora e Simulação
           </TabsTrigger>
         </TabsList>
 
@@ -178,23 +175,23 @@ export default function Debentures() {
               <div className="grid md:grid-cols-3 gap-6">
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">Volume Total Emitido</CardTitle>
+                    <CardTitle className="text-sm font-medium">Volume Total Extraído</CardTitle>
                     <TrendingUp className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{formatCurrency(totalVolume)}</div>
-                    <p className="text-xs text-muted-foreground mt-1">Acompanhamento consolidado</p>
+                    <p className="text-xs text-muted-foreground mt-1">Monitoramento consolidado</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">Séries Ativas</CardTitle>
+                    <CardTitle className="text-sm font-medium">Séries Identificadas</CardTitle>
                     <Layers className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{totalSeries}</div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Em {totalDocuments} escrituras processadas
+                      Em {totalDocuments} escritura(s) real(is) processada(s)
                     </p>
                   </CardContent>
                 </Card>
@@ -207,7 +204,9 @@ export default function Debentures() {
                     <div className="text-2xl font-bold">
                       {totalSeries > 0 ? formatCurrency(totalVolume / totalSeries) : 'R$ 0,00'}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">Indicador de pulverização</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Indicador de pulverização real
+                    </p>
                   </CardContent>
                 </Card>
               </div>
@@ -216,7 +215,7 @@ export default function Debentures() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Volume por Indexador</CardTitle>
-                    <CardDescription>Distribuição de risco do portfólio.</CardDescription>
+                    <CardDescription>Distribuição real extraída do portfólio.</CardDescription>
                   </CardHeader>
                   <CardContent className="h-[300px]">
                     {chartData.length > 0 ? (
@@ -238,40 +237,71 @@ export default function Debentures() {
                         </BarChart>
                       </ChartContainer>
                     ) : (
-                      <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
-                        Sem dados suficientes
+                      <div className="flex h-full items-center justify-center text-muted-foreground text-sm bg-muted/20 rounded-md">
+                        Faça o upload da primeira escritura para visualizar o gráfico.
                       </div>
                     )}
                   </CardContent>
                 </Card>
                 <Card>
                   <CardHeader>
-                    <CardTitle>Alertas e Insights</CardTitle>
-                    <CardDescription>Análise preditiva e sugestões.</CardDescription>
+                    <CardTitle>Alertas Automáticos</CardTitle>
+                    <CardDescription>Análise viva com base nas séries ativas.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <Alert
-                      variant="destructive"
-                      className="bg-warning/10 text-warning-foreground border-warning/50"
-                    >
-                      <AlertTriangle className="h-4 w-4 text-warning" />
-                      <AlertTitle className="text-warning font-bold">
-                        Alerta ALM de Curto Prazo
-                      </AlertTitle>
-                      <AlertDescription className="text-foreground/80 mt-1 text-xs">
-                        O vencimento médio do lastro (45 dias) está inferior à próxima amortização
-                        programada. Provisione caixa na tesouraria.
-                      </AlertDescription>
-                    </Alert>
-                    <div className="rounded-md border p-4 bg-muted/30">
-                      <h4 className="font-medium text-sm mb-1 flex items-center gap-1">
-                        <Download className="h-3.5 w-3.5" /> Dica de Exportação
-                      </h4>
-                      <p className="text-xs text-muted-foreground">
-                        Utilize o botão "Exportar Lote" no topo da tela para gerar um relatório CSV
-                        consolidado de todas as emissões, ideal para reports gerenciais.
-                      </p>
-                    </div>
+                    {debentures.length === 0 ? (
+                      <div className="text-sm text-muted-foreground text-center py-10 bg-muted/20 rounded-md">
+                        Nenhum dado processado ainda.
+                      </div>
+                    ) : (
+                      <>
+                        {(() => {
+                          const nearMaturity = allSeries.filter((s) => {
+                            if (!s.maturity_date) return false
+                            const days =
+                              (new Date(s.maturity_date).getTime() - new Date().getTime()) /
+                              (1000 * 3600 * 24)
+                            return days > 0 && days <= 60
+                          })
+
+                          if (nearMaturity.length > 0) {
+                            return (
+                              <Alert
+                                variant="destructive"
+                                className="bg-warning/10 text-warning-foreground border-warning/50"
+                              >
+                                <AlertTriangle className="h-4 w-4 text-warning" />
+                                <AlertTitle className="text-warning font-bold">
+                                  Vencimentos Próximos
+                                </AlertTitle>
+                                <AlertDescription className="text-foreground/80 mt-1 text-xs">
+                                  Existem {nearMaturity.length} série(s) real(is) com vencimento em
+                                  menos de 60 dias. Verifique o cronograma.
+                                </AlertDescription>
+                              </Alert>
+                            )
+                          }
+                          return (
+                            <Alert className="bg-primary/10 border-primary/20 text-primary">
+                              <AlertTitle className="text-sm font-semibold">
+                                Portfólio Saudável
+                              </AlertTitle>
+                              <AlertDescription className="text-xs mt-1">
+                                Nenhuma série com vencimento crítico no curto prazo.
+                              </AlertDescription>
+                            </Alert>
+                          )
+                        })()}
+                        <div className="rounded-md border p-4 bg-muted/30">
+                          <h4 className="font-medium text-sm mb-1 flex items-center gap-1">
+                            <Download className="h-3.5 w-3.5" /> Integração e Dados
+                          </h4>
+                          <p className="text-xs text-muted-foreground">
+                            As {totalSeries} séries lidas da base estão prontas para exportação CSV.
+                          </p>
+                        </div>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -292,120 +322,95 @@ export default function Debentures() {
         </TabsContent>
 
         <TabsContent value="calculator" className="space-y-6">
-          <div className="grid md:grid-cols-2 gap-6">
-            <Card className="border-t-4 border-t-accent">
-              <CardHeader>
-                <CardTitle>Série 1 - Sênior</CardTitle>
-                <CardDescription>Indexador: CDI + 2.5% a.a.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Volume Emitido</span>
-                  <span className="font-mono font-medium">R$ 50.000.000,00</span>
+          <Card>
+            <CardHeader>
+              <CardTitle>Calculadora de PU Baseada em Extração</CardTitle>
+              <CardDescription>
+                Selecione uma série real processada da base para simulação de marcação.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {allSeries.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground bg-muted/10 rounded-md border border-dashed">
+                  Aguardando processamento. Nenhuma série extraída disponível.
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">PU Atual Atualizado</span>
-                  <span className="font-mono font-bold text-accent">1.045,32190</span>
+              ) : (
+                <div className="space-y-6 max-w-3xl">
+                  <Select onValueChange={setSelectedSeriesId} value={selectedSeriesId}>
+                    <SelectTrigger className="h-12 bg-muted/30">
+                      <SelectValue placeholder="Selecione uma Série da Base..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allSeries.map((s, idx) => (
+                        <SelectItem key={s.id || idx} value={s.id}>
+                          {s.issuer_name} - Série {s.series_number} ({s.indexer}) -{' '}
+                          {formatCurrency(s.volume)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {selectedSeries && (
+                    <div className="grid md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-top-4">
+                      <Card className="border-t-4 border-t-primary shadow-sm bg-muted/10">
+                        <CardHeader className="pb-4">
+                          <CardTitle className="text-lg">
+                            Série {selectedSeries.series_number}
+                          </CardTitle>
+                          <CardDescription className="text-xs">
+                            {selectedSeries.issuer_name}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          <div className="flex justify-between border-b pb-2">
+                            <span className="text-sm text-muted-foreground">Indexador Real</span>
+                            <span className="font-medium text-sm">
+                              {selectedSeries.indexer} + {selectedSeries.rate}% a.a.
+                            </span>
+                          </div>
+                          <div className="flex justify-between border-b pb-2">
+                            <span className="text-sm text-muted-foreground">Volume Extraído</span>
+                            <span className="font-mono font-medium">
+                              {formatCurrency(selectedSeries.volume)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm text-muted-foreground">Vencimento Lido</span>
+                            <span className="text-sm font-medium">
+                              {selectedSeries.maturity_date
+                                ? format(new Date(selectedSeries.maturity_date), 'dd/MM/yyyy')
+                                : '-'}
+                            </span>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card className="shadow-sm">
+                        <CardHeader className="pb-4">
+                          <CardTitle className="flex items-center gap-2 text-lg">
+                            <Calculator className="h-4 w-4" />
+                            Simulação de Marcação
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <div className="space-y-2">
+                            <Label className="text-xs text-muted-foreground">
+                              Data Base para Atualização
+                            </Label>
+                            <Input
+                              type="date"
+                              defaultValue={new Date().toISOString().split('T')[0]}
+                            />
+                          </div>
+                          <Button className="w-full">Gerar Projeção de PU</Button>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  )}
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Próxima Amortização</span>
-                  <span className="text-sm">15/Out/2024</span>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="border-t-4 border-t-primary">
-              <CardHeader>
-                <CardTitle>Série 2 - Subordinada</CardTitle>
-                <CardDescription>Indexador: IPCA + 6.0% a.a.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Volume Emitido</span>
-                  <span className="font-mono font-medium">R$ 15.000.000,00</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">PU Atual Atualizado</span>
-                  <span className="font-mono font-bold text-primary">1.102,88410</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Próxima Amortização</span>
-                  <span className="text-sm">No Vencimento (Bullet)</span>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-          <div className="grid md:grid-cols-3 gap-6">
-            <Card className="md:col-span-1">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Calculator className="h-5 w-5" />
-                  Calculadora de PU
-                </CardTitle>
-                <CardDescription>Simulação de marcação a mercado.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Data Base</Label>
-                  <Input type="date" defaultValue="2024-10-01" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Taxa CDI Projetada (%)</Label>
-                  <Input type="number" defaultValue="10.5" step="0.1" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Spread Contratual (%)</Label>
-                  <Input type="number" defaultValue="2.5" disabled />
-                </div>
-              </CardContent>
-              <CardFooter>
-                <Button className="w-full">Simular PU</Button>
-              </CardFooter>
-            </Card>
-            <Card className="md:col-span-2">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CalendarDays className="h-5 w-5" />
-                  Cronograma de Amortização (Série 1)
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Evento</TableHead>
-                      <TableHead>Data Prevista</TableHead>
-                      <TableHead>Juros (Estimado)</TableHead>
-                      <TableHead>Principal</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    <TableRow className="opacity-50">
-                      <TableCell>Pagamento #01</TableCell>
-                      <TableCell>15/Jul/2024</TableCell>
-                      <TableCell className="font-mono text-xs">R$ 450.000</TableCell>
-                      <TableCell className="font-mono text-xs">R$ 1.000.000</TableCell>
-                      <TableCell>Liquidado</TableCell>
-                    </TableRow>
-                    <TableRow className="bg-muted/30">
-                      <TableCell className="font-medium">Pagamento #02</TableCell>
-                      <TableCell>15/Out/2024</TableCell>
-                      <TableCell className="font-mono text-xs">R$ 445.000</TableCell>
-                      <TableCell className="font-mono text-xs">R$ 1.000.000</TableCell>
-                      <TableCell className="text-warning font-medium">A Vencer</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell>Pagamento #03</TableCell>
-                      <TableCell>15/Jan/2025</TableCell>
-                      <TableCell className="font-mono text-xs">R$ 430.000</TableCell>
-                      <TableCell className="font-mono text-xs">R$ 1.000.000</TableCell>
-                      <TableCell>Projetado</TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
       <DeedUploadDialog
