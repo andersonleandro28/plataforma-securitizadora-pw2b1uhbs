@@ -13,6 +13,8 @@ import Debentures from './pages/Debentures'
 import Trustee from './pages/Trustee'
 import Treasury from './pages/Treasury'
 import Profile from './pages/Profile'
+import { AuthGuard } from './components/auth/AuthGuard'
+import { RoleGuard } from './components/auth/RoleGuard'
 
 const App = () => (
   <BrowserRouter future={{ v7_startTransition: false, v7_relativeSplatPath: false }}>
@@ -21,13 +23,61 @@ const App = () => (
         <Toaster />
         <Sonner />
         <Routes>
-          <Route element={<Layout />}>
-            <Route path="/" element={<Index />} />
-            <Route path="/onboarding" element={<Onboarding />} />
-            <Route path="/operations" element={<Operations />} />
-            <Route path="/debentures" element={<Debentures />} />
-            <Route path="/trustee" element={<Trustee />} />
-            <Route path="/treasury" element={<Treasury />} />
+          <Route
+            element={
+              <AuthGuard>
+                <Layout />
+              </AuthGuard>
+            }
+          >
+            <Route
+              path="/"
+              element={
+                <RoleGuard allowedRoles={['admin', 'staff', 'investor', 'borrower']}>
+                  <Index />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/onboarding"
+              element={
+                <RoleGuard allowedRoles={['admin', 'staff']}>
+                  <Onboarding />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/operations"
+              element={
+                <RoleGuard allowedRoles={['admin', 'staff']}>
+                  <Operations />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/debentures"
+              element={
+                <RoleGuard allowedRoles={['admin', 'staff', 'investor']}>
+                  <Debentures />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/trustee"
+              element={
+                <RoleGuard allowedRoles={['admin', 'staff']}>
+                  <Trustee />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/treasury"
+              element={
+                <RoleGuard allowedRoles={['admin', 'staff']}>
+                  <Treasury />
+                </RoleGuard>
+              }
+            />
             <Route path="/profile" element={<Profile />} />
           </Route>
           <Route path="*" element={<NotFound />} />

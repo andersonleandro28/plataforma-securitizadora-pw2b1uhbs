@@ -5,13 +5,12 @@ import { toast } from 'sonner'
 
 import { getSerasaHistory, type SerasaConsultationRecord } from '@/services/serasa'
 import { useAuth } from '@/hooks/use-auth'
-import { AuthGuard } from '@/components/auth/AuthGuard'
 import { RiskDashboard } from '@/components/trustee/RiskDashboard'
 import { ConsultationHistory } from '@/components/trustee/ConsultationHistory'
 import { SerasaForm } from '@/components/trustee/SerasaForm'
 import { CovenantsPanel } from '@/components/trustee/CovenantsPanel'
 
-function TrusteeContent() {
+export default function Trustee() {
   const { user, signOut } = useAuth()
   const [history, setHistory] = useState<SerasaConsultationRecord[]>([])
   const [loadingHistory, setLoadingHistory] = useState(true)
@@ -62,13 +61,5 @@ function TrusteeContent() {
         </div>
       )}
     </div>
-  )
-}
-
-export default function Trustee() {
-  return (
-    <AuthGuard>
-      <TrusteeContent />
-    </AuthGuard>
   )
 }

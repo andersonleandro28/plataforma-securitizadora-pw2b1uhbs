@@ -2,8 +2,16 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase/client'
 
+export interface Profile {
+  id: string
+  full_name: string | null
+  avatar_url: string | null
+  role: 'admin' | 'investor' | 'borrower' | 'staff'
+}
+
 interface AuthContextType {
   user: User | null
+  profile: Profile | null
   session: Session | null
   signUp: (email: string, password: string) => Promise<{ error: any }>
   signIn: (email: string, password: string) => Promise<{ error: any }>
@@ -22,7 +30,9 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [profile, setProfile] = useState<Profile | null>(null)
+  const [loadingSession, setLoadingSession] = useState(true)
+  const [loadingProfile, setLoadingProfile] = useState(true)
 
   useEffect(() => {
     const {
@@ -30,17 +40,43 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session)
       setUser(session?.user ?? null)
-      setLoading(false)
+      setLoadingSession(false)
     })
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
       setUser(session?.user ?? null)
-      setLoading(false)
+      setLoadingSession(false)
     })
 
     return () => subscription.unsubscribe()
   }, [])
+
+  useEffect(() => {
+    let mounted = true
+    if (user) {
+      setLoadingProfile(true)
+      supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single()
+        .then(({ data }) => {
+          if (mounted) {
+            setProfile(data as Profile)
+            setLoadingProfile(false)
+          }
+        })
+    } else {
+      if (mounted) {
+        setProfile(null)
+        setLoadingProfile(false)
+      }
+    }
+    return () => {
+      mounted = false
+    }
+  }, [user])
 
   useEffect(() => {
     if (user) {
@@ -78,8 +114,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return { error }
   }
 
+  const loading = loadingSession || (!!user && loadingProfile)
+
   return (
-    <AuthContext.Provider value={{ user, session, signUp, signIn, signOut, loading }}>
+    <AuthContext.Provider value={{ user, profile, session, signUp, signIn, signOut, loading }}>
       {children}
     </AuthContext.Provider>
   )

@@ -10,19 +10,18 @@ import {
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { Loader2, Lock, User, Mail, Camera } from 'lucide-react'
-import { AuthGuard } from '@/components/auth/AuthGuard'
+import { Loader2, Lock, User, Mail, Camera, Shield } from 'lucide-react'
 import { AccessLogs } from '@/components/profile/AccessLogs'
 
-function ProfileContent() {
-  const { user } = useAuth()
+export default function Profile() {
+  const { user, profile } = useAuth()
   const [fullName, setFullName] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
-  const [loadingProfile, setLoadingProfile] = useState(false)
-  const [loadingInit, setLoadingInit] = useState(true)
+  const [loadingProfileUpdate, setLoadingProfileUpdate] = useState(false)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -31,22 +30,11 @@ function ProfileContent() {
   const [loadingPassword, setLoadingPassword] = useState(false)
 
   useEffect(() => {
-    async function loadProfile() {
-      if (user) {
-        const { data } = await supabase
-          .from('profiles')
-          .select('full_name, avatar_url')
-          .eq('id', user.id)
-          .single()
-        if (data) {
-          setFullName(data.full_name || '')
-          setAvatarUrl(data.avatar_url || '')
-        }
-      }
-      setLoadingInit(false)
+    if (profile) {
+      setFullName(profile.full_name || '')
+      setAvatarUrl(profile.avatar_url || '')
     }
-    loadProfile()
-  }, [user])
+  }, [profile])
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -78,7 +66,7 @@ function ProfileContent() {
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user) return
-    setLoadingProfile(true)
+    setLoadingProfileUpdate(true)
     const { error } = await supabase
       .from('profiles')
       .update({ full_name: fullName, updated_at: new Date().toISOString() })
@@ -89,7 +77,7 @@ function ProfileContent() {
       toast.success('Perfil atualizado com sucesso.')
       window.dispatchEvent(new Event('profile-updated'))
     }
-    setLoadingProfile(false)
+    setLoadingProfileUpdate(false)
   }
 
   const handleUpdatePassword = async (e: React.FormEvent) => {
@@ -108,19 +96,28 @@ function ProfileContent() {
     setLoadingPassword(false)
   }
 
-  if (loadingInit) {
-    return (
-      <div className="flex justify-center py-20">
-        <Loader2 className="animate-spin h-8 w-8 text-primary" />
-      </div>
-    )
+  const roleLabels: Record<string, string> = {
+    admin: 'Administrador',
+    investor: 'Investidor / Debenturista',
+    borrower: 'Tomador de Crédito',
+    staff: 'Equipe Interna',
   }
+
+  const roleLabel = profile?.role ? roleLabels[profile.role] : 'Usuário'
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Meu Perfil</h1>
-        <p className="text-muted-foreground">Gerencie suas informações pessoais e segurança.</p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Meu Perfil</h1>
+          <p className="text-muted-foreground">Gerencie suas informações pessoais e segurança.</p>
+        </div>
+        <Badge
+          variant="outline"
+          className="px-3 py-1 flex items-center gap-1.5 bg-muted/50 text-sm"
+        >
+          <Shield className="h-3.5 w-3.5 text-primary" /> {roleLabel}
+        </Badge>
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
@@ -181,8 +178,8 @@ function ProfileContent() {
               </div>
             </CardContent>
             <CardFooter className="justify-end border-t pt-6 bg-muted/20">
-              <Button type="submit" disabled={loadingProfile}>
-                {loadingProfile && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Button type="submit" disabled={loadingProfileUpdate}>
+                {loadingProfileUpdate && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Salvar Alterações
               </Button>
             </CardFooter>
@@ -233,13 +230,5 @@ function ProfileContent() {
         </div>
       </div>
     </div>
-  )
-}
-
-export default function Profile() {
-  return (
-    <AuthGuard>
-      <ProfileContent />
-    </AuthGuard>
   )
 }

@@ -19,19 +19,38 @@ import {
   SidebarMenuItem,
   SidebarHeader,
 } from '@/components/ui/sidebar'
+import { useAuth } from '@/hooks/use-auth'
 
-const navItems = [
-  { title: 'Dashboard', path: '/', icon: LayoutDashboard },
-  { title: 'Compliance & KYC', path: '/onboarding', icon: ShieldCheck },
-  { title: 'Operações (Lastro)', path: '/operations', icon: FileText },
-  { title: 'Debêntures', path: '/debentures', icon: Landmark },
-  { title: 'Fiduciário (Covenants)', path: '/trustee', icon: Building },
-  { title: 'Tesouraria & Escrow', path: '/treasury', icon: Briefcase },
-  { title: 'Relatórios', path: '/reports', icon: PieChart },
+const allNavItems = [
+  {
+    title: 'Dashboard',
+    path: '/',
+    icon: LayoutDashboard,
+    roles: ['admin', 'staff', 'investor', 'borrower'],
+  },
+  { title: 'Compliance & KYC', path: '/onboarding', icon: ShieldCheck, roles: ['admin', 'staff'] },
+  { title: 'Operações (Lastro)', path: '/operations', icon: FileText, roles: ['admin', 'staff'] },
+  {
+    title: 'Debêntures',
+    path: '/debentures',
+    icon: Landmark,
+    roles: ['admin', 'staff', 'investor'],
+  },
+  { title: 'Fiduciário (Covenants)', path: '/trustee', icon: Building, roles: ['admin', 'staff'] },
+  { title: 'Tesouraria & Escrow', path: '/treasury', icon: Briefcase, roles: ['admin', 'staff'] },
+  {
+    title: 'Relatórios',
+    path: '/reports',
+    icon: PieChart,
+    roles: ['admin', 'staff', 'investor', 'borrower'],
+  },
 ]
 
 export function AppSidebar() {
   const location = useLocation()
+  const { profile } = useAuth()
+
+  const navItems = allNavItems.filter((item) => profile && item.roles.includes(profile.role))
 
   return (
     <Sidebar variant="sidebar" collapsible="icon">
