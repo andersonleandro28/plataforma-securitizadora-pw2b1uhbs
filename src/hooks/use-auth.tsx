@@ -96,15 +96,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signUp = async (email: string, password: string, fullName?: string) => {
     try {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/`,
-          data: fullName ? { name: fullName } : undefined,
-        },
+      // Nova abordagem: Usar Edge Function para bypass do limite de envio de e-mail (rate limit)
+      // O Supabase irá registrar o usuário diretamente no banco sem disparar e-mail de confirmação
+      const { data, error: invokeError } = await supabase.functions.invoke('public-signup', {
+        body: { email, password, fullName },
       })
-      return { error }
+
+      if (invokeError) {
+        return { error: invokeError }
+      }
+
+      if (data?.error) {
+        return { error: { message: data.error } }
+      }
+
+      // Após criar a conta diretamente no banco via Edge Function, fazemos o login do usuário
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+      return { error: signInError }
     } catch (error: any) {
       return { error }
     }

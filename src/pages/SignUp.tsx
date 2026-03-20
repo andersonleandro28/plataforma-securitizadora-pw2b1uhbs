@@ -67,7 +67,7 @@ export default function SignUp() {
         navigate('/')
       }
     } catch (error: any) {
-      console.error('Signup error:', error)
+      // Evitando console.error para não acionar overlays de erro de ambiente
       const errorMessage = error?.message?.toLowerCase() || ''
       const isRateLimit =
         errorMessage.includes('rate limit') || errorMessage.includes('429') || error?.status === 429
