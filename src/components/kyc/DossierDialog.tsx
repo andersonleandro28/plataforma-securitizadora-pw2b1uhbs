@@ -1,4 +1,10 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Eye, FileText, CheckCircle, AlertTriangle } from 'lucide-react'
@@ -23,6 +29,9 @@ export function DossierDialog({
           <DialogTitle>
             Análise de Dossiê - {profile.full_name || profile.pj_company_name || 'Cliente'}
           </DialogTitle>
+          <DialogDescription>
+            Visualize os dados preenchidos e documentos enviados para aprovação do cadastro.
+          </DialogDescription>
         </DialogHeader>
 
         <Tabs defaultValue="resumo" className="w-full mt-4">
@@ -176,6 +185,10 @@ export function DossierDialog({
                       <p className="text-xs text-muted-foreground">RG</p>
                       <p className="text-sm">{profile.pj_rep_rg || '-'}</p>
                     </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Atua por Procuração?</p>
+                      <p className="text-sm">{profile.pj_rep_is_procurator ? 'Sim' : 'Não'}</p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -216,7 +229,11 @@ export function DossierDialog({
                       <FileText className="w-4 h-4 text-primary" />{' '}
                       {doc.document_type === 'id_document'
                         ? 'Doc. de Identificação'
-                        : 'Comprovante Endereço'}
+                        : doc.document_type === 'proof_address'
+                          ? 'Comprovante Endereço'
+                          : doc.document_type === 'power_of_attorney'
+                            ? 'Procuração'
+                            : 'Documento'}
                     </span>
                     <Button
                       variant="secondary"

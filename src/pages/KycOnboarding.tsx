@@ -58,6 +58,7 @@ export default function KycOnboarding() {
     pj_rep_cpf: profile?.pj_rep_cpf || '',
     pj_rep_rg: profile?.pj_rep_rg || '',
     pj_rep_role: profile?.pj_rep_role || '',
+    pj_rep_is_procurator: profile?.pj_rep_is_procurator || false,
     address_zip: profile?.address_zip || '',
     address_street: profile?.address_street || '',
     address_number: profile?.address_number || '',
@@ -69,7 +70,11 @@ export default function KycOnboarding() {
     lgpd_accepted: profile?.lgpd_accepted || false,
   })
 
-  const [docs, setDocs] = useState<{ id_doc?: File; proof_address?: File }>({})
+  const [docs, setDocs] = useState<{
+    id_doc?: File
+    proof_address?: File
+    power_of_attorney?: File
+  }>({})
 
   const isReview = profile?.kyc_status === 'under_review' || profile?.kyc_status === 'approved'
   if (isReview) {
@@ -121,10 +126,15 @@ export default function KycOnboarding() {
     if (!user) return
     if (!formData.lgpd_accepted) return toast.error('É necessário aceitar os termos da LGPD.')
     if (!docs.id_doc) return toast.error('O Documento de Identificação é obrigatório.')
+    if (isPj && formData.pj_rep_is_procurator && !docs.power_of_attorney) {
+      return toast.error('A Procuração do Administrador é obrigatória.')
+    }
+
     setLoading(true)
     try {
       if (docs.id_doc) await uploadDoc(docs.id_doc, 'id_document')
       if (docs.proof_address) await uploadDoc(docs.proof_address, 'proof_address')
+      if (docs.power_of_attorney) await uploadDoc(docs.power_of_attorney, 'power_of_attorney')
 
       const { error } = await supabase
         .from('profiles')
@@ -198,6 +208,20 @@ export default function KycOnboarding() {
                   />
                 </div>
               </div>
+              {isPj && formData.pj_rep_is_procurator && (
+                <div className="space-y-4 animate-fade-in">
+                  <Label>Procuração do Administrador *</Label>
+                  <div className="border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center bg-muted/20 hover:bg-muted/40 transition-colors">
+                    <FileText className="w-8 h-8 text-muted-foreground mb-2" />
+                    <Input
+                      type="file"
+                      className="max-w-xs"
+                      onChange={(e) => setDocs({ ...docs, power_of_attorney: e.target.files?.[0] })}
+                      accept=".pdf,image/*"
+                    />
+                  </div>
+                </div>
+              )}
               <div className="space-y-4">
                 <Label>Comprovante de Endereço (Últimos 90 dias)</Label>
                 <div className="border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center bg-muted/20 hover:bg-muted/40 transition-colors">

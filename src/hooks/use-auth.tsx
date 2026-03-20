@@ -41,6 +41,7 @@ export interface Profile {
   pj_rep_cpf?: string
   pj_rep_rg?: string
   pj_rep_role?: string
+  pj_rep_is_procurator?: boolean
 }
 
 interface AuthContextType {

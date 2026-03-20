@@ -7,6 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Checkbox } from '@/components/ui/checkbox'
 
 export const EntityTypeStep = ({ formData, setFormData }: any) => (
   <div className="space-y-4 animate-fade-in">
@@ -196,6 +197,16 @@ export const PjRepStep = ({ formData, setFormData }: any) => (
           onChange={(e) => setFormData({ ...formData, pj_rep_rg: e.target.value })}
         />
       </div>
+    </div>
+    <div className="flex items-center space-x-3 pt-2">
+      <Checkbox
+        id="is_procurator"
+        checked={formData.pj_rep_is_procurator}
+        onCheckedChange={(c: boolean) => setFormData({ ...formData, pj_rep_is_procurator: c })}
+      />
+      <Label htmlFor="is_procurator" className="text-sm font-normal leading-snug">
+        O representante legal atua através de procuração.
+      </Label>
     </div>
   </div>
 )

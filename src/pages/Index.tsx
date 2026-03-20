@@ -12,7 +12,7 @@ export default function Index() {
 
   const renderKycBanner = () => {
     if (!profile) return null
-    if (profile.role === 'admin' || profile.role === 'staff') return null
+    if (profile.is_admin || profile.is_staff) return null
     if (profile.kyc_status === 'approved') return null
 
     let alertConfig = {
@@ -74,9 +74,17 @@ export default function Index() {
   return (
     <div className="space-y-6">
       {renderKycBanner()}
-      {profile?.role === 'investor' && <InvestorDashboard />}
-      {profile?.role === 'borrower' && <BorrowerDashboard />}
-      {(profile?.role === 'admin' || profile?.role === 'staff') && <AdminDashboard />}
+      {profile?.is_admin || profile?.is_staff ? (
+        <AdminDashboard />
+      ) : profile?.is_borrower ? (
+        <BorrowerDashboard />
+      ) : profile?.is_investor ? (
+        <InvestorDashboard />
+      ) : (
+        <div className="text-center py-10 text-muted-foreground">
+          Nenhum perfil ativo associado à sua conta.
+        </div>
+      )}
     </div>
   )
 }

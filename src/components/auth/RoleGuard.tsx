@@ -47,7 +47,6 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
     if (role === 'staff' && profile.is_staff) return true
     if (role === 'investor' && profile.is_investor) return true
     if (role === 'borrower' && profile.is_borrower) return true
-    if (profile.role === role) return true
     return false
   })
 
