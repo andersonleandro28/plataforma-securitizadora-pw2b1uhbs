@@ -7,6 +7,10 @@ export interface Profile {
   full_name: string | null
   avatar_url: string | null
   role: 'admin' | 'investor' | 'borrower' | 'staff'
+  is_admin: boolean
+  is_staff: boolean
+  is_investor: boolean
+  is_borrower: boolean
   kyc_status?: 'pending' | 'under_review' | 'approved' | 'rejected'
   entity_type?: 'pf' | 'pj'
   document_number?: string
@@ -16,8 +20,27 @@ export interface Profile {
   address_number?: string
   address_city?: string
   address_state?: string
+  address_complement?: string
+  address_neighborhood?: string
   is_pep?: boolean
   lgpd_accepted?: boolean
+  pf_mother_name?: string
+  pf_father_name?: string
+  pf_marital_status?: string
+  pf_occupation?: string
+  pf_nationality?: string
+  pf_birth_city?: string
+  pf_rg?: string
+  pj_company_name?: string
+  pj_trade_name?: string
+  pj_tax_regime?: string
+  pj_annual_revenue?: number
+  pj_cnae?: string
+  pj_foundation_date?: string
+  pj_rep_name?: string
+  pj_rep_cpf?: string
+  pj_rep_rg?: string
+  pj_rep_role?: string
 }
 
 interface AuthContextType {
@@ -60,30 +83,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setLoadingSession(false)
     })
 
-    // Resiliência na Conexão: Proteção contra falhas no refresh token inicial
     supabase.auth
       .getSession()
       .then(({ data: { session }, error }) => {
-        if (error) {
-          console.error('Session error:', error.message)
-          // Força a limpeza da sessão corrompida se o token não for encontrado ou expirar
-          supabase.auth.signOut().catch(() => {})
-        }
+        if (error) supabase.auth.signOut().catch(() => {})
         setSession(session ?? null)
         setUser(session?.user ?? null)
         setLoadingSession(false)
       })
-      .catch((err) => {
-        console.error('Failed to get session:', err)
-        setLoadingSession(false)
-      })
+      .catch(() => setLoadingSession(false))
 
     return () => subscription.unsubscribe()
   }, [])
 
   useEffect(() => {
     let mounted = true
-
     const loadProfile = () => {
       if (user) {
         setLoadingProfile(true)
@@ -93,30 +107,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           .eq('id', user.id)
           .maybeSingle()
           .then(({ data, error }) => {
-            if (error) {
-              console.error('Error loading profile:', error.message)
-              // Tratamento de Erros de Autenticação:
-              // Desloga o usuário se a API recusar devido a token expirado ou JWT inválido
-              if (
-                error.code === 'PGRST301' ||
-                error.code === '401' ||
-                (error.message && error.message.toLowerCase().includes('jwt'))
-              ) {
-                supabase.auth.signOut().catch(() => {})
-              }
+            if (error && (error.code === 'PGRST301' || error.code === '401')) {
+              supabase.auth.signOut().catch(() => {})
             }
             if (mounted) {
               setProfile(data ? (data as Profile) : null)
               setLoadingProfile(false)
             }
           })
-          .catch((err) => {
-            console.error('Unexpected error loading profile:', err)
-            if (mounted) {
-              setProfile(null)
-              setLoadingProfile(false)
-            }
-          })
+          .catch(() => mounted && setLoadingProfile(false))
       } else {
         if (mounted) {
           setProfile(null)
@@ -124,48 +123,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       }
     }
-
     loadProfile()
-
     window.addEventListener('profile-updated', loadProfile)
-
     return () => {
       mounted = false
       window.removeEventListener('profile-updated', loadProfile)
     }
   }, [user])
 
-  useEffect(() => {
-    if (user && session) {
-      const sessionKey = `access_logged_${user.id}`
-      if (!sessionStorage.getItem(sessionKey)) {
-        ;(supabase as any)
-          .from('access_logs')
-          .insert({ user_id: user.id })
-          .then(({ error }: any) => {
-            if (!error) {
-              sessionStorage.setItem(sessionKey, 'true')
-            }
-          })
-          .catch(() => {}) // Previne crash silencioso caso o insert falhe
-      }
-    }
-  }, [user, session])
-
   const signUp = async (email: string, password: string, fullName?: string) => {
     try {
       const { data, error: invokeError } = await supabase.functions.invoke('public-signup', {
         body: { email, password, fullName },
       })
-
-      if (invokeError) {
-        return { error: invokeError }
-      }
-
-      if (data?.error) {
-        return { error: { message: data.error } }
-      }
-
+      if (invokeError) return { error: invokeError }
+      if (data?.error) return { error: { message: data.error } }
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
       return { error: signInError }
     } catch (error: any) {
@@ -183,7 +155,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const signOut = async () => {
-    if (user) sessionStorage.removeItem(`access_logged_${user.id}`)
     try {
       const { error } = await supabase.auth.signOut()
       return { error }

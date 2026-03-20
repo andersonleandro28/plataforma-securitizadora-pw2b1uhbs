@@ -15,8 +15,6 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
 
   if (loading) return null
 
-  // Se o usuário está logado mas o perfil ainda não foi sincronizado pela base de dados,
-  // não forçamos mais o logout (evitando loop). Exibimos um aviso amigável e damos a opção de atualizar.
   if (user && !profile) {
     return (
       <div className="flex-1 flex items-center justify-center p-4">
@@ -42,7 +40,18 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
     )
   }
 
-  if (!profile || !allowedRoles.includes(profile.role)) {
+  if (!profile) return null
+
+  const hasAccess = allowedRoles.some((role) => {
+    if (role === 'admin' && profile.is_admin) return true
+    if (role === 'staff' && profile.is_staff) return true
+    if (role === 'investor' && profile.is_investor) return true
+    if (role === 'borrower' && profile.is_borrower) return true
+    if (profile.role === role) return true
+    return false
+  })
+
+  if (!hasAccess) {
     return (
       <div className="flex-1 flex items-center justify-center p-4">
         <Card className="max-w-md w-full border-destructive/20 shadow-sm animate-fade-in-up">
@@ -53,7 +62,9 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
               </div>
             </div>
             <CardTitle>Acesso Negado</CardTitle>
-            <CardDescription>Você não tem permissão para acessar esta página.</CardDescription>
+            <CardDescription>
+              Você não tem permissão para acessar esta página ou perfil.
+            </CardDescription>
           </CardHeader>
           <CardContent className="flex justify-center pt-4">
             <Button onClick={() => navigate('/')}>Voltar ao Início</Button>

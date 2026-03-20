@@ -43,21 +43,17 @@ export default function Profile() {
     try {
       const fileExt = file.name.split('.').pop()
       const filePath = `${user.id}/avatar_${Math.random()}.${fileExt}`
-
       const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file)
       if (uploadError) throw uploadError
-
       const {
         data: { publicUrl },
       } = supabase.storage.from('avatars').getPublicUrl(filePath)
-
       await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id)
-
       setAvatarUrl(publicUrl)
       toast.success('Foto de perfil atualizada.')
       window.dispatchEvent(new Event('profile-updated'))
-    } catch (error) {
-      toast.error('Erro ao atualizar foto de perfil.')
+    } catch {
+      toast.error('Erro ao atualizar foto.')
     } finally {
       setUploadingAvatar(false)
     }
@@ -71,10 +67,9 @@ export default function Profile() {
       .from('profiles')
       .update({ full_name: fullName, updated_at: new Date().toISOString() })
       .eq('id', user.id)
-
     if (error) toast.error('Erro ao atualizar perfil.')
     else {
-      toast.success('Perfil atualizado com sucesso.')
+      toast.success('Perfil atualizado.')
       window.dispatchEvent(new Event('profile-updated'))
     }
     setLoadingProfileUpdate(false)
@@ -83,41 +78,45 @@ export default function Profile() {
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault()
     if (newPassword !== confirmPassword) return toast.error('As senhas não coincidem.')
-    if (newPassword.length < 6) return toast.error('A senha deve ter pelo menos 6 caracteres.')
-
     setLoadingPassword(true)
     const { error } = await supabase.auth.updateUser({ password: newPassword })
-    if (error) toast.error(error.message || 'Erro ao atualizar senha.')
+    if (error) toast.error(error.message)
     else {
-      toast.success('Senha atualizada com sucesso.')
+      toast.success('Senha atualizada.')
       setNewPassword('')
       setConfirmPassword('')
     }
     setLoadingPassword(false)
   }
 
-  const roleLabels: Record<string, string> = {
-    admin: 'Administrador',
-    investor: 'Investidor / Debenturista',
-    borrower: 'Tomador de Crédito',
-    staff: 'Equipe Interna',
+  const renderRoles = () => {
+    if (!profile) return null
+    const roles = []
+    if (profile.is_admin) roles.push('Administrador')
+    if (profile.is_staff) roles.push('Equipe Interna')
+    if (profile.is_investor) roles.push('Investidor')
+    if (profile.is_borrower) roles.push('Tomador')
+    if (roles.length === 0) roles.push('Usuário')
+
+    return roles.map((r) => (
+      <Badge
+        key={r}
+        variant="outline"
+        className="px-3 py-1 flex items-center gap-1.5 bg-muted/50 text-sm"
+      >
+        <Shield className="h-3.5 w-3.5 text-primary" /> {r}
+      </Badge>
+    ))
   }
 
-  const roleLabel = profile?.role ? roleLabels[profile.role] : 'Usuário'
-
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in-up">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Meu Perfil</h1>
-          <p className="text-muted-foreground">Gerencie suas informações pessoais e segurança.</p>
+          <p className="text-muted-foreground">Gerencie suas informações e segurança.</p>
         </div>
-        <Badge
-          variant="outline"
-          className="px-3 py-1 flex items-center gap-1.5 bg-muted/50 text-sm"
-        >
-          <Shield className="h-3.5 w-3.5 text-primary" /> {roleLabel}
-        </Badge>
+        <div className="flex flex-wrap gap-2">{renderRoles()}</div>
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
@@ -126,7 +125,7 @@ export default function Profile() {
             <CardTitle className="flex items-center gap-2">
               <User className="h-5 w-5 text-primary" /> Informações Pessoais
             </CardTitle>
-            <CardDescription>Personalize sua conta com foto e nome.</CardDescription>
+            <CardDescription>Personalize sua conta.</CardDescription>
           </CardHeader>
           <form onSubmit={handleUpdateProfile}>
             <CardContent className="flex flex-col sm:flex-row gap-8">
@@ -155,7 +154,7 @@ export default function Profile() {
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   ) : (
                     <Camera className="h-4 w-4 mr-2" />
-                  )}
+                  )}{' '}
                   Alterar Foto
                 </Button>
               </div>
@@ -168,19 +167,14 @@ export default function Profile() {
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Nome Completo</label>
-                  <Input
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Seu nome completo"
-                    required
-                  />
+                  <Input value={fullName} onChange={(e) => setFullName(e.target.value)} required />
                 </div>
               </div>
             </CardContent>
             <CardFooter className="justify-end border-t pt-6 bg-muted/20">
               <Button type="submit" disabled={loadingProfileUpdate}>
-                {loadingProfileUpdate && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Salvar Alterações
+                {loadingProfileUpdate && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Salvar
+                Alterações
               </Button>
             </CardFooter>
           </form>
@@ -191,7 +185,7 @@ export default function Profile() {
             <CardTitle className="flex items-center gap-2">
               <Lock className="h-5 w-5 text-accent" /> Credenciais
             </CardTitle>
-            <CardDescription>Atualize sua senha de acesso.</CardDescription>
+            <CardDescription>Atualize sua senha.</CardDescription>
           </CardHeader>
           <form onSubmit={handleUpdatePassword}>
             <CardContent className="space-y-4">
@@ -202,7 +196,6 @@ export default function Profile() {
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   required
-                  placeholder="******"
                 />
               </div>
               <div className="space-y-2">
@@ -212,14 +205,13 @@ export default function Profile() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
-                  placeholder="******"
                 />
               </div>
             </CardContent>
             <CardFooter>
               <Button type="submit" variant="secondary" disabled={loadingPassword}>
-                {loadingPassword && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Atualizar Senha
+                {loadingPassword && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Atualizar
+                Senha
               </Button>
             </CardFooter>
           </form>
