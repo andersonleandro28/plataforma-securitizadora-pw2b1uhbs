@@ -95,26 +95,38 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [user])
 
   const signUp = async (email: string, password: string, fullName?: string) => {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/`,
-        data: fullName ? { name: fullName } : undefined,
-      },
-    })
-    return { error }
+    try {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/`,
+          data: fullName ? { name: fullName } : undefined,
+        },
+      })
+      return { error }
+    } catch (error: any) {
+      return { error }
+    }
   }
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    return { error }
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      return { error }
+    } catch (error: any) {
+      return { error }
+    }
   }
 
   const signOut = async () => {
     if (user) sessionStorage.removeItem(`access_logged_${user.id}`)
-    const { error } = await supabase.auth.signOut()
-    return { error }
+    try {
+      const { error } = await supabase.auth.signOut()
+      return { error }
+    } catch (error: any) {
+      return { error }
+    }
   }
 
   const loading = loadingSession || (!!user && loadingProfile)

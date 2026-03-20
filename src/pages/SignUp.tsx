@@ -44,15 +44,46 @@ export default function SignUp() {
     }
 
     setAuthLoading(true)
-    const result = await signUp(email, password, name)
 
-    if (result?.error) {
-      toast.error(result.error.message || 'Erro ao criar conta')
-    } else {
-      toast.success('Conta criada com sucesso! Você já pode acessar a plataforma.')
-      navigate('/')
+    try {
+      const result = await signUp(email, password, name)
+
+      if (result?.error) {
+        const errorMessage = result.error.message?.toLowerCase() || ''
+        const isRateLimit =
+          errorMessage.includes('rate limit') ||
+          (result.error as any).status === 429 ||
+          (result.error as any).code === 'over_email_send_rate_limit'
+
+        if (isRateLimit) {
+          toast.error(
+            'Muitas tentativas de cadastro em curto período. Por favor, aguarde alguns instantes e tente novamente.',
+          )
+        } else {
+          toast.error(result.error.message || 'Erro ao criar conta')
+        }
+      } else {
+        toast.success('Conta criada com sucesso! Você já pode acessar a plataforma.')
+        navigate('/')
+      }
+    } catch (error: any) {
+      console.error('Signup error:', error)
+      const errorMessage = error?.message?.toLowerCase() || ''
+      const isRateLimit =
+        errorMessage.includes('rate limit') || errorMessage.includes('429') || error?.status === 429
+
+      if (isRateLimit) {
+        toast.error(
+          'Muitas tentativas de cadastro em curto período. Por favor, aguarde alguns instantes e tente novamente.',
+        )
+      } else {
+        toast.error(
+          'Ocorreu um erro inesperado ao tentar criar a conta. Tente novamente mais tarde.',
+        )
+      }
+    } finally {
+      setAuthLoading(false)
     }
-    setAuthLoading(false)
   }
 
   return (
