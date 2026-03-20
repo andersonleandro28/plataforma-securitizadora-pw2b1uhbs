@@ -91,8 +91,11 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
               {isLogin ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Entre'}
             </Button>
             {isLogin && (
-              <div className="text-xs text-center text-muted-foreground mt-4">
-                Dica para testes: <b>test@example.com</b> / <b>password123</b>
+              <div className="text-xs text-center text-muted-foreground mt-4 space-y-1">
+                <p>Dica para testes:</p>
+                <p>
+                  <b>andersonleandro28@gmail.com</b> / <b>1941Pai@#$130598</b>
+                </p>
               </div>
             )}
           </CardFooter>
