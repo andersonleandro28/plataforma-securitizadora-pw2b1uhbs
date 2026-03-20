@@ -29,7 +29,7 @@ export function Header() {
         .from('profiles')
         .select('full_name, avatar_url')
         .eq('id', user.id)
-        .single()
+        .maybeSingle()
 
       if (data) {
         setProfileName(data.full_name || '')

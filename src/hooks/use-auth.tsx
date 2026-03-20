@@ -91,7 +91,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           .from('profiles')
           .select('*')
           .eq('id', user.id)
-          .single()
+          .maybeSingle()
           .then(({ data, error }) => {
             if (error) {
               console.error('Error loading profile:', error.message)
