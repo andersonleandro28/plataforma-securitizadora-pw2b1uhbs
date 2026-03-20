@@ -7,6 +7,7 @@ import Layout from './components/Layout'
 import NotFound from './pages/NotFound'
 
 import Index from './pages/Index'
+import SignUp from './pages/SignUp'
 import Onboarding from './pages/Onboarding'
 import Operations from './pages/Operations'
 import Debentures from './pages/Debentures'
@@ -24,6 +25,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <Routes>
+          <Route path="/signup" element={<SignUp />} />
           <Route
             element={
               <AuthGuard>
