@@ -1,5 +1,5 @@
 import { useState, Fragment } from 'react'
-import { ChevronDown, ChevronRight, ListFilter, Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, ListFilter, Loader2, Trash2 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
@@ -9,19 +9,55 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
+import { Button } from '@/components/ui/button'
 import { format } from 'date-fns'
+import { supabase } from '@/lib/supabase/client'
+import { toast } from 'sonner'
 
 interface HistoryTabProps {
   debentures: any[]
   loading: boolean
   formatCurrency: (val: number) => string
+  onDeleteSuccess: () => void
 }
 
-export function HistoryTab({ debentures, loading, formatCurrency }: HistoryTabProps) {
+export function HistoryTab({
+  debentures,
+  loading,
+  formatCurrency,
+  onDeleteSuccess,
+}: HistoryTabProps) {
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({})
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const toggleRow = (id: string) => {
     setExpandedRows((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  const handleDelete = async (id: string) => {
+    setDeletingId(id)
+    try {
+      const { error } = await supabase.from('debentures').delete().eq('id', id)
+      if (error) throw error
+      toast.success('Documento e séries excluídos com sucesso!')
+      onDeleteSuccess()
+    } catch (err: any) {
+      console.error(err)
+      toast.error(err.message || 'Erro ao excluir o registro.')
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   return (
@@ -40,12 +76,13 @@ export function HistoryTab({ debentures, loading, formatCurrency }: HistoryTabPr
               <TableHead>Data Emissão</TableHead>
               <TableHead className="text-right">Volume Total</TableHead>
               <TableHead className="text-center">Séries</TableHead>
+              <TableHead className="text-center w-[80px]">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8">
+                <TableCell colSpan={7} className="text-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                 </TableCell>
               </TableRow>
@@ -78,10 +115,51 @@ export function HistoryTab({ debentures, loading, formatCurrency }: HistoryTabPr
                         {deb.series?.length || 0}
                       </span>
                     </TableCell>
+                    <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            disabled={deletingId === deb.id}
+                          >
+                            {deletingId === deb.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Excluir Documento</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Tem certeza que deseja excluir o processamento da escritura de{' '}
+                              <strong className="text-foreground">{deb.issuer_name}</strong>? Esta
+                              ação removerá todas as {deb.series?.length || 0} séries associadas e
+                              não pode ser desfeita.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={(e) => {
+                                e.preventDefault()
+                                handleDelete(deb.id)
+                              }}
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                              Sim, Excluir
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </TableCell>
                   </TableRow>
                   {expandedRows[deb.id] && deb.series && deb.series.length > 0 && (
                     <TableRow className="bg-muted/5 hover:bg-muted/5">
-                      <TableCell colSpan={6} className="p-0 border-b">
+                      <TableCell colSpan={7} className="p-0 border-b">
                         <div className="p-4 pl-14 animate-in slide-in-from-top-2 duration-200">
                           <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
                             <ListFilter className="h-4 w-4 text-primary" /> Detalhamento das Séries
@@ -128,7 +206,7 @@ export function HistoryTab({ debentures, loading, formatCurrency }: HistoryTabPr
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground h-32">
+                <TableCell colSpan={7} className="text-center text-muted-foreground h-32">
                   Nenhum documento processado ainda.
                 </TableCell>
               </TableRow>

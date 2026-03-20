@@ -310,7 +310,12 @@ export default function Debentures() {
         </TabsContent>
 
         <TabsContent value="history">
-          <HistoryTab debentures={debentures} loading={loading} formatCurrency={formatCurrency} />
+          <HistoryTab
+            debentures={debentures}
+            loading={loading}
+            formatCurrency={formatCurrency}
+            onDeleteSuccess={fetchDebentures}
+          />
         </TabsContent>
 
         <TabsContent value="series">
