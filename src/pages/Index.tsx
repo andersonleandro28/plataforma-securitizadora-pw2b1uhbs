@@ -1,7 +1,8 @@
+import { useEffect } from 'react'
 import { ArrowUpRight, TrendingUp, AlertOctagon, Scale, ShieldAlert, Landmark } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 
@@ -20,6 +21,65 @@ const chartConfig = {
 }
 
 export default function Index() {
+  useEffect(() => {
+    // Feature: Provider State Validation
+    const checkMetaMaskConnection = async () => {
+      try {
+        if (typeof window !== 'undefined' && 'ethereum' in window) {
+          const ethereum = (window as any).ethereum
+          // Logic to check for the presence and readiness of the MetaMask provider
+          if (ethereum && ethereum.isMetaMask) {
+            // Wrap the MetaMask connection calls in a try-catch block
+            try {
+              // Initiate connection requests safely
+              await ethereum.request({ method: 'eth_accounts' })
+            } catch (connectionError) {
+              console.warn('Intercepted MetaMask connection error:', connectionError)
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Safeguard caught an error during MetaMask provider check:', error)
+      }
+    }
+
+    checkMetaMaskConnection()
+
+    // Feature: Graceful Error Handling for extension-level global errors
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason
+      const isMetaMaskError =
+        reason === 'Failed to connect to MetaMask' ||
+        (reason instanceof Error && reason.message.includes('Failed to connect to MetaMask')) ||
+        (reason &&
+          typeof reason === 'object' &&
+          'message' in reason &&
+          String(reason.message).includes('Failed to connect to MetaMask'))
+
+      if (isMetaMaskError) {
+        console.warn('Intercepted unhandled MetaMask extension error:', reason)
+        // Prevent the error from crashing the application
+        event.preventDefault()
+      }
+    }
+
+    const handleError = (event: ErrorEvent) => {
+      if (event.message && event.message.includes('Failed to connect to MetaMask')) {
+        console.warn('Intercepted MetaMask extension error event:', event.message)
+        // Prevent the error from crashing the application
+        event.preventDefault()
+      }
+    }
+
+    window.addEventListener('unhandledrejection', handleUnhandledRejection)
+    window.addEventListener('error', handleError)
+
+    return () => {
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection)
+      window.removeEventListener('error', handleError)
+    }
+  }, [])
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       <div>
