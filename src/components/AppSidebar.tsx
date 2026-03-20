@@ -7,6 +7,7 @@ import {
   Building,
   Briefcase,
   PieChart,
+  Users as UsersIcon,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -28,16 +29,42 @@ const allNavItems = [
     icon: LayoutDashboard,
     roles: ['admin', 'staff', 'investor', 'borrower'],
   },
-  { title: 'Compliance & KYC', path: '/onboarding', icon: ShieldCheck, roles: ['admin', 'staff'] },
-  { title: 'Operações (Lastro)', path: '/operations', icon: FileText, roles: ['admin', 'staff'] },
+  {
+    title: 'Gestão de Usuários',
+    path: '/admin/users',
+    icon: UsersIcon,
+    roles: ['admin'],
+  },
+  {
+    title: 'Compliance & KYC',
+    path: '/onboarding',
+    icon: ShieldCheck,
+    roles: ['admin', 'staff'],
+  },
+  {
+    title: 'Operações (Lastro)',
+    path: '/operations',
+    icon: FileText,
+    roles: ['admin', 'staff'],
+  },
   {
     title: 'Debêntures',
     path: '/debentures',
     icon: Landmark,
     roles: ['admin', 'staff', 'investor'],
   },
-  { title: 'Fiduciário (Covenants)', path: '/trustee', icon: Building, roles: ['admin', 'staff'] },
-  { title: 'Tesouraria & Escrow', path: '/treasury', icon: Briefcase, roles: ['admin', 'staff'] },
+  {
+    title: 'Fiduciário (Covenants)',
+    path: '/trustee',
+    icon: Building,
+    roles: ['admin', 'staff'],
+  },
+  {
+    title: 'Tesouraria & Escrow',
+    path: '/treasury',
+    icon: Briefcase,
+    roles: ['admin', 'staff'],
+  },
   {
     title: 'Relatórios',
     path: '/reports',

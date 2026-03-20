@@ -13,6 +13,7 @@ import Debentures from './pages/Debentures'
 import Trustee from './pages/Trustee'
 import Treasury from './pages/Treasury'
 import Profile from './pages/Profile'
+import Users from './pages/admin/Users'
 import { AuthGuard } from './components/auth/AuthGuard'
 import { RoleGuard } from './components/auth/RoleGuard'
 
@@ -75,6 +76,14 @@ const App = () => (
               element={
                 <RoleGuard allowedRoles={['admin', 'staff']}>
                   <Treasury />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/admin/users"
+              element={
+                <RoleGuard allowedRoles={['admin']}>
+                  <Users />
                 </RoleGuard>
               }
             />
