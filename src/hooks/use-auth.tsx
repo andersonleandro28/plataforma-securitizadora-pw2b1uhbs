@@ -49,16 +49,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      setSession(session)
-      setUser(session?.user ?? null)
+      if (event === 'SIGNED_OUT') {
+        setSession(null)
+        setUser(null)
+        setProfile(null)
+      } else {
+        setSession(session)
+        setUser(session?.user ?? null)
+      }
       setLoadingSession(false)
     })
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      setLoadingSession(false)
-    })
+    // Resiliência na Conexão: Proteção contra falhas no refresh token inicial
+    supabase.auth
+      .getSession()
+      .then(({ data: { session }, error }) => {
+        if (error) {
+          console.error('Session error:', error.message)
+          // Força a limpeza da sessão corrompida se o token não for encontrado ou expirar
+          supabase.auth.signOut().catch(() => {})
+        }
+        setSession(session ?? null)
+        setUser(session?.user ?? null)
+        setLoadingSession(false)
+      })
+      .catch((err) => {
+        console.error('Failed to get session:', err)
+        setLoadingSession(false)
+      })
 
     return () => subscription.unsubscribe()
   }, [])
@@ -74,9 +92,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           .select('*')
           .eq('id', user.id)
           .single()
-          .then(({ data }) => {
+          .then(({ data, error }) => {
+            if (error) {
+              console.error('Error loading profile:', error.message)
+              // Tratamento de Erros de Autenticação:
+              // Desloga o usuário se a API recusar devido a token expirado ou JWT inválido
+              if (
+                error.code === 'PGRST301' ||
+                error.code === '401' ||
+                (error.message && error.message.toLowerCase().includes('jwt'))
+              ) {
+                supabase.auth.signOut().catch(() => {})
+              }
+            }
             if (mounted) {
-              setProfile(data as Profile)
+              setProfile(data ? (data as Profile) : null)
+              setLoadingProfile(false)
+            }
+          })
+          .catch((err) => {
+            console.error('Unexpected error loading profile:', err)
+            if (mounted) {
+              setProfile(null)
               setLoadingProfile(false)
             }
           })
@@ -90,7 +127,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     loadProfile()
 
-    // Setup listener for dynamic profile reloads across the app
     window.addEventListener('profile-updated', loadProfile)
 
     return () => {
@@ -111,6 +147,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               sessionStorage.setItem(sessionKey, 'true')
             }
           })
+          .catch(() => {}) // Previne crash silencioso caso o insert falhe
       }
     }
   }, [user])

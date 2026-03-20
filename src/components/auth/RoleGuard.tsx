@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ShieldAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useNavigate } from 'react-router-dom'
+import { useEffect } from 'react'
 
 interface RoleGuardProps {
   children: React.ReactNode
@@ -10,10 +11,24 @@ interface RoleGuardProps {
 }
 
 export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
-  const { profile, loading } = useAuth()
+  const { user, profile, loading, signOut } = useAuth()
   const navigate = useNavigate()
 
+  useEffect(() => {
+    // Redirecionamento Inteligente: Tratamento de erro quando perfil falha ao carregar
+    // Pode indicar sessão ou refresh token inválido que não disparou o evento de logout principal.
+    // Garante que a sessão corrompida seja encerrada e o usuário não fique preso em uma tela de erro em branco.
+    if (!loading && user && !profile) {
+      signOut().then(() => {
+        navigate('/signup', { replace: true })
+      })
+    }
+  }, [loading, user, profile, signOut, navigate])
+
   if (loading) return null
+
+  // Impede renderização da tela de erro de acesso enquanto o componente estiver redirecionando devido a sessão corrompida
+  if (user && !profile) return null
 
   if (!profile || !allowedRoles.includes(profile.role)) {
     return (
