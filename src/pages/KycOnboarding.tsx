@@ -141,6 +141,7 @@ export default function KycOnboarding() {
         .update({
           ...formData,
           pj_annual_revenue: formData.pj_annual_revenue ? Number(formData.pj_annual_revenue) : null,
+          pj_foundation_date: formData.pj_foundation_date ? formData.pj_foundation_date : null,
           lgpd_accepted_at: new Date().toISOString(),
           kyc_status: 'under_review',
         })
