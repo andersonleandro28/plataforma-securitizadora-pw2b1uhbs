@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase/client'
 
+export type AppRole = 'admin' | 'staff' | 'investor' | 'borrower'
+
 export interface Profile {
   id: string
   full_name: string | null
@@ -48,6 +50,9 @@ interface AuthContextType {
   user: User | null
   profile: Profile | null
   session: Session | null
+  activeRole: AppRole | null
+  availableRoles: AppRole[]
+  setActiveRole: (role: AppRole | null) => void
   signUp: (email: string, password: string, fullName?: string) => Promise<{ error: any }>
   signIn: (email: string, password: string) => Promise<{ error: any }>
   signOut: () => Promise<{ error: any }>
@@ -66,8 +71,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
+
+  const [activeRole, setActiveRoleState] = useState<AppRole | null>(() => {
+    return (sessionStorage.getItem('activeRole') as AppRole) || null
+  })
+  const [availableRoles, setAvailableRoles] = useState<AppRole[]>([])
+
   const [loadingSession, setLoadingSession] = useState(true)
   const [loadingProfile, setLoadingProfile] = useState(true)
+
+  const setActiveRole = (role: AppRole | null) => {
+    setActiveRoleState(role)
+    if (role) sessionStorage.setItem('activeRole', role)
+    else sessionStorage.removeItem('activeRole')
+  }
 
   useEffect(() => {
     const {
@@ -77,6 +94,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setSession(null)
         setUser(null)
         setProfile(null)
+        setActiveRoleState(null)
+        sessionStorage.removeItem('activeRole')
+        setAvailableRoles([])
       } else {
         setSession(session)
         setUser(session?.user ?? null)
@@ -112,7 +132,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               supabase.auth.signOut().catch(() => {})
             }
             if (mounted) {
-              setProfile(data ? (data as Profile) : null)
+              const p = data ? (data as Profile) : null
+              setProfile(p)
+
+              if (p) {
+                const roles: AppRole[] = []
+                if (p.is_admin) roles.push('admin')
+                if (p.is_staff) roles.push('staff')
+                if (p.is_investor) roles.push('investor')
+                if (p.is_borrower) roles.push('borrower')
+                setAvailableRoles(roles)
+
+                const currentActive = sessionStorage.getItem('activeRole') as AppRole | null
+                if (roles.length === 1) {
+                  setActiveRole(roles[0])
+                } else if (roles.length > 1) {
+                  if (currentActive && !roles.includes(currentActive)) {
+                    setActiveRole(null)
+                  } else if (currentActive) {
+                    setActiveRole(currentActive)
+                  }
+                } else {
+                  setActiveRole(null)
+                }
+              } else {
+                setAvailableRoles([])
+                setActiveRole(null)
+              }
+
               setLoadingProfile(false)
             }
           })
@@ -120,6 +167,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else {
         if (mounted) {
           setProfile(null)
+          setAvailableRoles([])
+          setActiveRole(null)
           setLoadingProfile(false)
         }
       }
@@ -158,6 +207,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signOut = async () => {
     try {
       const { error } = await supabase.auth.signOut()
+      sessionStorage.removeItem('activeRole')
+      setActiveRoleState(null)
       return { error }
     } catch (error: any) {
       return { error }
@@ -167,7 +218,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const loading = loadingSession || (!!user && loadingProfile)
 
   return (
-    <AuthContext.Provider value={{ user, profile, session, signUp, signIn, signOut, loading }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        profile,
+        session,
+        activeRole,
+        availableRoles,
+        setActiveRole,
+        signUp,
+        signIn,
+        signOut,
+        loading,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )

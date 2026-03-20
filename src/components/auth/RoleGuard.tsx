@@ -1,4 +1,4 @@
-import { useAuth } from '@/hooks/use-auth'
+import { useAuth, AppRole } from '@/hooks/use-auth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ShieldAlert, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -6,11 +6,11 @@ import { useNavigate } from 'react-router-dom'
 
 interface RoleGuardProps {
   children: React.ReactNode
-  allowedRoles: Array<'admin' | 'investor' | 'borrower' | 'staff'>
+  allowedRoles: AppRole[]
 }
 
 export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
-  const { user, profile, loading } = useAuth()
+  const { user, profile, loading, activeRole } = useAuth()
   const navigate = useNavigate()
 
   if (loading) return null
@@ -42,13 +42,7 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
 
   if (!profile) return null
 
-  const hasAccess = allowedRoles.some((role) => {
-    if (role === 'admin' && profile.is_admin) return true
-    if (role === 'staff' && profile.is_staff) return true
-    if (role === 'investor' && profile.is_investor) return true
-    if (role === 'borrower' && profile.is_borrower) return true
-    return false
-  })
+  const hasAccess = activeRole && allowedRoles.includes(activeRole)
 
   if (!hasAccess) {
     return (
@@ -62,7 +56,7 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
             </div>
             <CardTitle>Acesso Negado</CardTitle>
             <CardDescription>
-              Você não tem permissão para acessar esta página ou perfil.
+              Você não tem permissão para acessar esta página com o perfil selecionado.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex justify-center pt-4">

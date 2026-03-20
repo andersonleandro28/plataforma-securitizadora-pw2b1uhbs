@@ -8,11 +8,11 @@ import { Link } from 'react-router-dom'
 import { AlertCircle, Clock } from 'lucide-react'
 
 export default function Index() {
-  const { profile } = useAuth()
+  const { profile, activeRole } = useAuth()
 
   const renderKycBanner = () => {
     if (!profile) return null
-    if (profile.is_admin || profile.is_staff) return null
+    if (activeRole === 'admin' || activeRole === 'staff') return null
     if (profile.kyc_status === 'approved') return null
 
     let alertConfig = {
@@ -71,17 +71,14 @@ export default function Index() {
     )
   }
 
-  // Ensure strict rendering based on the exact same boolean flags used in RoleGuard
-  // The priority check ensures that if a user has multiple profiles (e.g. admin testing borrower views),
-  // they see the highest priority dashboard, but never see an incorrect one.
   return (
     <div className="space-y-6">
       {renderKycBanner()}
-      {profile?.is_admin || profile?.is_staff ? (
+      {activeRole === 'admin' || activeRole === 'staff' ? (
         <AdminDashboard />
-      ) : profile?.is_borrower ? (
+      ) : activeRole === 'borrower' ? (
         <BorrowerDashboard />
-      ) : profile?.is_investor ? (
+      ) : activeRole === 'investor' ? (
         <InvestorDashboard />
       ) : (
         <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">

@@ -11,6 +11,7 @@ import SignUp from './pages/SignUp'
 import Onboarding from './pages/Onboarding'
 import Operations from './pages/Operations'
 import Debentures from './pages/Debentures'
+import Investments from './pages/Investments'
 import Trustee from './pages/Trustee'
 import Treasury from './pages/Treasury'
 import Profile from './pages/Profile'
@@ -69,8 +70,16 @@ const App = () => (
             <Route
               path="/debentures"
               element={
-                <RoleGuard allowedRoles={['admin', 'staff', 'investor']}>
+                <RoleGuard allowedRoles={['admin', 'staff']}>
                   <Debentures />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/investments"
+              element={
+                <RoleGuard allowedRoles={['investor']}>
+                  <Investments />
                 </RoleGuard>
               }
             />

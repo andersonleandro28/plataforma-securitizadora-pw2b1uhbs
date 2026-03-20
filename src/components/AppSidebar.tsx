@@ -8,6 +8,7 @@ import {
   Briefcase,
   PieChart,
   Users as UsersIcon,
+  TrendingUp,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -48,10 +49,16 @@ const allNavItems = [
     roles: ['admin', 'staff'],
   },
   {
+    title: 'Investimentos',
+    path: '/investments',
+    icon: TrendingUp,
+    roles: ['investor'],
+  },
+  {
     title: 'Debêntures',
     path: '/debentures',
     icon: Landmark,
-    roles: ['admin', 'staff', 'investor'],
+    roles: ['admin', 'staff'],
   },
   {
     title: 'Fiduciário (Covenants)',
@@ -75,20 +82,11 @@ const allNavItems = [
 
 export function AppSidebar() {
   const location = useLocation()
-  const { profile } = useAuth()
+  const { activeRole } = useAuth()
 
   const navItems = allNavItems.filter((item) => {
-    if (!profile) return false
-
-    // Sync sidebar visibility purely with boolean permission flags,
-    // abandoning the legacy single 'role' string check
-    return item.roles.some((role) => {
-      if (role === 'admin' && profile.is_admin) return true
-      if (role === 'staff' && profile.is_staff) return true
-      if (role === 'investor' && profile.is_investor) return true
-      if (role === 'borrower' && profile.is_borrower) return true
-      return false
-    })
+    if (!activeRole) return false
+    return item.roles.includes(activeRole)
   })
 
   return (

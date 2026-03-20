@@ -1,4 +1,4 @@
-import { Search, User, LogOut, Settings } from 'lucide-react'
+import { Search, User, LogOut, Settings, Check } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { ActionCenter } from './ActionCenter'
@@ -17,7 +17,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 
 export function Header() {
-  const { user, signOut } = useAuth()
+  const { user, signOut, activeRole, availableRoles, setActiveRole } = useAuth()
   const navigate = useNavigate()
   const [profileName, setProfileName] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
@@ -94,6 +94,31 @@ export function Header() {
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel>Minha Conta</DropdownMenuLabel>
               <DropdownMenuSeparator />
+
+              {availableRoles.length > 1 && (
+                <>
+                  <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+                    Alternar Perfil
+                  </DropdownMenuLabel>
+                  {availableRoles.map((role) => (
+                    <DropdownMenuItem
+                      key={role}
+                      onClick={() => setActiveRole(role)}
+                      className="cursor-pointer justify-between"
+                    >
+                      <span>
+                        {role === 'admin' && 'Administrador'}
+                        {role === 'staff' && 'Equipe Interna'}
+                        {role === 'investor' && 'Investidor'}
+                        {role === 'borrower' && 'Tomador'}
+                      </span>
+                      {activeRole === role && <Check className="h-4 w-4 text-primary" />}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                </>
+              )}
+
               <DropdownMenuItem asChild>
                 <Link to="/profile" className="w-full flex items-center cursor-pointer">
                   <Settings className="mr-2 h-4 w-4" />

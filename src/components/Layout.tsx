@@ -2,8 +2,16 @@ import { Outlet } from 'react-router-dom'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { AppSidebar } from './AppSidebar'
 import { Header } from './Header'
+import { useAuth } from '@/hooks/use-auth'
+import { RoleSelection } from './auth/RoleSelection'
 
 export default function Layout() {
+  const { activeRole, availableRoles, profile } = useAuth()
+
+  if (profile && availableRoles.length > 1 && !activeRole) {
+    return <RoleSelection />
+  }
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-background font-sans text-foreground">
