@@ -67,5 +67,5 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
     )
   }
 
-  return <>{children}</>
+  return children as React.ReactElement
 }
