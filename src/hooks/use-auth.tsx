@@ -42,6 +42,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => subscription.unsubscribe()
   }, [])
 
+  useEffect(() => {
+    if (user) {
+      const sessionKey = `access_logged_${user.id}`
+      if (!sessionStorage.getItem(sessionKey)) {
+        ;(supabase as any)
+          .from('access_logs')
+          .insert({ user_id: user.id })
+          .then(({ error }: any) => {
+            if (!error) {
+              sessionStorage.setItem(sessionKey, 'true')
+            }
+          })
+      }
+    }
+  }, [user])
+
   const signUp = async (email: string, password: string) => {
     const { error } = await supabase.auth.signUp({
       email,
@@ -57,6 +73,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const signOut = async () => {
+    if (user) sessionStorage.removeItem(`access_logged_${user.id}`)
     const { error } = await supabase.auth.signOut()
     return { error }
   }

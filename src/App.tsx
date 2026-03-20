@@ -12,6 +12,7 @@ import Operations from './pages/Operations'
 import Debentures from './pages/Debentures'
 import Trustee from './pages/Trustee'
 import Treasury from './pages/Treasury'
+import Profile from './pages/Profile'
 
 const App = () => (
   <BrowserRouter future={{ v7_startTransition: false, v7_relativeSplatPath: false }}>
@@ -27,6 +28,7 @@ const App = () => (
             <Route path="/debentures" element={<Debentures />} />
             <Route path="/trustee" element={<Trustee />} />
             <Route path="/treasury" element={<Treasury />} />
+            <Route path="/profile" element={<Profile />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
