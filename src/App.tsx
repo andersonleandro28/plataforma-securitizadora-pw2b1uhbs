@@ -15,6 +15,7 @@ import Trustee from './pages/Trustee'
 import Treasury from './pages/Treasury'
 import Profile from './pages/Profile'
 import Users from './pages/admin/Users'
+import KycOnboarding from './pages/KycOnboarding'
 import { AuthGuard } from './components/auth/AuthGuard'
 import { RoleGuard } from './components/auth/RoleGuard'
 
@@ -38,6 +39,14 @@ const App = () => (
               element={
                 <RoleGuard allowedRoles={['admin', 'staff', 'investor', 'borrower']}>
                   <Index />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/kyc"
+              element={
+                <RoleGuard allowedRoles={['investor', 'borrower']}>
+                  <KycOnboarding />
                 </RoleGuard>
               }
             />

@@ -7,6 +7,17 @@ export interface Profile {
   full_name: string | null
   avatar_url: string | null
   role: 'admin' | 'investor' | 'borrower' | 'staff'
+  kyc_status?: 'pending' | 'under_review' | 'approved' | 'rejected'
+  entity_type?: 'pf' | 'pj'
+  document_number?: string
+  phone?: string
+  address_zip?: string
+  address_street?: string
+  address_number?: string
+  address_city?: string
+  address_state?: string
+  is_pep?: boolean
+  lgpd_accepted?: boolean
 }
 
 interface AuthContextType {
@@ -54,27 +65,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     let mounted = true
-    if (user) {
-      setLoadingProfile(true)
-      supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single()
-        .then(({ data }) => {
-          if (mounted) {
-            setProfile(data as Profile)
-            setLoadingProfile(false)
-          }
-        })
-    } else {
-      if (mounted) {
-        setProfile(null)
-        setLoadingProfile(false)
+
+    const loadProfile = () => {
+      if (user) {
+        setLoadingProfile(true)
+        supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single()
+          .then(({ data }) => {
+            if (mounted) {
+              setProfile(data as Profile)
+              setLoadingProfile(false)
+            }
+          })
+      } else {
+        if (mounted) {
+          setProfile(null)
+          setLoadingProfile(false)
+        }
       }
     }
+
+    loadProfile()
+
+    // Setup listener for dynamic profile reloads across the app
+    window.addEventListener('profile-updated', loadProfile)
+
     return () => {
       mounted = false
+      window.removeEventListener('profile-updated', loadProfile)
     }
   }, [user])
 
@@ -96,8 +117,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signUp = async (email: string, password: string, fullName?: string) => {
     try {
-      // Nova abordagem: Usar Edge Function para bypass do limite de envio de e-mail (rate limit)
-      // O Supabase irá registrar o usuário diretamente no banco sem disparar e-mail de confirmação
       const { data, error: invokeError } = await supabase.functions.invoke('public-signup', {
         body: { email, password, fullName },
       })
@@ -110,7 +129,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return { error: { message: data.error } }
       }
 
-      // Após criar a conta diretamente no banco via Edge Function, fazemos o login do usuário
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
       return { error: signInError }
     } catch (error: any) {
