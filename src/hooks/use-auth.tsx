@@ -136,7 +136,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [user])
 
   useEffect(() => {
-    if (user) {
+    if (user && session) {
       const sessionKey = `access_logged_${user.id}`
       if (!sessionStorage.getItem(sessionKey)) {
         ;(supabase as any)
@@ -150,7 +150,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           .catch(() => {}) // Previne crash silencioso caso o insert falhe
       }
     }
-  }, [user])
+  }, [user, session])
 
   const signUp = async (email: string, password: string, fullName?: string) => {
     try {
