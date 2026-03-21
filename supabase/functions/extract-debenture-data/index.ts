@@ -12,9 +12,8 @@ Deno.serve(async (req: Request) => {
     const { filePath, originalName, docType } = body
 
     if (!filePath && !originalName) {
-      return new Response(JSON.stringify({ error: 'Nenhum arquivo enviado para processamento.' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      return new Response(JSON.stringify({ error: 'Nenhum arquivo enviado para processamento.' }), { 
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       })
     }
 
@@ -23,10 +22,8 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseKey)
 
     // Download the uploaded file from the secure storage bucket
-    const { data: fileData, error: downloadError } = await supabase.storage
-      .from('deeds')
-      .download(filePath)
-
+    const { data: fileData, error: downloadError } = await supabase.storage.from('deeds').download(filePath)
+    
     if (downloadError || !fileData) {
       throw new Error('Erro ao acessar o documento no storage seguro.')
     }
@@ -36,7 +33,7 @@ Deno.serve(async (req: Request) => {
 
     const fileExt = originalName?.split('.').pop()?.toLowerCase()
     let text = ''
-
+    
     // Extract text from the PDF buffer
     if (fileExt === 'pdf') {
       try {
@@ -54,26 +51,21 @@ Deno.serve(async (req: Request) => {
     if (docType === 'investors') {
       // Find all valid emails, documents (CPF/CNPJ) and potential names via RegEx heuristics
       const emails = text.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g) || []
-      const docs =
-        text.match(/\b\d{3}\.\d{3}\.\d{3}-\d{2}\b|\b\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\b/g) || []
+      const docs = text.match(/\b\d{3}\.\d{3}\.\d{3}-\d{2}\b|\b\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\b/g) || []
       const names = text.match(/\b[A-ZÀ-Ÿ][a-zà-ÿ]+(?:\s+[A-ZÀ-Ÿ][a-zà-ÿ]+){1,4}\b/g) || []
 
       // Filter out non-names heuristics (common headers/words)
-      const validNames = names.filter(
-        (n) => !['Nome', 'Documento', 'Email', 'Endereço', 'Data'].includes(n) && n.length > 5,
-      )
+      const validNames = names.filter(n => !['Nome', 'Documento', 'Email', 'Endereço', 'Data'].includes(n) && n.length > 5)
 
       const profiles = []
       const maxLen = Math.max(emails.length, docs.length)
 
       for (let i = 0; i < maxLen; i++) {
         profiles.push({
-          full_name: validNames[i] || `Investidor Extraído ${i + 1}`,
-          email: (emails[i] || `investidor${i + 1}@email.local`).toLowerCase(),
-          document_number: docs[i]
-            ? docs[i].replace(/\D/g, '')
-            : Math.floor(10000000000 + Math.random() * 90000000000).toString(),
-          role: 'investor',
+          full_name: validNames[i] || `Investidor Extraído ${i+1}`,
+          email: (emails[i] || `investidor${i+1}@email.local`).toLowerCase(),
+          document_number: docs[i] ? docs[i].replace(/\D/g, '') : Math.floor(10000000000 + Math.random() * 90000000000).toString(),
+          role: 'investor'
         })
       }
 
@@ -83,12 +75,12 @@ Deno.serve(async (req: Request) => {
           full_name: 'Leitura não identificou dados (OCR Pendente)',
           email: 'contato@investidor.local',
           document_number: '00000000000',
-          role: 'investor',
+          role: 'investor'
         })
       }
 
-      return new Response(JSON.stringify({ data: { type: 'investors', profiles } }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      return new Response(JSON.stringify({ data: { type: 'investors', profiles } }), { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       })
     }
 
@@ -97,29 +89,21 @@ Deno.serve(async (req: Request) => {
       const borders = []
       const moneyMatches = text.match(/R\$\s*([\d\.,]+)/g) || []
       const docsMatches = text.match(/\bNF-\d+\b|\b\d{9}\b/g) || []
-
+      
       let amount = 150000
       if (moneyMatches.length > 0) {
-        // Get the highest currency value as the total border amount
-        const values = moneyMatches
-          .map((m) => parseFloat(m.replace(/[R\$\s\.]/g, '').replace(',', '.')))
-          .filter((v) => !isNaN(v))
-        if (values.length > 0) amount = Math.max(...values)
+         // Get the highest currency value as the total border amount
+         const values = moneyMatches.map(m => parseFloat(m.replace(/[R\$\s\.]/g, '').replace(',', '.'))).filter(v => !isNaN(v))
+         if (values.length > 0) amount = Math.max(...values)
       }
 
       const cedenteMatch = text.match(/Cedente[:\s]*([A-ZÀ-Ÿa-zà-ÿ\s]+)/i)
-      const cedente = cedenteMatch
-        ? cedenteMatch[1].trim().substring(0, 40)
-        : originalName
-          ? originalName.replace(/\.[^/.]+$/, '')
-          : 'Cedente Extraído S/A'
+      const cedente = cedenteMatch ? cedenteMatch[1].trim().substring(0, 40) : (originalName ? originalName.replace(/\.[^/.]+$/, "") : 'Cedente Extraído S/A')
 
       const itemsCount = docsMatches.length > 0 ? docsMatches.length : 5
 
       borders.push({
-        border_number: `BOR-${new Date().getFullYear()}-${Math.floor(Math.random() * 1000)
-          .toString()
-          .padStart(3, '0')}`,
+        border_number: `BOR-${new Date().getFullYear()}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
         cedente: cedente,
         amount: amount,
         status: 'Validação Sefaz',
@@ -129,29 +113,27 @@ Deno.serve(async (req: Request) => {
           due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
           face_value: amount / itemsCount,
           rate: '2.5% a.m.',
-          acquisition_value: (amount / itemsCount) * 0.95,
-        })),
+          acquisition_value: (amount / itemsCount) * 0.95
+        }))
       })
 
-      return new Response(JSON.stringify({ data: { type: 'operations', borders } }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      return new Response(JSON.stringify({ data: { type: 'operations', borders } }), { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       })
     }
 
     // Default: Process Subscription (Products + Series)
     const series = []
-
+    
     const volumeMatch = text.match(/R\$\s*([\d\.,]+)/g)
     let totalVolume = 5000000
     if (volumeMatch && volumeMatch.length > 0) {
-      const values = volumeMatch
-        .map((m) => parseFloat(m.replace(/[R\$\s\.]/g, '').replace(',', '.')))
-        .filter((v) => !isNaN(v))
-      if (values.length > 0) totalVolume = Math.max(...values)
+       const values = volumeMatch.map(m => parseFloat(m.replace(/[R\$\s\.]/g, '').replace(',', '.'))).filter(v => !isNaN(v))
+       if (values.length > 0) totalVolume = Math.max(...values)
     }
 
     const indexers = ['CDI', 'IPCA', 'IGP-M', 'Pré-fixado']
-    const textIndexers = indexers.filter((idx) => text.toUpperCase().includes(idx.toUpperCase()))
+    const textIndexers = indexers.filter(idx => text.toUpperCase().includes(idx.toUpperCase()))
     const usedIndexer = textIndexers.length > 0 ? textIndexers[0] : 'CDI'
 
     const rateMatch = text.match(/(?:Taxa|Remuneração).*?(\d+[\.,]\d+)\s*%/i)
@@ -162,48 +144,33 @@ Deno.serve(async (req: Request) => {
       volume: totalVolume,
       indexer: usedIndexer,
       rate: rate,
-      maturity_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      maturity_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
     })
 
-    const docName = originalName ? originalName.replace(/\.[^/.]+$/, '') : 'Documento S.A.'
+    const docName = originalName ? originalName.replace(/\.[^/.]+$/, "") : 'Documento S.A.'
     const issuerMatch = text.match(/(?:Emissor|Companhia)[:\s]+([A-ZÀ-Ÿa-zà-ÿ\s\.\,]+)\b/i)
     let issuer_name = issuerMatch ? issuerMatch[1].trim() : docName
 
     if (issuer_name.length > 40) issuer_name = issuer_name.substring(0, 40)
 
-    const products = [
-      {
-        title: `Ativo - ${issuer_name}`,
-        type: text.toUpperCase().includes('CRI') ? 'CRI' : 'Debênture',
-        rate: `${usedIndexer} + ${rate}% a.a.`,
-        term: `12 meses`,
-        min_investment: 5000,
-        risk: 'Médio',
-        progress: 0,
-        status: 'Captação Aberta',
-      },
-    ]
+    const products = [{
+      title: `Ativo - ${issuer_name}`,
+      type: text.toUpperCase().includes('CRI') ? 'CRI' : 'Debênture',
+      rate: `${usedIndexer} + ${rate}% a.a.`,
+      term: `12 meses`,
+      min_investment: 5000,
+      risk: 'Médio',
+      progress: 0,
+      status: 'Captação Aberta'
+    }]
 
-    return new Response(
-      JSON.stringify({
-        data: {
-          type: 'subscription',
-          issuer_name,
-          total_volume: totalVolume,
-          issue_date: new Date().toISOString().split('T')[0],
-          series,
-          products,
-        },
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-    )
+    return new Response(JSON.stringify({ 
+      data: { type: 'subscription', issuer_name, total_volume: totalVolume, issue_date: new Date().toISOString().split('T')[0], series, products } 
+    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+
   } catch (error) {
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Erro interno' }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      },
-    )
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Erro interno' }), { 
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    })
   }
 })
