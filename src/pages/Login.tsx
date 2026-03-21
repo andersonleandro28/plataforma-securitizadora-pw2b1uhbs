@@ -40,11 +40,35 @@ export default function Login() {
 
     setAuthLoading(true)
 
+    const cleanEmail = email.trim().toLowerCase()
+    let cleanPassword = password
+
+    // Reforço na validação: se a senha for preenchida no formato exato de CPF ou CNPJ com pontuação,
+    // nós removemos os caracteres especiais. Isso garante que usuários importados em lote
+    // (cuja senha padrão são apenas os números do documento) consigam logar mesmo colando o documento formatado.
+    if (
+      /^\d{3}\.\d{3}\.\d{3}-\d{2}$/.test(password) ||
+      /^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/.test(password)
+    ) {
+      cleanPassword = password.replace(/\D/g, '')
+    }
+
     try {
-      const result = await signIn(email, password)
+      const result = await signIn(cleanEmail, cleanPassword)
 
       if (result?.error) {
-        toast.error(result.error.message || 'Erro ao fazer login. Verifique suas credenciais.')
+        // Tratamento de erros de autenticação mais claro e amigável
+        let errorMessage = 'Erro ao fazer login. Verifique suas credenciais.'
+
+        if (result.error.message === 'Invalid login credentials') {
+          errorMessage = 'Email ou senha incorretos. Verifique seus dados e tente novamente.'
+        } else if (result.error.message === 'Email not confirmed') {
+          errorMessage = 'Por favor, confirme seu email antes de fazer login.'
+        } else if (result.error.message) {
+          errorMessage = result.error.message
+        }
+
+        toast.error(errorMessage)
       } else {
         toast.success('Login realizado com sucesso!')
         navigate(from, { replace: true })
@@ -81,6 +105,7 @@ export default function Login() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 className="bg-background"
+                autoComplete="email"
               />
             </div>
             <div className="space-y-2">
@@ -92,6 +117,7 @@ export default function Login() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 className="bg-background"
+                autoComplete="current-password"
               />
             </div>
           </CardContent>
