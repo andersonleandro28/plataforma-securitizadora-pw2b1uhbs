@@ -11,6 +11,7 @@ import {
   FileText,
   Loader2,
   ListFilter,
+  FileSignature,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -19,6 +20,7 @@ import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DeedUploadDialog } from '@/components/debentures/DeedUploadDialog'
+import { ManualDeedDialog } from '@/components/debentures/ManualDeedDialog'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { supabase } from '@/lib/supabase/client'
@@ -36,6 +38,7 @@ import { HistoryTab } from '@/components/debentures/HistoryTab'
 
 export default function Debentures() {
   const [uploadOpen, setUploadOpen] = useState(false)
+  const [manualOpen, setManualOpen] = useState(false)
   const [debentures, setDebentures] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedSeriesId, setSelectedSeriesId] = useState<string>('')
@@ -131,7 +134,7 @@ export default function Debentures() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Gestão de Debêntures</h1>
           <p className="text-muted-foreground">
-            Extração real de escrituras e análise de portfólio via IA.
+            Extração de escrituras, cadastros manuais e análise de portfólio.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -141,10 +144,17 @@ export default function Debentures() {
             className="gap-2"
             disabled={debentures.length === 0}
           >
-            <Download className="h-4 w-4" /> Exportar Lote
+            <Download className="h-4 w-4" /> Exportar
+          </Button>
+          <Button
+            onClick={() => setManualOpen(true)}
+            className="gap-2 shadow-sm"
+            variant="secondary"
+          >
+            <FileSignature className="h-4 w-4" /> Cadastro Manual
           </Button>
           <Button onClick={() => setUploadOpen(true)} className="gap-2 shadow-sm">
-            <FileUp className="h-4 w-4" /> Processar Escritura
+            <FileUp className="h-4 w-4" /> Processar Escritura (IA)
           </Button>
         </div>
       </div>
@@ -155,7 +165,7 @@ export default function Debentures() {
             <BarChart3 className="h-4 w-4" /> Dashboard
           </TabsTrigger>
           <TabsTrigger value="history" className="gap-2">
-            <History className="h-4 w-4" /> Histórico de Uploads
+            <History className="h-4 w-4" /> Histórico de Emissões
           </TabsTrigger>
           <TabsTrigger value="series" className="gap-2">
             <ListFilter className="h-4 w-4" /> Visão de Séries
@@ -191,7 +201,7 @@ export default function Debentures() {
                   <CardContent>
                     <div className="text-2xl font-bold">{totalSeries}</div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Em {totalDocuments} escritura(s) real(is) processada(s)
+                      Em {totalDocuments} escritura(s) cadastrada(s)
                     </p>
                   </CardContent>
                 </Card>
@@ -204,9 +214,7 @@ export default function Debentures() {
                     <div className="text-2xl font-bold">
                       {totalSeries > 0 ? formatCurrency(totalVolume / totalSeries) : 'R$ 0,00'}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Indicador de pulverização real
-                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">Indicador de pulverização</p>
                   </CardContent>
                 </Card>
               </div>
@@ -215,7 +223,7 @@ export default function Debentures() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Volume por Indexador</CardTitle>
-                    <CardDescription>Distribuição real extraída do portfólio.</CardDescription>
+                    <CardDescription>Distribuição real do portfólio.</CardDescription>
                   </CardHeader>
                   <CardContent className="h-[300px]">
                     {chartData.length > 0 ? (
@@ -238,7 +246,7 @@ export default function Debentures() {
                       </ChartContainer>
                     ) : (
                       <div className="flex h-full items-center justify-center text-muted-foreground text-sm bg-muted/20 rounded-md">
-                        Faça o upload da primeira escritura para visualizar o gráfico.
+                        Cadastre a primeira escritura para visualizar o gráfico.
                       </div>
                     )}
                   </CardContent>
@@ -329,15 +337,15 @@ export default function Debentures() {
         <TabsContent value="calculator" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Calculadora de PU Baseada em Extração</CardTitle>
+              <CardTitle>Calculadora de PU Baseada na Base</CardTitle>
               <CardDescription>
-                Selecione uma série real processada da base para simulação de marcação.
+                Selecione uma série registrada na base para simulação de marcação.
               </CardDescription>
             </CardHeader>
             <CardContent>
               {allSeries.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground bg-muted/10 rounded-md border border-dashed">
-                  Aguardando processamento. Nenhuma série extraída disponível.
+                  Aguardando dados. Nenhuma série disponível.
                 </div>
               ) : (
                 <div className="space-y-6 max-w-3xl">
@@ -368,19 +376,19 @@ export default function Debentures() {
                         </CardHeader>
                         <CardContent className="space-y-3">
                           <div className="flex justify-between border-b pb-2">
-                            <span className="text-sm text-muted-foreground">Indexador Real</span>
+                            <span className="text-sm text-muted-foreground">Indexador Base</span>
                             <span className="font-medium text-sm">
                               {selectedSeries.indexer} + {selectedSeries.rate}% a.a.
                             </span>
                           </div>
                           <div className="flex justify-between border-b pb-2">
-                            <span className="text-sm text-muted-foreground">Volume Extraído</span>
+                            <span className="text-sm text-muted-foreground">Volume Registrado</span>
                             <span className="font-mono font-medium">
                               {formatCurrency(selectedSeries.volume)}
                             </span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-sm text-muted-foreground">Vencimento Lido</span>
+                            <span className="text-sm text-muted-foreground">Vencimento</span>
                             <span className="text-sm font-medium">
                               {selectedSeries.maturity_date
                                 ? format(new Date(selectedSeries.maturity_date), 'dd/MM/yyyy')
@@ -421,6 +429,11 @@ export default function Debentures() {
       <DeedUploadDialog
         open={uploadOpen}
         onOpenChange={setUploadOpen}
+        onSuccess={fetchDebentures}
+      />
+      <ManualDeedDialog
+        open={manualOpen}
+        onOpenChange={setManualOpen}
         onSuccess={fetchDebentures}
       />
     </div>
