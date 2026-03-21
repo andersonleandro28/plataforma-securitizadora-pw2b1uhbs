@@ -25,7 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { UploadCloud, Loader2, CheckCircle2, FileText, Bot } from 'lucide-react'
+import { UploadCloud, Loader2, CheckCircle2, FileText, Bot, Trash2, Plus } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 
@@ -105,8 +105,16 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
         await supabase.from('debenture_series').insert(seriesToInsert)
         await supabase.from('investment_products').insert(data.products)
       } else if (data.type === 'investors') {
+        const validProfiles = data.profiles.filter(
+          (p: any) => p.email && p.full_name && p.document_number,
+        )
+
+        if (validProfiles.length === 0) {
+          throw new Error('Nenhum investidor válido para importar. Verifique os dados.')
+        }
+
         const { error } = await supabase.functions.invoke('batch-import-users', {
-          body: { users: data.profiles },
+          body: { users: validProfiles },
         })
         if (error) throw error
       } else if (data.type === 'operations') {
@@ -134,7 +142,7 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
       onSuccess?.()
     } catch (err) {
       console.error(err)
-      toast.error('Erro ao salvar os dados no banco.')
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar os dados.')
     } finally {
       setSaving(false)
     }
@@ -147,10 +155,32 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
     setData({ ...data, series: newSeries })
   }
 
+  const updateInvestor = (index: number, field: string, val: string) => {
+    if (data.type !== 'investors') return
+    const newProfiles = [...data.profiles]
+    newProfiles[index] = { ...newProfiles[index], [field]: val }
+    setData({ ...data, profiles: newProfiles })
+  }
+
+  const removeInvestor = (index: number) => {
+    if (data.type !== 'investors') return
+    const newProfiles = data.profiles.filter((_: any, i: number) => i !== index)
+    setData({ ...data, profiles: newProfiles })
+  }
+
+  const addInvestor = () => {
+    if (data.type !== 'investors') return
+    const newProfiles = [
+      ...data.profiles,
+      { full_name: '', email: '', document_number: '', role: 'investor' },
+    ]
+    setData({ ...data, profiles: newProfiles })
+  }
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[800px]">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-[900px] max-h-[90vh] flex flex-col">
+        <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Bot className="h-5 w-5 text-primary" /> Processamento Inteligente de Documentos
           </DialogTitle>
@@ -160,7 +190,7 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
           </DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-[300px] flex flex-col justify-center">
+        <div className="flex-1 overflow-y-auto min-h-[300px] flex flex-col justify-center py-2 pr-2">
           {step === 'upload' && (
             <div className="flex flex-col gap-6 w-full max-w-md mx-auto py-6">
               <div className="space-y-2">
@@ -214,7 +244,7 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
               <div className="text-center">
                 <h3 className="font-semibold text-lg">Processando e Extraindo Dados...</h3>
                 <p className="text-sm text-muted-foreground animate-pulse mt-1">
-                  Analisando contexto estrutural do PDF via IA...
+                  Analisando contexto estrutural do arquivo via IA...
                 </p>
               </div>
             </div>
@@ -227,8 +257,8 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
                 <div>
                   <h4 className="font-semibold text-sm text-primary">Extração Concluída</h4>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Os dados foram estruturados com sucesso. Valide as informações abaixo antes da
-                    gravação final.
+                    Os dados foram estruturados com sucesso. Você pode <strong>editar</strong> as
+                    informações diretamente na tabela abaixo antes da gravação final.
                   </p>
                 </div>
               </div>
@@ -254,19 +284,19 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
                       />
                     </div>
                   </div>
-                  <div>
-                    <Label className="text-sm font-semibold mb-3 flex items-center justify-between">
+                  <div className="space-y-3">
+                    <Label className="text-sm font-semibold flex items-center justify-between">
                       <span>Listagem das {data.series.length} Séries</span>
                       <span className="text-xs font-normal text-muted-foreground bg-muted px-2 py-1 rounded">
                         Auditoria de Dados
                       </span>
                     </Label>
-                    <div className="border rounded-md overflow-auto max-h-[250px] shadow-sm relative">
+                    <div className="border rounded-md overflow-auto shadow-sm relative">
                       <Table>
-                        <TableHeader className="sticky top-0 bg-background z-10 shadow-sm">
+                        <TableHeader className="bg-muted/50">
                           <TableRow>
-                            <TableHead className="w-16">Série</TableHead>
-                            <TableHead className="w-24">Indexador</TableHead>
+                            <TableHead className="w-20">Série</TableHead>
+                            <TableHead className="w-28">Indexador</TableHead>
                             <TableHead className="w-24">Taxa (%)</TableHead>
                             <TableHead className="w-36">Vencimento</TableHead>
                             <TableHead className="text-right">Volume (R$)</TableHead>
@@ -277,14 +307,14 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
                             <TableRow key={i} className="hover:bg-muted/10">
                               <TableCell className="p-2">
                                 <Input
-                                  className="h-8 w-16 text-xs text-center"
+                                  className="h-8 w-20 text-xs text-center"
                                   value={s.series_number}
                                   onChange={(e) => updateSeries(i, 'series_number', e.target.value)}
                                 />
                               </TableCell>
                               <TableCell className="p-2">
                                 <Input
-                                  className="h-8 w-20 text-xs"
+                                  className="h-8 w-24 text-xs"
                                   value={s.indexer}
                                   onChange={(e) => updateSeries(i, 'indexer', e.target.value)}
                                 />
@@ -302,7 +332,7 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
                                 <Input
                                   type="date"
                                   className="h-8 w-32 text-xs"
-                                  value={s.maturity_date}
+                                  value={s.maturity_date || ''}
                                   onChange={(e) => updateSeries(i, 'maturity_date', e.target.value)}
                                 />
                               </TableCell>
@@ -326,31 +356,94 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
               )}
 
               {data.type === 'investors' && (
-                <div>
-                  <Label className="text-sm font-semibold mb-3 block">
-                    Listagem de {data.profiles.length} Perfis Extraídos
-                  </Label>
-                  <div className="border rounded-md overflow-auto max-h-[250px] shadow-sm relative">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-semibold">
+                      Listagem de {data.profiles.length} Perfis Extraídos
+                    </Label>
+                    <Button variant="outline" size="sm" onClick={addInvestor} className="h-8 gap-1">
+                      <Plus className="h-3.5 w-3.5" /> Adicionar Manualmente
+                    </Button>
+                  </div>
+                  <div className="border rounded-md overflow-x-auto shadow-sm relative max-h-[400px] overflow-y-auto">
                     <Table>
-                      <TableHeader className="sticky top-0 bg-background z-10 shadow-sm">
+                      <TableHeader className="bg-muted/50 sticky top-0 z-10 shadow-sm">
                         <TableRow>
-                          <TableHead>Nome Completo</TableHead>
-                          <TableHead>E-mail</TableHead>
-                          <TableHead>CPF / CNPJ</TableHead>
-                          <TableHead>Classificação</TableHead>
+                          <TableHead className="min-w-[200px]">Nome Completo</TableHead>
+                          <TableHead className="min-w-[200px]">E-mail</TableHead>
+                          <TableHead className="w-40">CPF / CNPJ</TableHead>
+                          <TableHead className="w-36">Classificação</TableHead>
+                          <TableHead className="w-10"></TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {data.profiles.map((p: any, i: number) => (
-                          <TableRow key={i} className="hover:bg-muted/10">
-                            <TableCell className="text-xs font-medium">{p.full_name}</TableCell>
-                            <TableCell className="text-xs">{p.email}</TableCell>
-                            <TableCell className="text-xs font-mono">{p.document_number}</TableCell>
-                            <TableCell className="text-xs capitalize">
-                              {p.role === 'investor' ? 'Investidor' : 'Tomador'}
+                          <TableRow key={i} className="hover:bg-muted/10 group">
+                            <TableCell className="p-2 align-top">
+                              <Input
+                                className="h-8 text-xs font-medium"
+                                placeholder="Nome do investidor"
+                                value={p.full_name || ''}
+                                onChange={(e) => updateInvestor(i, 'full_name', e.target.value)}
+                              />
+                            </TableCell>
+                            <TableCell className="p-2 align-top">
+                              <Input
+                                className="h-8 text-xs"
+                                type="email"
+                                placeholder="email@exemplo.com"
+                                value={p.email || ''}
+                                onChange={(e) => updateInvestor(i, 'email', e.target.value)}
+                              />
+                            </TableCell>
+                            <TableCell className="p-2 align-top">
+                              <Input
+                                className="h-8 text-xs font-mono"
+                                placeholder="000.000.000-00"
+                                value={p.document_number || ''}
+                                onChange={(e) =>
+                                  updateInvestor(i, 'document_number', e.target.value)
+                                }
+                              />
+                            </TableCell>
+                            <TableCell className="p-2 align-top">
+                              <Select
+                                value={p.role}
+                                onValueChange={(v) => updateInvestor(i, 'role', v)}
+                              >
+                                <SelectTrigger className="h-8 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="investor">Investidor</SelectItem>
+                                  <SelectItem value="borrower">Tomador</SelectItem>
+                                  <SelectItem value="admin">Administrador</SelectItem>
+                                  <SelectItem value="staff">Staff</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell className="p-2 align-top">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => removeInvestor(i)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
                             </TableCell>
                           </TableRow>
                         ))}
+                        {data.profiles.length === 0 && (
+                          <TableRow>
+                            <TableCell
+                              colSpan={5}
+                              className="h-24 text-center text-muted-foreground"
+                            >
+                              Nenhum perfil na lista. Adicione manualmente.
+                            </TableCell>
+                          </TableRow>
+                        )}
                       </TableBody>
                     </Table>
                   </div>
@@ -358,13 +451,13 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
               )}
 
               {data.type === 'operations' && (
-                <div>
-                  <Label className="text-sm font-semibold mb-3 block">
+                <div className="space-y-3">
+                  <Label className="text-sm font-semibold block">
                     Listagem de {data.borders.length} Operações Identificadas
                   </Label>
-                  <div className="border rounded-md overflow-auto max-h-[250px] shadow-sm relative">
+                  <div className="border rounded-md overflow-auto shadow-sm relative">
                     <Table>
-                      <TableHeader className="sticky top-0 bg-background z-10 shadow-sm">
+                      <TableHeader className="bg-muted/50">
                         <TableRow>
                           <TableHead>Lote (Borderô)</TableHead>
                           <TableHead>Cedente</TableHead>
@@ -375,12 +468,14 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
                       <TableBody>
                         {data.borders.map((b: any, i: number) => (
                           <TableRow key={i} className="hover:bg-muted/10">
-                            <TableCell className="text-xs font-mono">{b.border_number}</TableCell>
-                            <TableCell className="text-xs">{b.cedente}</TableCell>
-                            <TableCell className="text-xs font-mono text-primary">
+                            <TableCell className="p-3 text-xs font-mono">
+                              {b.border_number}
+                            </TableCell>
+                            <TableCell className="p-3 text-xs">{b.cedente}</TableCell>
+                            <TableCell className="p-3 text-xs font-mono text-primary">
                               R$ {b.amount.toLocaleString('pt-BR')}
                             </TableCell>
-                            <TableCell className="text-xs">{b.items_count}</TableCell>
+                            <TableCell className="p-3 text-xs">{b.items_count}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -392,29 +487,29 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
           )}
 
           {step === 'success' && (
-            <div className="flex flex-col items-center justify-center space-y-4 py-8 animate-in zoom-in-95">
+            <div className="flex flex-col items-center justify-center space-y-4 py-8 animate-in zoom-in-95 h-full">
               <div className="h-20 w-20 rounded-full bg-green-100 flex items-center justify-center mb-2">
                 <CheckCircle2 className="h-10 w-10 text-green-600" />
               </div>
               <h3 className="font-semibold text-xl">Importação Realizada!</h3>
               <p className="text-sm text-muted-foreground text-center max-w-sm">
-                Os dados reais do documento foram gravados no sistema com sucesso.
+                Os dados reais do documento foram validados e gravados no sistema com sucesso.
               </p>
               <Button onClick={() => handleOpenChange(false)} className="mt-6 w-32">
-                Fechar
+                Concluir
               </Button>
             </div>
           )}
         </div>
 
         {step === 'review' && (
-          <DialogFooter className="border-t pt-4 mt-2">
-            <Button variant="outline" onClick={() => handleOpenChange(false)}>
+          <DialogFooter className="border-t pt-4 mt-4 shrink-0">
+            <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={saving}>
               Cancelar e Descartar
             </Button>
             <Button
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || (data.type === 'investors' && data.profiles.length === 0)}
               className="bg-primary text-primary-foreground"
             >
               {saving ? (
@@ -422,7 +517,7 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
               ) : (
                 <FileText className="h-4 w-4 mr-2" />
               )}
-              Aprovar Gravação Real
+              {saving ? 'Gravando dados...' : 'Aprovar Gravação Real'}
             </Button>
           </DialogFooter>
         )}

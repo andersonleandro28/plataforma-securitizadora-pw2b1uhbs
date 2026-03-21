@@ -5,7 +5,7 @@
     "invite-user": 2,
     "public-signup": 1,
     "delete-user": 1,
-    "extract-debenture-data": 6,
+    "extract-debenture-data": 7,
     "batch-import-users": 2
   }
 }
