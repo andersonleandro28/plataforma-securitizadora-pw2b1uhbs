@@ -30,6 +30,7 @@ export function ManualSeriesForm({ series, index, onChange, onRemove }: Props) {
       document_number: '',
       quantity: 1,
       unit_price: 1000,
+      subscription_date: new Date().toISOString().split('T')[0],
     }
     onChange(index, { ...series, subscriptions: [...series.subscriptions, newSub] })
   }
@@ -125,7 +126,7 @@ export function ManualSeriesForm({ series, index, onChange, onRemove }: Props) {
               size="sm"
               variant="outline"
               onClick={addSubscription}
-              className="h-8 text-xs gap-1"
+              className="h-8 text-xs gap-1 bg-background"
             >
               <Plus className="h-3.5 w-3.5" /> Adicionar Subscritor
             </Button>
@@ -142,7 +143,7 @@ export function ManualSeriesForm({ series, index, onChange, onRemove }: Props) {
                   key={sIdx}
                   className="grid grid-cols-12 gap-3 items-end bg-background p-3 rounded border"
                 >
-                  <div className="col-span-12 md:col-span-4 space-y-1">
+                  <div className="col-span-12 md:col-span-3 space-y-1">
                     <Label className="text-[10px] uppercase text-muted-foreground">
                       Investidor
                     </Label>
@@ -153,7 +154,7 @@ export function ManualSeriesForm({ series, index, onChange, onRemove }: Props) {
                       onChange={(e) => updateSub(sIdx, 'investor_name', e.target.value)}
                     />
                   </div>
-                  <div className="col-span-12 md:col-span-3 space-y-1">
+                  <div className="col-span-12 md:col-span-2 space-y-1">
                     <Label className="text-[10px] uppercase text-muted-foreground">CPF/CNPJ</Label>
                     <Input
                       className="h-8 text-xs font-mono"
@@ -162,7 +163,7 @@ export function ManualSeriesForm({ series, index, onChange, onRemove }: Props) {
                       onChange={(e) => updateSub(sIdx, 'document_number', e.target.value)}
                     />
                   </div>
-                  <div className="col-span-4 md:col-span-2 space-y-1">
+                  <div className="col-span-4 md:col-span-1 space-y-1">
                     <Label className="text-[10px] uppercase text-muted-foreground">Qtd.</Label>
                     <Input
                       type="number"
@@ -171,7 +172,7 @@ export function ManualSeriesForm({ series, index, onChange, onRemove }: Props) {
                       onChange={(e) => updateSub(sIdx, 'quantity', Number(e.target.value))}
                     />
                   </div>
-                  <div className="col-span-6 md:col-span-2 space-y-1">
+                  <div className="col-span-8 md:col-span-2 space-y-1">
                     <Label className="text-[10px] uppercase text-muted-foreground">PU (R$)</Label>
                     <Input
                       type="number"
@@ -180,7 +181,18 @@ export function ManualSeriesForm({ series, index, onChange, onRemove }: Props) {
                       onChange={(e) => updateSub(sIdx, 'unit_price', Number(e.target.value))}
                     />
                   </div>
-                  <div className="col-span-2 md:col-span-1 flex justify-end">
+                  <div className="col-span-9 md:col-span-3 space-y-1">
+                    <Label className="text-[10px] uppercase text-muted-foreground">
+                      Data Subs.
+                    </Label>
+                    <Input
+                      type="date"
+                      className="h-8 text-xs"
+                      value={sub.subscription_date || ''}
+                      onChange={(e) => updateSub(sIdx, 'subscription_date', e.target.value)}
+                    />
+                  </div>
+                  <div className="col-span-3 md:col-span-1 flex justify-end">
                     <Button
                       variant="ghost"
                       size="icon"

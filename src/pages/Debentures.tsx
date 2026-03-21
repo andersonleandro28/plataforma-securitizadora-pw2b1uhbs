@@ -12,6 +12,7 @@ import {
   Loader2,
   ListFilter,
   FileSignature,
+  DollarSign,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -22,9 +23,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DeedUploadDialog } from '@/components/debentures/DeedUploadDialog'
 import { ManualDeedDialog } from '@/components/debentures/ManualDeedDialog'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line } from 'recharts'
 import { supabase } from '@/lib/supabase/client'
-import { format } from 'date-fns'
+import { format, isBefore, addDays } from 'date-fns'
 import {
   Select,
   SelectContent,
@@ -49,7 +50,11 @@ export default function Debentures() {
       const { data, error } = await supabase
         .from('debentures')
         .select(
-          `id, issuer_name, total_volume, issue_date, created_at, debenture_series (id, series_number, volume, indexer, rate, maturity_date)`,
+          `id, issuer_name, total_volume, issue_date, created_at, 
+           debenture_series (
+             id, series_number, volume, indexer, rate, maturity_date,
+             debenture_subscriptions (id, investor_name, document_number, quantity, unit_price, total_amount, subscription_date)
+           )`,
         )
         .order('created_at', { ascending: false })
       if (!error && data) {
@@ -68,10 +73,19 @@ export default function Debentures() {
 
   const totalVolume = debentures.reduce((sum, deb) => sum + Number(deb.total_volume), 0)
   const totalDocuments = debentures.length
+
   const allSeries = debentures.flatMap((d) =>
     (d.series || []).map((s: any) => ({ ...s, issuer_name: d.issuer_name })),
   )
   const totalSeries = allSeries.length
+
+  const totalSubscribed = allSeries.reduce((sum, s) => {
+    const subsSum = (s.debenture_subscriptions || []).reduce(
+      (acc: number, sub: any) => acc + Number(sub.total_amount),
+      0,
+    )
+    return sum + subsSum
+  }, 0)
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
@@ -86,37 +100,67 @@ export default function Debentures() {
     {} as Record<string, number>,
   )
 
-  const chartData = Object.keys(volumeByIndexer).map((indexer) => ({
+  const indexerChartData = Object.keys(volumeByIndexer).map((indexer) => ({
     name: indexer,
     volume: volumeByIndexer[indexer],
   }))
 
-  const chartConfig = { volume: { label: 'Volume (R$)', color: 'hsl(var(--primary))' } }
+  const indexerChartConfig = { volume: { label: 'Volume (R$)', color: 'hsl(var(--primary))' } }
+
+  // Chart data for Subscriptions over time
+  const subsOverTime = allSeries
+    .flatMap((s) => s.debenture_subscriptions || [])
+    .filter((sub) => sub.subscription_date)
+  const groupedSubs = subsOverTime.reduce(
+    (acc, sub) => {
+      const month = sub.subscription_date.substring(0, 7) // YYYY-MM
+      acc[month] = (acc[month] || 0) + Number(sub.total_amount)
+      return acc
+    },
+    {} as Record<string, number>,
+  )
+
+  const subChartData = Object.keys(groupedSubs)
+    .sort()
+    .map((month) => ({
+      name: month.split('-').reverse().join('/'), // MM/YYYY
+      volume: groupedSubs[month],
+    }))
+
+  const subChartConfig = { volume: { label: 'Subscrições (R$)', color: 'hsl(var(--chart-2))' } }
 
   const exportToCSV = () => {
     const headers = [
       'Emissor',
       'Data Emissão',
       'Volume Total',
-      'Número da Série',
+      'Série',
       'Indexador',
       'Taxa (%)',
       'Volume da Série',
       'Vencimento',
+      'Total Subscrito',
       'Processado Em',
     ]
     const rows = debentures.flatMap((deb) =>
-      deb.series.map((s: any) => [
-        `"${deb.issuer_name}"`,
-        deb.issue_date ? format(new Date(deb.issue_date), 'dd/MM/yyyy') : '',
-        deb.total_volume,
-        `"${s.series_number}"`,
-        `"${s.indexer}"`,
-        s.rate,
-        s.volume,
-        s.maturity_date ? format(new Date(s.maturity_date), 'dd/MM/yyyy') : '',
-        format(new Date(deb.created_at), 'dd/MM/yyyy HH:mm:ss'),
-      ]),
+      deb.series.map((s: any) => {
+        const subscrito = (s.debenture_subscriptions || []).reduce(
+          (acc: number, sub: any) => acc + Number(sub.total_amount),
+          0,
+        )
+        return [
+          `"${deb.issuer_name}"`,
+          deb.issue_date ? format(new Date(deb.issue_date), 'dd/MM/yyyy') : '',
+          deb.total_volume,
+          `"${s.series_number}"`,
+          `"${s.indexer}"`,
+          s.rate,
+          s.volume,
+          s.maturity_date ? format(new Date(s.maturity_date), 'dd/MM/yyyy') : '',
+          subscrito,
+          format(new Date(deb.created_at), 'dd/MM/yyyy HH:mm:ss'),
+        ]
+      }),
     )
     const csvContent = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n')
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
@@ -134,7 +178,8 @@ export default function Debentures() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Gestão de Debêntures</h1>
           <p className="text-muted-foreground">
-            Extração de escrituras, cadastros manuais e análise de portfólio.
+            Extração de escrituras, cadastros manuais, controle de subscrições e análise de
+            portfólio.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -164,11 +209,11 @@ export default function Debentures() {
           <TabsTrigger value="dashboard" className="gap-2">
             <BarChart3 className="h-4 w-4" /> Dashboard
           </TabsTrigger>
+          <TabsTrigger value="series" className="gap-2">
+            <ListFilter className="h-4 w-4" /> Visão de Séries e Subscrições
+          </TabsTrigger>
           <TabsTrigger value="history" className="gap-2">
             <History className="h-4 w-4" /> Histórico de Emissões
-          </TabsTrigger>
-          <TabsTrigger value="series" className="gap-2">
-            <ListFilter className="h-4 w-4" /> Visão de Séries
           </TabsTrigger>
           <TabsTrigger value="calculator" className="gap-2">
             <Calculator className="h-4 w-4" /> Calculadora e Simulação
@@ -182,39 +227,54 @@ export default function Debentures() {
             </div>
           ) : (
             <>
-              <div className="grid md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">Volume Total Extraído</CardTitle>
+                    <CardTitle className="text-sm font-medium">Volume Total Emitido</CardTitle>
                     <TrendingUp className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{formatCurrency(totalVolume)}</div>
-                    <p className="text-xs text-muted-foreground mt-1">Monitoramento consolidado</p>
+                    <p className="text-xs text-muted-foreground mt-1">Valor de face consolidado</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">Séries Identificadas</CardTitle>
-                    <Layers className="h-4 w-4 text-muted-foreground" />
+                    <CardTitle className="text-sm font-medium">Volume Subscrito</CardTitle>
+                    <DollarSign className="h-4 w-4 text-primary" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">{totalSeries}</div>
+                    <div className="text-2xl font-bold text-primary">
+                      {formatCurrency(totalSubscribed)}
+                    </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Em {totalDocuments} escritura(s) cadastrada(s)
+                      {totalVolume > 0 ? ((totalSubscribed / totalVolume) * 100).toFixed(1) : 0}% do
+                      total emitido
                     </p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">Ticket Médio por Série</CardTitle>
+                    <CardTitle className="text-sm font-medium">Séries Cadastradas</CardTitle>
+                    <Layers className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{totalSeries}</div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Em {totalDocuments} escrituras
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium">Ticket Médio (Emissão)</CardTitle>
                     <FileText className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">
                       {totalSeries > 0 ? formatCurrency(totalVolume / totalSeries) : 'R$ 0,00'}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">Indicador de pulverização</p>
+                    <p className="text-xs text-muted-foreground mt-1">Por série emitida</p>
                   </CardContent>
                 </Card>
               </div>
@@ -222,14 +282,53 @@ export default function Debentures() {
               <div className="grid md:grid-cols-2 gap-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Volume por Indexador</CardTitle>
-                    <CardDescription>Distribuição real do portfólio.</CardDescription>
+                    <CardTitle>Histórico de Subscrições</CardTitle>
+                    <CardDescription>Volume financeiro subscrito por período.</CardDescription>
                   </CardHeader>
                   <CardContent className="h-[300px]">
-                    {chartData.length > 0 ? (
-                      <ChartContainer config={chartConfig} className="h-full w-full">
+                    {subChartData.length > 0 ? (
+                      <ChartContainer config={subChartConfig} className="h-full w-full">
+                        <LineChart
+                          data={subChartData}
+                          margin={{ top: 20, right: 20, left: 20, bottom: 20 }}
+                        >
+                          <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                          <XAxis dataKey="name" tickLine={false} axisLine={false} />
+                          <YAxis
+                            tickFormatter={(val) => `R$${(val / 1000000).toFixed(1)}M`}
+                            tickLine={false}
+                            axisLine={false}
+                            width={80}
+                          />
+                          <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+                          <Line
+                            type="monotone"
+                            dataKey="volume"
+                            stroke="var(--color-volume)"
+                            strokeWidth={3}
+                            dot={{ r: 4 }}
+                            activeDot={{ r: 6 }}
+                          />
+                        </LineChart>
+                      </ChartContainer>
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-muted-foreground text-sm bg-muted/20 rounded-md">
+                        Nenhuma subscrição com data registrada para gerar o gráfico.
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Composição por Indexador</CardTitle>
+                    <CardDescription>Distribuição do volume total emitido.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="h-[300px]">
+                    {indexerChartData.length > 0 ? (
+                      <ChartContainer config={indexerChartConfig} className="h-full w-full">
                         <BarChart
-                          data={chartData}
+                          data={indexerChartData}
                           margin={{ top: 20, right: 20, left: 20, bottom: 20 }}
                         >
                           <CartesianGrid vertical={false} strokeDasharray="3 3" />
@@ -246,75 +345,108 @@ export default function Debentures() {
                       </ChartContainer>
                     ) : (
                       <div className="flex h-full items-center justify-center text-muted-foreground text-sm bg-muted/20 rounded-md">
-                        Cadastre a primeira escritura para visualizar o gráfico.
+                        Nenhum dado financeiro para visualizar.
                       </div>
-                    )}
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Alertas Automáticos</CardTitle>
-                    <CardDescription>Análise viva com base nas séries ativas.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {debentures.length === 0 ? (
-                      <div className="text-sm text-muted-foreground text-center py-10 bg-muted/20 rounded-md">
-                        Nenhum dado processado ainda.
-                      </div>
-                    ) : (
-                      <>
-                        {(() => {
-                          const nearMaturity = allSeries.filter((s) => {
-                            if (!s.maturity_date) return false
-                            const days =
-                              (new Date(s.maturity_date).getTime() - new Date().getTime()) /
-                              (1000 * 3600 * 24)
-                            return days > 0 && days <= 60
-                          })
-
-                          if (nearMaturity.length > 0) {
-                            return (
-                              <Alert
-                                variant="destructive"
-                                className="bg-warning/10 text-warning-foreground border-warning/50"
-                              >
-                                <AlertTriangle className="h-4 w-4 text-warning" />
-                                <AlertTitle className="text-warning font-bold">
-                                  Vencimentos Próximos
-                                </AlertTitle>
-                                <AlertDescription className="text-foreground/80 mt-1 text-xs">
-                                  Existem {nearMaturity.length} série(s) real(is) com vencimento em
-                                  menos de 60 dias. Verifique o cronograma.
-                                </AlertDescription>
-                              </Alert>
-                            )
-                          }
-                          return (
-                            <Alert className="bg-primary/10 border-primary/20 text-primary">
-                              <AlertTitle className="text-sm font-semibold">
-                                Portfólio Saudável
-                              </AlertTitle>
-                              <AlertDescription className="text-xs mt-1">
-                                Nenhuma série com vencimento crítico no curto prazo.
-                              </AlertDescription>
-                            </Alert>
-                          )
-                        })()}
-                        <div className="rounded-md border p-4 bg-muted/30">
-                          <h4 className="font-medium text-sm mb-1 flex items-center gap-1">
-                            <Download className="h-3.5 w-3.5" /> Integração e Dados
-                          </h4>
-                          <p className="text-xs text-muted-foreground">
-                            As {totalSeries} séries lidas da base estão prontas para exportação CSV.
-                          </p>
-                        </div>
-                      </>
                     )}
                   </CardContent>
                 </Card>
               </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Alertas Automáticos de Vencimento</CardTitle>
+                  <CardDescription>Monitoramento das séries ativas e seus prazos.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {(() => {
+                    const today = new Date()
+                    const nearMaturity = allSeries
+                      .filter((s) => {
+                        if (!s.maturity_date) return false
+                        const matDate = new Date(s.maturity_date)
+                        return isBefore(matDate, addDays(today, 60)) && matDate > today
+                      })
+                      .sort(
+                        (a, b) =>
+                          new Date(a.maturity_date).getTime() - new Date(b.maturity_date).getTime(),
+                      )
+
+                    const expired = allSeries.filter((s) => {
+                      if (!s.maturity_date) return false
+                      return isBefore(new Date(s.maturity_date), today)
+                    })
+
+                    return (
+                      <div className="space-y-4">
+                        {expired.length > 0 && (
+                          <Alert
+                            variant="destructive"
+                            className="bg-destructive/10 text-destructive border-destructive/20"
+                          >
+                            <AlertTriangle className="h-4 w-4" />
+                            <AlertTitle className="font-bold">Séries Vencidas</AlertTitle>
+                            <AlertDescription className="mt-2 text-sm">
+                              Existem <strong>{expired.length}</strong> série(s) que já
+                              ultrapassaram a data de vencimento.
+                              <ul className="mt-2 list-disc list-inside pl-4 text-xs opacity-90">
+                                {expired.map((s, i) => (
+                                  <li key={i}>
+                                    {s.issuer_name} - Série {s.series_number} (Venceu em{' '}
+                                    {format(new Date(s.maturity_date), 'dd/MM/yyyy')})
+                                  </li>
+                                ))}
+                              </ul>
+                            </AlertDescription>
+                          </Alert>
+                        )}
+
+                        {nearMaturity.length > 0 && (
+                          <Alert className="bg-warning/10 text-warning-foreground border-warning/50">
+                            <AlertTriangle className="h-4 w-4 text-warning" />
+                            <AlertTitle className="text-warning font-bold">
+                              Vencimentos Próximos (60 dias)
+                            </AlertTitle>
+                            <AlertDescription className="mt-2 text-sm">
+                              Existem <strong>{nearMaturity.length}</strong> série(s) com vencimento
+                              se aproximando. Verifique o cronograma de resgate e juros.
+                              <ul className="mt-2 list-disc list-inside pl-4 text-xs opacity-90">
+                                {nearMaturity.map((s, i) => (
+                                  <li key={i}>
+                                    {s.issuer_name} - Série {s.series_number} (Vence em{' '}
+                                    {format(new Date(s.maturity_date), 'dd/MM/yyyy')})
+                                  </li>
+                                ))}
+                              </ul>
+                            </AlertDescription>
+                          </Alert>
+                        )}
+
+                        {nearMaturity.length === 0 && expired.length === 0 && (
+                          <Alert className="bg-primary/10 border-primary/20 text-primary">
+                            <AlertTitle className="text-sm font-semibold">
+                              Cronograma Saudável
+                            </AlertTitle>
+                            <AlertDescription className="text-xs mt-1">
+                              Nenhuma série com vencimento vencido ou crítico nos próximos 60 dias.
+                            </AlertDescription>
+                          </Alert>
+                        )}
+                      </div>
+                    )
+                  })()}
+                </CardContent>
+              </Card>
             </>
           )}
+        </TabsContent>
+
+        <TabsContent value="series">
+          <SeriesListTab
+            debentures={debentures}
+            loading={loading}
+            formatCurrency={formatCurrency}
+            onRefresh={fetchDebentures}
+          />
         </TabsContent>
 
         <TabsContent value="history">
@@ -323,14 +455,6 @@ export default function Debentures() {
             loading={loading}
             formatCurrency={formatCurrency}
             onDeleteSuccess={fetchDebentures}
-          />
-        </TabsContent>
-
-        <TabsContent value="series">
-          <SeriesListTab
-            debentures={debentures}
-            loading={loading}
-            formatCurrency={formatCurrency}
           />
         </TabsContent>
 
@@ -385,6 +509,17 @@ export default function Debentures() {
                             <span className="text-sm text-muted-foreground">Volume Registrado</span>
                             <span className="font-mono font-medium">
                               {formatCurrency(selectedSeries.volume)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between border-b pb-2">
+                            <span className="text-sm text-muted-foreground">Volume Subscrito</span>
+                            <span className="font-mono font-medium text-primary">
+                              {formatCurrency(
+                                (selectedSeries.debenture_subscriptions || []).reduce(
+                                  (sum: number, sub: any) => sum + Number(sub.total_amount),
+                                  0,
+                                ),
+                              )}
                             </span>
                           </div>
                           <div className="flex justify-between">

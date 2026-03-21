@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, ListFilter, Loader2, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, ListFilter, Loader2, Trash2, Printer } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
@@ -41,9 +41,7 @@ export function HistoryTab({
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({})
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
-  const toggleRow = (id: string) => {
-    setExpandedRows((prev) => ({ ...prev, [id]: !prev[id] }))
-  }
+  const toggleRow = (id: string) => setExpandedRows((prev) => ({ ...prev, [id]: !prev[id] }))
 
   const handleDelete = async (id: string) => {
     setDeletingId(id)
@@ -60,11 +58,116 @@ export function HistoryTab({
     }
   }
 
+  const generatePDF = (deb: any) => {
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) {
+      toast.error(
+        'Não foi possível abrir a janela de impressão. Verifique o bloqueador de pop-ups.',
+      )
+      return
+    }
+
+    const html = `
+      <html>
+        <head>
+          <title>Escritura - ${deb.issuer_name}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 40px; color: #333; max-width: 900px; margin: 0 auto; }
+            h1 { color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 20px; font-size: 24px; }
+            .meta { background: #f8fafc; padding: 15px; border-radius: 8px; margin-bottom: 30px; border: 1px solid #e2e8f0; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+            th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; }
+            th { background-color: #f1f5f9; color: #475569; font-weight: 600; }
+            .section { margin-top: 40px; }
+            .right { text-align: right; }
+            .series-card { margin-bottom: 30px; padding: 20px; border: 1px solid #cbd5e1; border-radius: 8px; page-break-inside: avoid; }
+            .series-card h3 { margin-top: 0; color: #1e293b; font-size: 18px; }
+            .empty { color: #64748b; font-style: italic; font-size: 13px; }
+            @media print { body { padding: 0; } }
+          </style>
+        </head>
+        <body>
+          <h1>Espelho de Escritura de Debêntures</h1>
+          <div class="meta">
+            <p><strong>Emissor:</strong> ${deb.issuer_name}</p>
+            <p><strong>Data de Emissão:</strong> ${deb.issue_date ? format(new Date(deb.issue_date), 'dd/MM/yyyy') : 'Não informada'}</p>
+            <p><strong>Volume Total da Emissão:</strong> R$ ${deb.total_volume.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+            <p><strong>Gerado em:</strong> ${format(new Date(), 'dd/MM/yyyy HH:mm')}</p>
+          </div>
+          
+          <div class="section">
+            <h2 style="font-size: 20px; color: #0f172a;">Detalhamento das Séries e Subscrições</h2>
+            ${(deb.series || [])
+              .map(
+                (s: any) => `
+              <div class="series-card">
+                <h3>Série ${s.series_number}</h3>
+                <div style="display: flex; gap: 20px; margin-bottom: 15px; font-size: 14px;">
+                  <div><strong>Indexador:</strong> ${s.indexer} + ${s.rate}% a.a.</div>
+                  <div><strong>Volume:</strong> R$ ${s.volume.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                  <div><strong>Vencimento:</strong> ${s.maturity_date ? format(new Date(s.maturity_date), 'dd/MM/yyyy') : 'N/A'}</div>
+                </div>
+                
+                <h4 style="margin-bottom: 10px; font-size: 15px;">Subscrições Realizadas</h4>
+                ${
+                  s.debenture_subscriptions && s.debenture_subscriptions.length > 0
+                    ? `
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Investidor</th>
+                        <th>CPF/CNPJ</th>
+                        <th class="right">Qtd.</th>
+                        <th class="right">PU (R$)</th>
+                        <th class="right">Total (R$)</th>
+                        <th>Data Subs.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${s.debenture_subscriptions
+                        .map(
+                          (sub: any) => `
+                        <tr>
+                          <td>${sub.investor_name}</td>
+                          <td>${sub.document_number || '-'}</td>
+                          <td class="right">${sub.quantity}</td>
+                          <td class="right">${sub.unit_price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                          <td class="right">${sub.total_amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                          <td>${sub.subscription_date ? format(new Date(sub.subscription_date), 'dd/MM/yyyy') : '-'}</td>
+                        </tr>
+                      `,
+                        )
+                        .join('')}
+                    </tbody>
+                  </table>
+                `
+                    : '<p class="empty">Nenhuma subscrição cadastrada nesta série até o momento.</p>'
+                }
+              </div>
+            `,
+              )
+              .join('')}
+            ${!deb.series || deb.series.length === 0 ? '<p class="empty">Nenhuma série cadastrada.</p>' : ''}
+          </div>
+        </body>
+      </html>
+    `
+
+    printWindow.document.write(html)
+    printWindow.document.close()
+    printWindow.focus()
+    setTimeout(() => {
+      printWindow.print()
+    }, 500)
+  }
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Histórico de Uploads e Documentos</CardTitle>
-        <CardDescription>Visualização de todas as escrituras processadas.</CardDescription>
+        <CardDescription>
+          Visualização de todas as escrituras processadas e exportação em formato PDF.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <Table>
@@ -76,7 +179,7 @@ export function HistoryTab({
               <TableHead>Data Emissão</TableHead>
               <TableHead className="text-right">Volume Total</TableHead>
               <TableHead className="text-center">Séries</TableHead>
-              <TableHead className="text-center w-[80px]">Ações</TableHead>
+              <TableHead className="text-center w-[120px]">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -116,7 +219,19 @@ export function HistoryTab({
                         {deb.series?.length || 0}
                       </span>
                     </TableCell>
-                    <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                    <TableCell
+                      className="text-center space-x-1"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-primary"
+                        onClick={() => generatePDF(deb)}
+                        title="Gerar Espelho (PDF)"
+                      >
+                        <Printer className="h-4 w-4" />
+                      </Button>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <Button
@@ -138,8 +253,8 @@ export function HistoryTab({
                             <AlertDialogDescription>
                               Tem certeza que deseja excluir o processamento da escritura de{' '}
                               <strong className="text-foreground">{deb.issuer_name}</strong>? Esta
-                              ação removerá todas as {deb.series?.length || 0} séries associadas e
-                              não pode ser desfeita.
+                              ação removerá todas as séries e subscrições associadas e não pode ser
+                              desfeita.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>

@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Search, Loader2 } from 'lucide-react'
+import { Search, Loader2, Users } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import {
   Table,
   TableBody,
@@ -18,16 +19,24 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { format } from 'date-fns'
+import { ManageSubscriptionsDialog } from './ManageSubscriptionsDialog'
 
 interface SeriesListTabProps {
   debentures: any[]
   loading: boolean
   formatCurrency: (val: number) => string
+  onRefresh: () => void
 }
 
-export function SeriesListTab({ debentures, loading, formatCurrency }: SeriesListTabProps) {
+export function SeriesListTab({
+  debentures,
+  loading,
+  formatCurrency,
+  onRefresh,
+}: SeriesListTabProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [indexerFilter, setIndexerFilter] = useState('all')
+  const [manageSeries, setManageSeries] = useState<any>(null)
 
   const allSeries = debentures.flatMap((d) =>
     (d.series || []).map((s: any) => ({
@@ -55,7 +64,8 @@ export function SeriesListTab({ debentures, loading, formatCurrency }: SeriesLis
       <CardHeader>
         <CardTitle>Gestão Granular de Séries</CardTitle>
         <CardDescription>
-          Visualize e filtre todas as séries cadastradas nas escrituras de forma independente.
+          Visualize e filtre todas as séries cadastradas nas escrituras de forma independente e
+          gerencie as subscrições diretamente.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -90,10 +100,10 @@ export function SeriesListTab({ debentures, loading, formatCurrency }: SeriesLis
               <TableRow>
                 <TableHead>Série</TableHead>
                 <TableHead>Emissor</TableHead>
-                <TableHead>Indexador</TableHead>
-                <TableHead>Taxa (%)</TableHead>
+                <TableHead>Indexador e Taxa</TableHead>
                 <TableHead>Vencimento</TableHead>
                 <TableHead className="text-right">Volume (R$)</TableHead>
+                <TableHead className="text-center w-[160px]">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -110,15 +120,25 @@ export function SeriesListTab({ debentures, loading, formatCurrency }: SeriesLis
                     <TableCell>{s.issuer_name}</TableCell>
                     <TableCell>
                       <span className="bg-secondary px-2 py-0.5 rounded text-xs font-medium">
-                        {s.indexer}
+                        {s.indexer} + {s.rate}%
                       </span>
                     </TableCell>
-                    <TableCell>{s.rate}</TableCell>
                     <TableCell>
                       {s.maturity_date ? format(new Date(s.maturity_date), 'dd/MM/yyyy') : '-'}
                     </TableCell>
                     <TableCell className="text-right font-mono">
                       {formatCurrency(s.volume)}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1 w-full"
+                        onClick={() => setManageSeries(s)}
+                      >
+                        <Users className="h-3.5 w-3.5" />
+                        Subs ({s.debenture_subscriptions?.length || 0})
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))
@@ -133,6 +153,15 @@ export function SeriesListTab({ debentures, loading, formatCurrency }: SeriesLis
           </Table>
         </div>
       </CardContent>
+
+      <ManageSubscriptionsDialog
+        series={manageSeries}
+        open={!!manageSeries}
+        onOpenChange={(op: boolean) => {
+          if (!op) setManageSeries(null)
+        }}
+        onSuccess={onRefresh}
+      />
     </Card>
   )
 }

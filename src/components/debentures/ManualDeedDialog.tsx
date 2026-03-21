@@ -20,6 +20,7 @@ export interface SubscriptionData {
   document_number: string
   quantity: number
   unit_price: number
+  subscription_date: string
 }
 
 export interface SeriesData {
@@ -84,7 +85,6 @@ export function ManualDeedDialog({ open, onOpenChange, onSuccess }: ManualDeedDi
 
     setSaving(true)
     try {
-      // 1. Insert Debenture
       const { data: debData, error: debErr } = await supabase
         .from('debentures')
         .insert({
@@ -97,7 +97,6 @@ export function ManualDeedDialog({ open, onOpenChange, onSuccess }: ManualDeedDi
 
       if (debErr) throw new Error(`Erro ao salvar debênture: ${debErr.message}`)
 
-      // 2. Insert Series and Subscriptions sequentially
       for (const s of data.series) {
         if (!s.series_number || !s.volume) continue
 
@@ -116,7 +115,6 @@ export function ManualDeedDialog({ open, onOpenChange, onSuccess }: ManualDeedDi
 
         if (seriesErr) throw new Error(`Erro ao salvar série: ${seriesErr.message}`)
 
-        // 3. Insert Subscriptions
         if (s.subscriptions.length > 0) {
           const subsToInsert = s.subscriptions.map((sub) => ({
             series_id: seriesData.id,
@@ -125,7 +123,7 @@ export function ManualDeedDialog({ open, onOpenChange, onSuccess }: ManualDeedDi
             quantity: sub.quantity,
             unit_price: sub.unit_price,
             total_amount: sub.quantity * sub.unit_price,
-            subscription_date: new Date().toISOString().split('T')[0],
+            subscription_date: sub.subscription_date || null,
           }))
 
           const { error: subErr } = await supabase
@@ -148,14 +146,14 @@ export function ManualDeedDialog({ open, onOpenChange, onSuccess }: ManualDeedDi
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[800px] max-h-[90vh] flex flex-col p-0">
+      <DialogContent className="sm:max-w-[850px] max-h-[90vh] flex flex-col p-0">
         <DialogHeader className="p-6 pb-4 shrink-0 border-b bg-muted/10">
           <DialogTitle className="flex items-center gap-2">
             <FileSignature className="h-5 w-5 text-primary" /> Cadastro Manual de Escritura
           </DialogTitle>
           <DialogDescription>
             Registre os dados da emissão, configure as séries e cadastre as subscrições diretamente
-            no banco de dados.
+            no banco de dados (inserindo as datas reais de cada operação).
           </DialogDescription>
         </DialogHeader>
 
@@ -182,7 +180,7 @@ export function ManualDeedDialog({ open, onOpenChange, onSuccess }: ManualDeedDi
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Data de Emissão</Label>
+                <Label>Data de Emissão (Oficial)</Label>
                 <Input
                   type="date"
                   value={data.issue_date}
