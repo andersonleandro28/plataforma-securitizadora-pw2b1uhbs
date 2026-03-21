@@ -5,6 +5,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { AuthProvider } from './hooks/use-auth'
 import Layout from './components/Layout'
 import NotFound from './pages/NotFound'
+import { ForceChangePassword } from './components/auth/ForceChangePassword'
 
 import Index from './pages/Index'
 import SignUp from './pages/SignUp'
@@ -26,6 +27,7 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
+        <ForceChangePassword />
         <Routes>
           <Route path="/signup" element={<SignUp />} />
           <Route

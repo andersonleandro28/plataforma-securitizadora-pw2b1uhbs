@@ -1,71 +1,54 @@
+import { ReactNode } from 'react'
+import { Navigate } from 'react-router-dom'
 import { useAuth, AppRole } from '@/hooks/use-auth'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ShieldAlert, AlertCircle } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { useNavigate } from 'react-router-dom'
+import { Loader2, ShieldAlert } from 'lucide-react'
 
 interface RoleGuardProps {
-  children: React.ReactNode
+  children: ReactNode
   allowedRoles: AppRole[]
 }
 
 export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
-  const { user, profile, loading, activeRole } = useAuth()
-  const navigate = useNavigate()
+  const { user, profile, activeRole, loading } = useAuth()
 
-  if (loading) return null
-
-  if (user && !profile) {
+  if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center p-4">
-        <Card className="max-w-md w-full shadow-sm animate-fade-in-up border-warning/20">
-          <CardHeader className="text-center pb-2">
-            <div className="flex justify-center mb-4">
-              <div className="w-12 h-12 bg-warning/10 rounded-full flex items-center justify-center">
-                <AlertCircle className="h-6 w-6 text-warning" />
-              </div>
-            </div>
-            <CardTitle>Configurando seu acesso</CardTitle>
-            <CardDescription>
-              Seu perfil está sendo preparado pelo nosso sistema. Isso pode levar alguns instantes.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex justify-center pt-4">
-            <Button onClick={() => window.location.reload()} variant="outline">
-              Atualizar Página
-            </Button>
-          </CardContent>
-        </Card>
+      <div className="flex h-[50vh] w-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     )
   }
 
-  if (!profile) return null
+  if (!user || !profile) {
+    return <Navigate to="/signup" replace />
+  }
 
   const hasAccess = activeRole && allowedRoles.includes(activeRole)
+  const hasFallbackAccess =
+    !activeRole &&
+    allowedRoles.some(
+      (role) =>
+        (role === 'admin' && profile.is_admin) ||
+        (role === 'staff' && profile.is_staff) ||
+        (role === 'investor' && profile.is_investor) ||
+        (role === 'borrower' && profile.is_borrower),
+    )
 
-  if (!hasAccess) {
+  if (!hasAccess && !hasFallbackAccess) {
     return (
-      <div className="flex-1 flex items-center justify-center p-4">
-        <Card className="max-w-md w-full border-destructive/20 shadow-sm animate-fade-in-up">
-          <CardHeader className="text-center pb-2">
-            <div className="flex justify-center mb-4">
-              <div className="w-12 h-12 bg-destructive/10 rounded-full flex items-center justify-center">
-                <ShieldAlert className="h-6 w-6 text-destructive" />
-              </div>
-            </div>
-            <CardTitle>Acesso Negado</CardTitle>
-            <CardDescription>
-              Você não tem permissão para acessar esta página com o perfil selecionado.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex justify-center pt-4">
-            <Button onClick={() => navigate('/')}>Voltar ao Início</Button>
-          </CardContent>
-        </Card>
+      <div className="flex flex-col items-center justify-center h-[60vh] space-y-4 animate-in fade-in">
+        <div className="h-16 w-16 bg-destructive/10 rounded-full flex items-center justify-center mb-2">
+          <ShieldAlert className="h-8 w-8 text-destructive" />
+        </div>
+        <h2 className="text-2xl font-bold text-foreground">Acesso Negado</h2>
+        <p className="text-muted-foreground text-center max-w-md">
+          Você não tem as permissões necessárias para visualizar esta página. Seu perfil atual não
+          permite acesso a este recurso.
+        </p>
       </div>
     )
   }
 
-  return children as React.ReactElement
+  // React fragment sem propriedades extras para evitar erros de runtime
+  return <>{children}</>
 }
