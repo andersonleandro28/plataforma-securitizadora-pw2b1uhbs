@@ -1,5 +1,4 @@
 import { ReactNode } from 'react'
-import { Navigate } from 'react-router-dom'
 import { useAuth, AppRole } from '@/hooks/use-auth'
 import { Loader2, ShieldAlert } from 'lucide-react'
 
@@ -13,14 +12,29 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
 
   if (loading) {
     return (
-      <div className="flex h-[50vh] w-full items-center justify-center">
+      <div className="flex h-[50vh] w-full items-center justify-center animate-in fade-in duration-300">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     )
   }
 
-  if (!user || !profile) {
-    return <Navigate to="/signup" replace />
+  if (!user) {
+    return null
+  }
+
+  if (!profile) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] space-y-4 animate-in fade-in duration-300">
+        <div className="h-16 w-16 bg-destructive/10 rounded-full flex items-center justify-center mb-2">
+          <ShieldAlert className="h-8 w-8 text-destructive" />
+        </div>
+        <h2 className="text-2xl font-bold text-foreground">Perfil Incompleto</h2>
+        <p className="text-muted-foreground text-center max-w-md">
+          Não foi possível carregar as informações do seu perfil. Verifique sua conexão ou contate o
+          suporte.
+        </p>
+      </div>
+    )
   }
 
   const hasAccess = activeRole && allowedRoles.includes(activeRole)
@@ -36,7 +50,7 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
 
   if (!hasAccess && !hasFallbackAccess) {
     return (
-      <div className="flex flex-col items-center justify-center h-[60vh] space-y-4 animate-in fade-in">
+      <div className="flex flex-col items-center justify-center h-[60vh] space-y-4 animate-in fade-in duration-300">
         <div className="h-16 w-16 bg-destructive/10 rounded-full flex items-center justify-center mb-2">
           <ShieldAlert className="h-8 w-8 text-destructive" />
         </div>
@@ -49,6 +63,5 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
     )
   }
 
-  // React fragment sem propriedades extras para evitar erros de runtime
   return <>{children}</>
 }

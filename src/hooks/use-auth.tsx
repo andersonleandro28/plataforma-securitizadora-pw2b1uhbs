@@ -72,6 +72,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
+  const [profileLoadedFor, setProfileLoadedFor] = useState<string | null>(null)
 
   const [activeRole, setActiveRoleState] = useState<AppRole | null>(() => {
     return (sessionStorage.getItem('activeRole') as AppRole) || null
@@ -79,7 +80,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [availableRoles, setAvailableRoles] = useState<AppRole[]>([])
 
   const [loadingSession, setLoadingSession] = useState(true)
-  const [loadingProfile, setLoadingProfile] = useState(true)
 
   const setActiveRole = (role: AppRole | null) => {
     setActiveRoleState(role)
@@ -98,6 +98,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setActiveRoleState(null)
         sessionStorage.removeItem('activeRole')
         setAvailableRoles([])
+        setProfileLoadedFor(null)
       } else {
         setSession(session)
         setUser(session?.user ?? null)
@@ -122,7 +123,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     let mounted = true
     const loadProfile = () => {
       if (user) {
-        setLoadingProfile(true)
         supabase
           .from('profiles')
           .select('*')
@@ -161,16 +161,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 setActiveRole(null)
               }
 
-              setLoadingProfile(false)
+              setProfileLoadedFor(user.id)
             }
           })
-          .catch(() => mounted && setLoadingProfile(false))
+          .catch(() => {
+            if (mounted) setProfileLoadedFor(user.id)
+          })
       } else {
         if (mounted) {
           setProfile(null)
           setAvailableRoles([])
           setActiveRole(null)
-          setLoadingProfile(false)
+          setProfileLoadedFor(null)
         }
       }
     }
@@ -216,7 +218,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }
 
-  const loading = loadingSession || (!!user && loadingProfile)
+  const loading = loadingSession || (!!user && profileLoadedFor !== user.id)
 
   return (
     <AuthContext.Provider

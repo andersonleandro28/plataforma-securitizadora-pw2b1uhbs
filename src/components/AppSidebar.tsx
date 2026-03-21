@@ -93,7 +93,7 @@ export function AppSidebar() {
     <Sidebar variant="sidebar" collapsible="icon">
       <SidebarHeader className="h-16 flex items-center justify-center border-b border-sidebar-border">
         <div className="flex items-center gap-2 font-bold text-xl text-sidebar-foreground tracking-tight">
-          <div className="w-8 h-8 rounded bg-secondary flex items-center justify-center text-white">
+          <div className="w-8 h-8 rounded bg-primary flex items-center justify-center text-primary-foreground">
             S
           </div>
           <span className="group-data-[collapsible=icon]:hidden">Securix</span>
