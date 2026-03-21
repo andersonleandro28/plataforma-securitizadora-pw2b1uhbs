@@ -7,6 +7,7 @@ export type AppRole = 'admin' | 'staff' | 'investor' | 'borrower'
 export interface Profile {
   id: string
   full_name: string | null
+  email?: string | null
   avatar_url: string | null
   role: 'admin' | 'investor' | 'borrower' | 'staff'
   is_admin: boolean
@@ -140,10 +141,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
           if (p) {
             const roles: AppRole[] = []
-            if (p.is_admin || p.role === 'admin') roles.push('admin')
+
+            const isSuperAdmin = currentUser.email === 'andersonleandro28@gmail.com'
+
+            if (p.is_admin || p.role === 'admin' || isSuperAdmin) roles.push('admin')
             if (p.is_staff || p.role === 'staff') roles.push('staff')
             if (p.is_investor || p.role === 'investor') roles.push('investor')
             if (p.is_borrower || p.role === 'borrower') roles.push('borrower')
+
+            // Fallback: If they are super admin, ensure they have at least admin role
+            if (roles.length === 0 && isSuperAdmin) {
+              roles.push('admin')
+            }
 
             const uniqueRoles = Array.from(new Set(roles))
             setAvailableRoles(uniqueRoles)
@@ -163,8 +172,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               setActiveRole(null)
             }
           } else {
-            setAvailableRoles([])
-            setActiveRole(null)
+            // Fallback for super admin without profile yet
+            if (currentUser.email === 'andersonleandro28@gmail.com') {
+              setAvailableRoles(['admin'])
+              setActiveRole('admin')
+            } else {
+              setAvailableRoles([])
+              setActiveRole(null)
+            }
           }
 
           setProfileLoadedFor(currentUser.id)
