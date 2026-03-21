@@ -464,7 +464,7 @@ export default function Debentures() {
             debentures={debentures}
             loading={loading}
             formatCurrency={formatCurrency}
-            onDeleteSuccess={fetchDebentures}
+            onRefresh={fetchDebentures}
           />
         </TabsContent>
 

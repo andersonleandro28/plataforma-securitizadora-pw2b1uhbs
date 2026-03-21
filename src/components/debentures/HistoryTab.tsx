@@ -1,5 +1,13 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, ListFilter, Loader2, Trash2, Printer } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronRight,
+  ListFilter,
+  Loader2,
+  Trash2,
+  Printer,
+  PlusCircle,
+} from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
@@ -24,12 +32,13 @@ import { Button } from '@/components/ui/button'
 import { format } from 'date-fns'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import { AddSeriesDialog } from './AddSeriesDialog'
 
 interface HistoryTabProps {
   debentures: any[]
   loading: boolean
   formatCurrency: (val: number) => string
-  onDeleteSuccess: () => void
+  onRefresh: () => void
 }
 
 const formatDateStr = (dateStr: string | null | undefined) => {
@@ -39,14 +48,10 @@ const formatDateStr = (dateStr: string | null | undefined) => {
   return `${parts[2]}/${parts[1]}/${parts[0]}`
 }
 
-export function HistoryTab({
-  debentures,
-  loading,
-  formatCurrency,
-  onDeleteSuccess,
-}: HistoryTabProps) {
+export function HistoryTab({ debentures, loading, formatCurrency, onRefresh }: HistoryTabProps) {
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({})
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [addingSeriesFor, setAddingSeriesFor] = useState<any>(null)
 
   const toggleRow = (id: string) => setExpandedRows((prev) => ({ ...prev, [id]: !prev[id] }))
 
@@ -56,7 +61,7 @@ export function HistoryTab({
       const { error } = await supabase.from('debentures').delete().eq('id', id)
       if (error) throw error
       toast.success('Documento e séries excluídos com sucesso!')
-      onDeleteSuccess()
+      onRefresh()
     } catch (err: any) {
       console.error(err)
       toast.error(err.message || 'Erro ao excluir o registro.')
@@ -186,7 +191,7 @@ export function HistoryTab({
               <TableHead>Data Emissão</TableHead>
               <TableHead className="text-right">Volume Total</TableHead>
               <TableHead className="text-center">Séries</TableHead>
-              <TableHead className="text-center w-[120px]">Ações</TableHead>
+              <TableHead className="text-center w-[150px]">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -227,9 +232,18 @@ export function HistoryTab({
                       </span>
                     </TableCell>
                     <TableCell
-                      className="text-center space-x-1"
+                      className="text-center space-x-1 whitespace-nowrap"
                       onClick={(e) => e.stopPropagation()}
                     >
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-primary"
+                        onClick={() => setAddingSeriesFor(deb)}
+                        title="Adicionar Série"
+                      >
+                        <PlusCircle className="h-4 w-4" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -246,6 +260,7 @@ export function HistoryTab({
                             size="icon"
                             className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                             disabled={deletingId === deb.id}
+                            title="Excluir Escritura"
                           >
                             {deletingId === deb.id ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
@@ -340,6 +355,18 @@ export function HistoryTab({
           </TableBody>
         </Table>
       </CardContent>
+
+      <AddSeriesDialog
+        debenture={addingSeriesFor}
+        open={!!addingSeriesFor}
+        onOpenChange={(op) => {
+          if (!op) setAddingSeriesFor(null)
+        }}
+        onSuccess={() => {
+          onRefresh()
+          setAddingSeriesFor(null)
+        }}
+      />
     </Card>
   )
 }
