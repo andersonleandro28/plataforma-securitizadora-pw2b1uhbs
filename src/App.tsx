@@ -8,6 +8,7 @@ import NotFound from './pages/NotFound'
 import { ForceChangePassword } from './components/auth/ForceChangePassword'
 
 import Index from './pages/Index'
+import Login from './pages/Login'
 import SignUp from './pages/SignUp'
 import Onboarding from './pages/Onboarding'
 import Operations from './pages/Operations'
@@ -29,6 +30,7 @@ const App = () => (
         <Sonner />
         <ForceChangePassword />
         <Routes>
+          <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<SignUp />} />
           <Route
             element={

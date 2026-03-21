@@ -158,7 +158,7 @@ export default function SignUp() {
               className="w-full text-sm text-muted-foreground hover:text-foreground"
               asChild
             >
-              <Link to="/">Já tem conta? Entre no sistema</Link>
+              <Link to="/login">Já tem conta? Entre no sistema</Link>
             </Button>
           </CardFooter>
         </form>

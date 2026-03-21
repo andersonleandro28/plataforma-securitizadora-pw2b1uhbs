@@ -14,7 +14,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
   useEffect(() => {
     if (!loading && !user) {
-      navigate('/signup', { replace: true, state: { from: location.pathname } })
+      navigate('/login', { replace: true, state: { from: location.pathname } })
     }
   }, [user, loading, navigate, location])
 
