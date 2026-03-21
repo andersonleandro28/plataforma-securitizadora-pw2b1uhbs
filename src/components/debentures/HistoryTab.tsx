@@ -1,4 +1,4 @@
-import { useState, Fragment } from 'react'
+import { useState } from 'react'
 import { ChevronDown, ChevronRight, ListFilter, Loader2, Trash2 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -87,9 +87,10 @@ export function HistoryTab({
                 </TableCell>
               </TableRow>
             ) : debentures.length > 0 ? (
-              debentures.map((deb) => (
-                <Fragment key={deb.id}>
+              debentures.map((deb) => {
+                const rows = [
                   <TableRow
+                    key={deb.id}
                     className="cursor-pointer hover:bg-muted/50 transition-colors"
                     onClick={() => toggleRow(deb.id)}
                   >
@@ -156,9 +157,12 @@ export function HistoryTab({
                         </AlertDialogContent>
                       </AlertDialog>
                     </TableCell>
-                  </TableRow>
-                  {expandedRows[deb.id] && deb.series && deb.series.length > 0 && (
-                    <TableRow className="bg-muted/5 hover:bg-muted/5">
+                  </TableRow>,
+                ]
+
+                if (expandedRows[deb.id] && deb.series && deb.series.length > 0) {
+                  rows.push(
+                    <TableRow key={`${deb.id}-expanded`} className="bg-muted/5 hover:bg-muted/5">
                       <TableCell colSpan={7} className="p-0 border-b">
                         <div className="p-4 pl-14 animate-in slide-in-from-top-2 duration-200">
                           <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
@@ -200,10 +204,12 @@ export function HistoryTab({
                           </div>
                         </div>
                       </TableCell>
-                    </TableRow>
-                  )}
-                </Fragment>
-              ))
+                    </TableRow>,
+                  )
+                }
+
+                return rows
+              })
             ) : (
               <TableRow>
                 <TableCell colSpan={7} className="text-center text-muted-foreground h-32">
