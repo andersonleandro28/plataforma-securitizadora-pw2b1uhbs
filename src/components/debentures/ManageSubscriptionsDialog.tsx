@@ -24,7 +24,7 @@ interface ManageSubscriptionsDialogProps {
   series: any
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSuccess: () => void
+  onSuccess: () => void | Promise<void>
 }
 
 const formatDateStr = (dateStr: string | null | undefined) => {
@@ -58,6 +58,7 @@ export function ManageSubscriptionsDialog({
     setEditingId(sub.id)
     setEditForm({
       ...sub,
+      // Garante que a data seja tratada diretamente como YYYY-MM-DD
       subscription_date: sub.subscription_date ? sub.subscription_date.split('T')[0] : '',
     })
     setAddingNew(false)
@@ -79,6 +80,7 @@ export function ManageSubscriptionsDialog({
         quantity: Number(editForm.quantity),
         unit_price: Number(editForm.unit_price),
         total_amount: Number(editForm.quantity) * Number(editForm.unit_price),
+        // Envia apenas a data em formato YYYY-MM-DD restrito
         subscription_date: editForm.subscription_date || null,
       }
 
@@ -100,7 +102,9 @@ export function ManageSubscriptionsDialog({
 
       setEditingId(null)
       setAddingNew(false)
-      onSuccess()
+
+      // Aguarda o sucesso (refetch no pai) para ter os dados atualizados
+      await onSuccess()
     } catch (err: any) {
       toast.error(err.message || 'Erro ao salvar.')
     } finally {
@@ -115,7 +119,7 @@ export function ManageSubscriptionsDialog({
       const { error } = await supabase.from('debenture_subscriptions').delete().eq('id', id)
       if (error) throw error
       toast.success('Subscrição removida.')
-      onSuccess()
+      await onSuccess()
     } catch (err: any) {
       toast.error(err.message)
     } finally {
@@ -126,12 +130,19 @@ export function ManageSubscriptionsDialog({
   const startAdd = () => {
     setAddingNew(true)
     setEditingId('new')
+
+    // Configura a data inicial para hoje no formato exato YYYY-MM-DD
+    const today = new Date()
+    const yyyy = today.getFullYear()
+    const mm = String(today.getMonth() + 1).padStart(2, '0')
+    const dd = String(today.getDate()).padStart(2, '0')
+
     setEditForm({
       investor_name: '',
       document_number: '',
       quantity: 1,
       unit_price: 1000,
-      subscription_date: new Date().toISOString().split('T')[0],
+      subscription_date: `${yyyy}-${mm}-${dd}`,
     })
   }
 
@@ -164,14 +175,19 @@ export function ManageSubscriptionsDialog({
             <Button
               size="sm"
               onClick={startAdd}
-              disabled={!!editingId || addingNew}
+              disabled={!!editingId || addingNew || loading}
               className="gap-2"
             >
               <Plus className="h-4 w-4" /> Nova Subscrição
             </Button>
           </div>
 
-          <div className="border rounded-md">
+          <div className="border rounded-md relative">
+            {loading && (
+              <div className="absolute inset-0 bg-background/50 z-10 flex items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            )}
             <Table>
               <TableHeader className="bg-muted/50">
                 <TableRow>
@@ -179,7 +195,7 @@ export function ManageSubscriptionsDialog({
                   <TableHead>CPF/CNPJ</TableHead>
                   <TableHead className="text-right w-20">Qtd</TableHead>
                   <TableHead className="text-right w-28">PU (R$)</TableHead>
-                  <TableHead className="w-32">Data</TableHead>
+                  <TableHead className="w-[140px]">Data</TableHead>
                   <TableHead className="w-[100px] text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -194,6 +210,7 @@ export function ManageSubscriptionsDialog({
                           setEditForm({ ...editForm, investor_name: e.target.value })
                         }
                         placeholder="Nome do Investidor"
+                        disabled={loading}
                       />
                     </TableCell>
                     <TableCell className="p-2">
@@ -204,6 +221,7 @@ export function ManageSubscriptionsDialog({
                           setEditForm({ ...editForm, document_number: e.target.value })
                         }
                         placeholder="000.000.000-00"
+                        disabled={loading}
                       />
                     </TableCell>
                     <TableCell className="p-2">
@@ -212,6 +230,7 @@ export function ManageSubscriptionsDialog({
                         className="h-8 text-xs text-right"
                         value={editForm.quantity}
                         onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })}
+                        disabled={loading}
                       />
                     </TableCell>
                     <TableCell className="p-2">
@@ -220,16 +239,18 @@ export function ManageSubscriptionsDialog({
                         className="h-8 text-xs text-right font-mono"
                         value={editForm.unit_price}
                         onChange={(e) => setEditForm({ ...editForm, unit_price: e.target.value })}
+                        disabled={loading}
                       />
                     </TableCell>
                     <TableCell className="p-2">
                       <Input
                         type="date"
-                        className="h-8 text-xs"
+                        className="h-8 text-xs w-full"
                         value={editForm.subscription_date}
                         onChange={(e) =>
                           setEditForm({ ...editForm, subscription_date: e.target.value })
                         }
+                        disabled={loading}
                       />
                     </TableCell>
                     <TableCell className="p-2 text-right space-x-1 whitespace-nowrap">
@@ -273,6 +294,7 @@ export function ManageSubscriptionsDialog({
                           onChange={(e) =>
                             setEditForm({ ...editForm, investor_name: e.target.value })
                           }
+                          disabled={loading}
                         />
                       </TableCell>
                       <TableCell className="p-2">
@@ -282,6 +304,7 @@ export function ManageSubscriptionsDialog({
                           onChange={(e) =>
                             setEditForm({ ...editForm, document_number: e.target.value })
                           }
+                          disabled={loading}
                         />
                       </TableCell>
                       <TableCell className="p-2">
@@ -290,6 +313,7 @@ export function ManageSubscriptionsDialog({
                           className="h-8 text-xs text-right"
                           value={editForm.quantity}
                           onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })}
+                          disabled={loading}
                         />
                       </TableCell>
                       <TableCell className="p-2">
@@ -298,16 +322,18 @@ export function ManageSubscriptionsDialog({
                           className="h-8 text-xs text-right font-mono"
                           value={editForm.unit_price}
                           onChange={(e) => setEditForm({ ...editForm, unit_price: e.target.value })}
+                          disabled={loading}
                         />
                       </TableCell>
                       <TableCell className="p-2">
                         <Input
                           type="date"
-                          className="h-8 text-xs"
+                          className="h-8 text-xs w-full"
                           value={editForm.subscription_date || ''}
                           onChange={(e) =>
                             setEditForm({ ...editForm, subscription_date: e.target.value })
                           }
+                          disabled={loading}
                         />
                       </TableCell>
                       <TableCell className="p-2 text-right space-x-1 whitespace-nowrap">
@@ -350,7 +376,7 @@ export function ManageSubscriptionsDialog({
                           size="icon"
                           className="h-8 w-8 text-muted-foreground hover:text-primary"
                           onClick={() => startEdit(sub)}
-                          disabled={!!editingId}
+                          disabled={!!editingId || loading}
                         >
                           <Edit2 className="h-4 w-4" />
                         </Button>
@@ -359,7 +385,7 @@ export function ManageSubscriptionsDialog({
                           size="icon"
                           className="h-8 w-8 text-muted-foreground hover:text-destructive"
                           onClick={() => handleDelete(sub.id)}
-                          disabled={!!editingId}
+                          disabled={!!editingId || loading}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

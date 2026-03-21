@@ -42,7 +42,7 @@ export function SeriesListTab({
 }: SeriesListTabProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [indexerFilter, setIndexerFilter] = useState('all')
-  const [manageSeries, setManageSeries] = useState<any>(null)
+  const [manageSeriesId, setManageSeriesId] = useState<string | null>(null)
 
   const allSeries = debentures.flatMap((d) =>
     (d.series || []).map((s: any) => ({
@@ -64,6 +64,8 @@ export function SeriesListTab({
   const uniqueIndexers = Array.from(new Set(allSeries.map((s) => s.indexer))).filter(
     Boolean,
   ) as string[]
+
+  const manageSeries = allSeries.find((s) => s.id === manageSeriesId) || null
 
   return (
     <Card>
@@ -138,7 +140,7 @@ export function SeriesListTab({
                         variant="outline"
                         size="sm"
                         className="h-8 gap-1 w-full"
-                        onClick={() => setManageSeries(s)}
+                        onClick={() => setManageSeriesId(s.id)}
                       >
                         <Users className="h-3.5 w-3.5" />
                         Subs ({s.debenture_subscriptions?.length || 0})
@@ -160,9 +162,9 @@ export function SeriesListTab({
 
       <ManageSubscriptionsDialog
         series={manageSeries}
-        open={!!manageSeries}
+        open={!!manageSeriesId}
         onOpenChange={(op: boolean) => {
-          if (!op) setManageSeries(null)
+          if (!op) setManageSeriesId(null)
         }}
         onSuccess={onRefresh}
       />
