@@ -18,7 +18,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { format } from 'date-fns'
 import { ManageSubscriptionsDialog } from './ManageSubscriptionsDialog'
 
 interface SeriesListTabProps {
@@ -26,6 +25,13 @@ interface SeriesListTabProps {
   loading: boolean
   formatCurrency: (val: number) => string
   onRefresh: () => void
+}
+
+const formatDateStr = (dateStr: string | null | undefined) => {
+  if (!dateStr) return '-'
+  const parts = dateStr.split('T')[0].split('-')
+  if (parts.length !== 3) return dateStr
+  return `${parts[2]}/${parts[1]}/${parts[0]}`
 }
 
 export function SeriesListTab({
@@ -123,9 +129,7 @@ export function SeriesListTab({
                         {s.indexer} + {s.rate}%
                       </span>
                     </TableCell>
-                    <TableCell>
-                      {s.maturity_date ? format(new Date(s.maturity_date), 'dd/MM/yyyy') : '-'}
-                    </TableCell>
+                    <TableCell>{formatDateStr(s.maturity_date)}</TableCell>
                     <TableCell className="text-right font-mono">
                       {formatCurrency(s.volume)}
                     </TableCell>

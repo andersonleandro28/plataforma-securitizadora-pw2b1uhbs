@@ -37,6 +37,13 @@ import {
 import { SeriesListTab } from '@/components/debentures/SeriesListTab'
 import { HistoryTab } from '@/components/debentures/HistoryTab'
 
+const formatDateStr = (dateStr: string | null | undefined) => {
+  if (!dateStr) return '-'
+  const parts = dateStr.split('T')[0].split('-')
+  if (parts.length !== 3) return dateStr
+  return `${parts[2]}/${parts[1]}/${parts[0]}`
+}
+
 export default function Debentures() {
   const [uploadOpen, setUploadOpen] = useState(false)
   const [manualOpen, setManualOpen] = useState(false)
@@ -150,13 +157,13 @@ export default function Debentures() {
         )
         return [
           `"${deb.issuer_name}"`,
-          deb.issue_date ? format(new Date(deb.issue_date), 'dd/MM/yyyy') : '',
+          deb.issue_date ? formatDateStr(deb.issue_date) : '',
           deb.total_volume,
           `"${s.series_number}"`,
           `"${s.indexer}"`,
           s.rate,
           s.volume,
-          s.maturity_date ? format(new Date(s.maturity_date), 'dd/MM/yyyy') : '',
+          s.maturity_date ? formatDateStr(s.maturity_date) : '',
           subscrito,
           format(new Date(deb.created_at), 'dd/MM/yyyy HH:mm:ss'),
         ]
@@ -360,10 +367,12 @@ export default function Debentures() {
                 <CardContent>
                   {(() => {
                     const today = new Date()
+                    today.setHours(0, 0, 0, 0)
+
                     const nearMaturity = allSeries
                       .filter((s) => {
                         if (!s.maturity_date) return false
-                        const matDate = new Date(s.maturity_date)
+                        const matDate = new Date(s.maturity_date.split('T')[0] + 'T12:00:00')
                         return isBefore(matDate, addDays(today, 60)) && matDate > today
                       })
                       .sort(
@@ -373,7 +382,8 @@ export default function Debentures() {
 
                     const expired = allSeries.filter((s) => {
                       if (!s.maturity_date) return false
-                      return isBefore(new Date(s.maturity_date), today)
+                      const matDate = new Date(s.maturity_date.split('T')[0] + 'T12:00:00')
+                      return isBefore(matDate, today)
                     })
 
                     return (
@@ -392,7 +402,7 @@ export default function Debentures() {
                                 {expired.map((s, i) => (
                                   <li key={i}>
                                     {s.issuer_name} - Série {s.series_number} (Venceu em{' '}
-                                    {format(new Date(s.maturity_date), 'dd/MM/yyyy')})
+                                    {formatDateStr(s.maturity_date)})
                                   </li>
                                 ))}
                               </ul>
@@ -413,7 +423,7 @@ export default function Debentures() {
                                 {nearMaturity.map((s, i) => (
                                   <li key={i}>
                                     {s.issuer_name} - Série {s.series_number} (Vence em{' '}
-                                    {format(new Date(s.maturity_date), 'dd/MM/yyyy')})
+                                    {formatDateStr(s.maturity_date)})
                                   </li>
                                 ))}
                               </ul>
@@ -526,7 +536,7 @@ export default function Debentures() {
                             <span className="text-sm text-muted-foreground">Vencimento</span>
                             <span className="text-sm font-medium">
                               {selectedSeries.maturity_date
-                                ? format(new Date(selectedSeries.maturity_date), 'dd/MM/yyyy')
+                                ? formatDateStr(selectedSeries.maturity_date)
                                 : '-'}
                             </span>
                           </div>

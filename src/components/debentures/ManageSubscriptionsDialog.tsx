@@ -19,13 +19,19 @@ import { Input } from '@/components/ui/input'
 import { Trash2, Edit2, Save, X, Plus, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { format } from 'date-fns'
 
 interface ManageSubscriptionsDialogProps {
   series: any
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
+}
+
+const formatDateStr = (dateStr: string | null | undefined) => {
+  if (!dateStr) return '-'
+  const parts = dateStr.split('T')[0].split('-')
+  if (parts.length !== 3) return dateStr
+  return `${parts[2]}/${parts[1]}/${parts[0]}`
 }
 
 export function ManageSubscriptionsDialog({
@@ -50,7 +56,10 @@ export function ManageSubscriptionsDialog({
 
   const startEdit = (sub: any) => {
     setEditingId(sub.id)
-    setEditForm({ ...sub })
+    setEditForm({
+      ...sub,
+      subscription_date: sub.subscription_date ? sub.subscription_date.split('T')[0] : '',
+    })
     setAddingNew(false)
   }
 
@@ -333,9 +342,7 @@ export function ManageSubscriptionsDialog({
                         R$ {Number(sub.unit_price).toLocaleString('pt-BR')}
                       </TableCell>
                       <TableCell className="text-xs">
-                        {sub.subscription_date
-                          ? format(new Date(sub.subscription_date), 'dd/MM/yyyy')
-                          : '-'}
+                        {formatDateStr(sub.subscription_date)}
                       </TableCell>
                       <TableCell className="text-right space-x-1 whitespace-nowrap">
                         <Button

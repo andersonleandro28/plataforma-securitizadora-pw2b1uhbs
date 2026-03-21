@@ -32,6 +32,13 @@ interface HistoryTabProps {
   onDeleteSuccess: () => void
 }
 
+const formatDateStr = (dateStr: string | null | undefined) => {
+  if (!dateStr) return '-'
+  const parts = dateStr.split('T')[0].split('-')
+  if (parts.length !== 3) return dateStr
+  return `${parts[2]}/${parts[1]}/${parts[0]}`
+}
+
 export function HistoryTab({
   debentures,
   loading,
@@ -90,7 +97,7 @@ export function HistoryTab({
           <h1>Espelho de Escritura de Debêntures</h1>
           <div class="meta">
             <p><strong>Emissor:</strong> ${deb.issuer_name}</p>
-            <p><strong>Data de Emissão:</strong> ${deb.issue_date ? format(new Date(deb.issue_date), 'dd/MM/yyyy') : 'Não informada'}</p>
+            <p><strong>Data de Emissão:</strong> ${formatDateStr(deb.issue_date)}</p>
             <p><strong>Volume Total da Emissão:</strong> R$ ${deb.total_volume.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
             <p><strong>Gerado em:</strong> ${format(new Date(), 'dd/MM/yyyy HH:mm')}</p>
           </div>
@@ -105,7 +112,7 @@ export function HistoryTab({
                 <div style="display: flex; gap: 20px; margin-bottom: 15px; font-size: 14px;">
                   <div><strong>Indexador:</strong> ${s.indexer} + ${s.rate}% a.a.</div>
                   <div><strong>Volume:</strong> R$ ${s.volume.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                  <div><strong>Vencimento:</strong> ${s.maturity_date ? format(new Date(s.maturity_date), 'dd/MM/yyyy') : 'N/A'}</div>
+                  <div><strong>Vencimento:</strong> ${formatDateStr(s.maturity_date)}</div>
                 </div>
                 
                 <h4 style="margin-bottom: 10px; font-size: 15px;">Subscrições Realizadas</h4>
@@ -133,7 +140,7 @@ export function HistoryTab({
                           <td class="right">${sub.quantity}</td>
                           <td class="right">${sub.unit_price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                           <td class="right">${sub.total_amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                          <td>${sub.subscription_date ? format(new Date(sub.subscription_date), 'dd/MM/yyyy') : '-'}</td>
+                          <td>${formatDateStr(sub.subscription_date)}</td>
                         </tr>
                       `,
                         )
@@ -209,7 +216,7 @@ export function HistoryTab({
                     </TableCell>
                     <TableCell className="font-medium">{deb.issuer_name}</TableCell>
                     <TableCell className="whitespace-nowrap">
-                      {deb.issue_date ? format(new Date(deb.issue_date), 'dd/MM/yyyy') : '-'}
+                      {formatDateStr(deb.issue_date)}
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm">
                       {formatCurrency(deb.total_volume)}
@@ -305,9 +312,7 @@ export function HistoryTab({
                                     <TableCell className="text-xs py-2">{s.indexer}</TableCell>
                                     <TableCell className="text-xs py-2">{s.rate}</TableCell>
                                     <TableCell className="text-xs py-2">
-                                      {s.maturity_date
-                                        ? format(new Date(s.maturity_date), 'dd/MM/yyyy')
-                                        : '-'}
+                                      {formatDateStr(s.maturity_date)}
                                     </TableCell>
                                     <TableCell className="text-right font-mono text-xs py-2">
                                       {formatCurrency(s.volume)}
