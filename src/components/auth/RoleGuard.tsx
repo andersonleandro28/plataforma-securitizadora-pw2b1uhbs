@@ -12,8 +12,9 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
 
   if (loading) {
     return (
-      <div className="flex h-[50vh] w-full items-center justify-center animate-in fade-in duration-300">
+      <div className="flex h-[60vh] w-full flex-col items-center justify-center space-y-4 animate-in fade-in duration-300">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground animate-pulse">Carregando permissões...</p>
       </div>
     )
   }

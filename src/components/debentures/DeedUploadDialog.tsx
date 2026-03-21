@@ -68,7 +68,8 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
       const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`
 
       const { error: uploadError } = await supabase.storage.from('deeds').upload(fileName, file)
-      if (uploadError) throw new Error('Falha no upload para o storage seguro.')
+      if (uploadError)
+        throw new Error(`Falha no upload para o storage seguro: ${uploadError.message}`)
 
       const { data: resData, error } = await supabase.functions.invoke('extract-debenture-data', {
         body: { filePath: fileName, originalName: file.name, docType },
@@ -93,17 +94,38 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
         const { data: debData, error: debErr } = await supabase
           .from('debentures')
           .insert({
-            issuer_name: data.issuer_name,
-            total_volume: data.total_volume,
-            issue_date: data.issue_date,
+            issuer_name: data.issuer_name || 'Emissor Não Identificado',
+            total_volume: Number(data.total_volume) || 0,
+            issue_date: data.issue_date || new Date().toISOString().split('T')[0],
           })
           .select('id')
           .single()
-        if (debErr) throw debErr
 
-        const seriesToInsert = data.series.map((s: any) => ({ debenture_id: debData.id, ...s }))
-        await supabase.from('debenture_series').insert(seriesToInsert)
-        await supabase.from('investment_products').insert(data.products)
+        if (debErr) throw new Error(`Erro ao registrar debênture: ${debErr.message}`)
+
+        const seriesToInsert = data.series.map((s: any) => ({
+          debenture_id: debData.id,
+          series_number: String(s.series_number || '001'),
+          volume: Number(s.volume || 0),
+          indexer: String(s.indexer || 'CDI'),
+          rate: Number(s.rate || 0),
+          maturity_date: s.maturity_date ? String(s.maturity_date) : null,
+        }))
+
+        const { error: seriesErr } = await supabase.from('debenture_series').insert(seriesToInsert)
+        if (seriesErr) throw new Error(`Erro ao registrar séries: ${seriesErr.message}`)
+
+        if (data.products && data.products.length > 0) {
+          const productsToInsert = data.products.map((p: any) => ({
+            ...p,
+            progress: Number(p.progress || 0),
+            min_investment: Number(p.min_investment || 0),
+          }))
+          const { error: prodErr } = await supabase
+            .from('investment_products')
+            .insert(productsToInsert)
+          if (prodErr) console.error('Erro ao registrar produto de investimento:', prodErr)
+        }
       } else if (data.type === 'investors') {
         const validProfiles = data.profiles.filter(
           (p: any) => p.email && p.full_name && p.document_number,
@@ -130,10 +152,12 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
             })
             .select('id')
             .single()
-          if (borderErr) throw borderErr
+
+          if (borderErr) throw new Error(`Erro ao registrar borderô: ${borderErr.message}`)
 
           const itemsToInsert = border.items.map((i: any) => ({ border_id: borderData.id, ...i }))
-          await supabase.from('border_items').insert(itemsToInsert)
+          const { error: itemsErr } = await supabase.from('border_items').insert(itemsToInsert)
+          if (itemsErr) throw new Error(`Erro ao registrar itens do borderô: ${itemsErr.message}`)
         }
       }
 
@@ -200,9 +224,7 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="subscription">
-                      Listagem de Subscrição (Produtos/Séries)
-                    </SelectItem>
+                    <SelectItem value="subscription">Escritura de Debêntures</SelectItem>
                     <SelectItem value="investors">
                       Debenturistas / Investidores (Cadastros)
                     </SelectItem>
@@ -270,7 +292,7 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
                       <Label className="text-xs text-muted-foreground">Emissor</Label>
                       <Input
                         className="h-9"
-                        value={data.issuer_name}
+                        value={data.issuer_name || ''}
                         onChange={(e) => setData({ ...data, issuer_name: e.target.value })}
                       />
                     </div>
@@ -279,14 +301,14 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
                       <Input
                         type="number"
                         className="h-9 font-mono"
-                        value={data.total_volume}
+                        value={data.total_volume || ''}
                         onChange={(e) => setData({ ...data, total_volume: Number(e.target.value) })}
                       />
                     </div>
                   </div>
                   <div className="space-y-3">
                     <Label className="text-sm font-semibold flex items-center justify-between">
-                      <span>Listagem das {data.series.length} Séries</span>
+                      <span>Listagem das {data.series?.length || 0} Séries</span>
                       <span className="text-xs font-normal text-muted-foreground bg-muted px-2 py-1 rounded">
                         Auditoria de Dados
                       </span>
@@ -303,19 +325,19 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {data.series.map((s: any, i: number) => (
+                          {data.series?.map((s: any, i: number) => (
                             <TableRow key={i} className="hover:bg-muted/10">
                               <TableCell className="p-2">
                                 <Input
                                   className="h-8 w-20 text-xs text-center"
-                                  value={s.series_number}
+                                  value={s.series_number || ''}
                                   onChange={(e) => updateSeries(i, 'series_number', e.target.value)}
                                 />
                               </TableCell>
                               <TableCell className="p-2">
                                 <Input
                                   className="h-8 w-24 text-xs"
-                                  value={s.indexer}
+                                  value={s.indexer || ''}
                                   onChange={(e) => updateSeries(i, 'indexer', e.target.value)}
                                 />
                               </TableCell>
@@ -323,9 +345,9 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
                                 <Input
                                   type="number"
                                   className="h-8 w-20 text-xs"
-                                  value={s.rate}
+                                  value={s.rate !== undefined ? s.rate : ''}
                                   step="0.01"
-                                  onChange={(e) => updateSeries(i, 'rate', Number(e.target.value))}
+                                  onChange={(e) => updateSeries(i, 'rate', e.target.value)}
                                 />
                               </TableCell>
                               <TableCell className="p-2">
@@ -340,10 +362,8 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
                                 <Input
                                   type="number"
                                   className="h-8 w-full min-w-[100px] text-xs font-mono text-right"
-                                  value={s.volume}
-                                  onChange={(e) =>
-                                    updateSeries(i, 'volume', Number(e.target.value))
-                                  }
+                                  value={s.volume !== undefined ? s.volume : ''}
+                                  onChange={(e) => updateSeries(i, 'volume', e.target.value)}
                                 />
                               </TableCell>
                             </TableRow>
@@ -359,7 +379,7 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <Label className="text-sm font-semibold">
-                      Listagem de {data.profiles.length} Perfis Extraídos
+                      Listagem de {data.profiles?.length || 0} Perfis Extraídos
                     </Label>
                     <Button variant="outline" size="sm" onClick={addInvestor} className="h-8 gap-1">
                       <Plus className="h-3.5 w-3.5" /> Adicionar Manualmente
@@ -377,7 +397,7 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {data.profiles.map((p: any, i: number) => (
+                        {data.profiles?.map((p: any, i: number) => (
                           <TableRow key={i} className="hover:bg-muted/10 group">
                             <TableCell className="p-2 align-top">
                               <Input
@@ -434,7 +454,7 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
                             </TableCell>
                           </TableRow>
                         ))}
-                        {data.profiles.length === 0 && (
+                        {(!data.profiles || data.profiles.length === 0) && (
                           <TableRow>
                             <TableCell
                               colSpan={5}
@@ -453,7 +473,7 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
               {data.type === 'operations' && (
                 <div className="space-y-3">
                   <Label className="text-sm font-semibold block">
-                    Listagem de {data.borders.length} Operações Identificadas
+                    Listagem de {data.borders?.length || 0} Operações Identificadas
                   </Label>
                   <div className="border rounded-md overflow-auto shadow-sm relative">
                     <Table>
@@ -466,14 +486,14 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {data.borders.map((b: any, i: number) => (
+                        {data.borders?.map((b: any, i: number) => (
                           <TableRow key={i} className="hover:bg-muted/10">
                             <TableCell className="p-3 text-xs font-mono">
                               {b.border_number}
                             </TableCell>
                             <TableCell className="p-3 text-xs">{b.cedente}</TableCell>
                             <TableCell className="p-3 text-xs font-mono text-primary">
-                              R$ {b.amount.toLocaleString('pt-BR')}
+                              R$ {Number(b.amount || 0).toLocaleString('pt-BR')}
                             </TableCell>
                             <TableCell className="p-3 text-xs">{b.items_count}</TableCell>
                           </TableRow>
@@ -509,7 +529,10 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
             </Button>
             <Button
               onClick={handleSave}
-              disabled={saving || (data.type === 'investors' && data.profiles.length === 0)}
+              disabled={
+                saving ||
+                (data.type === 'investors' && (!data.profiles || data.profiles.length === 0))
+              }
               className="bg-primary text-primary-foreground"
             >
               {saving ? (

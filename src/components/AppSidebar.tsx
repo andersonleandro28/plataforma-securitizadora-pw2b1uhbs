@@ -90,10 +90,14 @@ export function AppSidebar() {
   })
 
   return (
-    <Sidebar variant="sidebar" collapsible="icon">
-      <SidebarHeader className="h-16 flex items-center justify-center border-b border-sidebar-border">
-        <div className="flex items-center gap-2 font-bold text-xl text-sidebar-foreground tracking-tight">
-          <div className="w-8 h-8 rounded bg-primary flex items-center justify-center text-primary-foreground">
+    <Sidebar
+      variant="sidebar"
+      collapsible="icon"
+      className="border-r-0 [&_[data-sidebar=sidebar]]:bg-[#0f0f11] [&_[data-sidebar=sidebar]]:text-zinc-300 [&_[data-sidebar=menu-button]]:text-zinc-300 [&_[data-sidebar=menu-button][data-active=true]]:bg-zinc-800/50 [&_[data-sidebar=menu-button][data-active=true]]:text-white [&_[data-sidebar=menu-button]:hover]:bg-zinc-800/50 [&_[data-sidebar=menu-button]:hover]:text-white border-zinc-800"
+    >
+      <SidebarHeader className="h-16 flex items-center justify-center border-b border-zinc-800/50">
+        <div className="flex items-center gap-2 font-bold text-xl text-white tracking-tight">
+          <div className="w-8 h-8 rounded bg-primary flex items-center justify-center text-primary-foreground shadow-sm">
             S
           </div>
           <span className="group-data-[collapsible=icon]:hidden">Securix</span>
@@ -101,7 +105,9 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Módulos Principais</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-zinc-500 font-medium">
+            Módulos Principais
+          </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => (
@@ -112,8 +118,8 @@ export function AppSidebar() {
                     tooltip={item.title}
                   >
                     <Link to={item.path}>
-                      <item.icon />
-                      <span>{item.title}</span>
+                      <item.icon className="text-zinc-400 group-data-[active=true]/menu-button:text-primary transition-colors" />
+                      <span className="font-medium">{item.title}</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

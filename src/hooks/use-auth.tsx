@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase/client'
 
@@ -81,11 +81,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const [loadingSession, setLoadingSession] = useState(true)
 
-  const setActiveRole = (role: AppRole | null) => {
+  const setActiveRole = useCallback((role: AppRole | null) => {
     setActiveRoleState(role)
     if (role) sessionStorage.setItem('activeRole', role)
     else sessionStorage.removeItem('activeRole')
-  }
+  }, [])
 
   useEffect(() => {
     const {
@@ -121,68 +121,78 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     let mounted = true
-    const loadProfile = () => {
-      if (user) {
-        supabase
+
+    const loadProfile = async (currentUser: User) => {
+      try {
+        const { data, error } = await supabase
           .from('profiles')
           .select('*')
-          .eq('id', user.id)
+          .eq('id', currentUser.id)
           .maybeSingle()
-          .then(({ data, error }) => {
-            if (error && (error.code === 'PGRST301' || error.code === '401')) {
-              supabase.auth.signOut().catch(() => {})
-            }
-            if (mounted) {
-              const p = data ? (data as Profile) : null
-              setProfile(p)
 
-              if (p) {
-                const roles: AppRole[] = []
-                if (p.is_admin) roles.push('admin')
-                if (p.is_staff) roles.push('staff')
-                if (p.is_investor) roles.push('investor')
-                if (p.is_borrower) roles.push('borrower')
-                setAvailableRoles(roles)
-
-                const currentActive = sessionStorage.getItem('activeRole') as AppRole | null
-                if (roles.length === 1) {
-                  setActiveRole(roles[0])
-                } else if (roles.length > 1) {
-                  if (currentActive && !roles.includes(currentActive)) {
-                    setActiveRole(null)
-                  } else if (currentActive) {
-                    setActiveRole(currentActive)
-                  }
-                } else {
-                  setActiveRole(null)
-                }
-              } else {
-                setAvailableRoles([])
-                setActiveRole(null)
-              }
-
-              setProfileLoadedFor(user.id)
-            }
-          })
-          .catch(() => {
-            if (mounted) setProfileLoadedFor(user.id)
-          })
-      } else {
-        if (mounted) {
-          setProfile(null)
-          setAvailableRoles([])
-          setActiveRole(null)
-          setProfileLoadedFor(null)
+        if (error && (error.code === 'PGRST301' || error.code === '401')) {
+          supabase.auth.signOut().catch(() => {})
         }
+
+        if (mounted) {
+          const p = data ? (data as Profile) : null
+          setProfile(p)
+
+          if (p) {
+            const roles: AppRole[] = []
+            if (p.is_admin) roles.push('admin')
+            if (p.is_staff) roles.push('staff')
+            if (p.is_investor) roles.push('investor')
+            if (p.is_borrower) roles.push('borrower')
+            setAvailableRoles(roles)
+
+            const currentActive = sessionStorage.getItem('activeRole') as AppRole | null
+            if (roles.length === 1) {
+              setActiveRole(roles[0])
+            } else if (roles.length > 1) {
+              if (currentActive && !roles.includes(currentActive)) {
+                setActiveRole(roles[0]) // Auto-select first available if stored is invalid
+              } else if (currentActive) {
+                setActiveRole(currentActive)
+              } else {
+                setActiveRole(roles[0])
+              }
+            } else {
+              setActiveRole(null)
+            }
+          } else {
+            setAvailableRoles([])
+            setActiveRole(null)
+          }
+
+          setProfileLoadedFor(currentUser.id)
+        }
+      } catch (err) {
+        if (mounted) setProfileLoadedFor(currentUser.id)
       }
     }
-    loadProfile()
-    window.addEventListener('profile-updated', loadProfile)
+
+    if (user && profileLoadedFor !== user.id) {
+      loadProfile(user)
+    } else if (!user && profileLoadedFor) {
+      if (mounted) {
+        setProfile(null)
+        setAvailableRoles([])
+        setActiveRole(null)
+        setProfileLoadedFor(null)
+      }
+    }
+
+    const handleProfileUpdate = () => {
+      if (user) loadProfile(user)
+    }
+
+    window.addEventListener('profile-updated', handleProfileUpdate)
     return () => {
       mounted = false
-      window.removeEventListener('profile-updated', loadProfile)
+      window.removeEventListener('profile-updated', handleProfileUpdate)
     }
-  }, [user])
+  }, [user, profileLoadedFor, setActiveRole])
 
   const signUp = async (email: string, password: string, fullName?: string) => {
     try {
