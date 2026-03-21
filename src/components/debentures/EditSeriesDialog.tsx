@@ -17,27 +17,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, Save, PlusCircle } from 'lucide-react'
+import { Loader2, Save, Edit2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 
-interface AddSeriesDialogProps {
-  debenture?: any
-  debentures?: any[]
+interface EditSeriesDialogProps {
+  series: any
+  debentures: any[]
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess?: () => void
 }
 
-export function AddSeriesDialog({
-  debenture,
+export function EditSeriesDialog({
+  series,
   debentures = [],
   open,
   onOpenChange,
   onSuccess,
-}: AddSeriesDialogProps) {
+}: EditSeriesDialogProps) {
   const [saving, setSaving] = useState(false)
-  const [selectedDebentureId, setSelectedDebentureId] = useState<string>('')
   const [formData, setFormData] = useState({
     series_number: '',
     volume: '',
@@ -47,50 +46,43 @@ export function AddSeriesDialog({
   })
 
   useEffect(() => {
-    if (debenture) {
-      setSelectedDebentureId(debenture.id)
-    } else if (!open) {
-      setSelectedDebentureId('')
+    if (series && open) {
+      setFormData({
+        series_number: series.series_number || '',
+        volume: String(series.volume || ''),
+        indexer: series.indexer || 'CDI',
+        rate: String(series.rate || ''),
+        maturity_date: series.maturity_date ? series.maturity_date.split('T')[0] : '',
+      })
     }
-  }, [debenture, open])
+  }, [series, open])
 
-  const resetForm = () => {
-    setFormData({
-      series_number: '',
-      volume: '',
-      indexer: 'CDI',
-      rate: '',
-      maturity_date: '',
-    })
-    if (!debenture) setSelectedDebentureId('')
-  }
+  const parentDebenture = debentures.find((d) => d.id === series?.debenture_id)
 
-  const handleOpenChange = (isOpen: boolean) => {
-    if (!isOpen) resetForm()
-    onOpenChange(isOpen)
-  }
+  const otherSeriesVolume =
+    parentDebenture?.series
+      ?.filter((s: any) => s.id !== series?.id)
+      .reduce((acc: number, s: any) => acc + Number(s.volume || 0), 0) || 0
 
-  const selectedDebentureObj = debenture || debentures.find((d) => d.id === selectedDebentureId)
-  const totalAllocated =
-    selectedDebentureObj?.series?.reduce((acc: number, s: any) => acc + Number(s.volume || 0), 0) ||
-    0
-  const availableVolume = selectedDebentureObj
-    ? Number(selectedDebentureObj.total_volume) - totalAllocated
+  const availableVolume = parentDebenture
+    ? Number(parentDebenture.total_volume) - otherSeriesVolume
     : 0
+
   const isVolumeExceeded = Number(formData.volume || 0) > availableVolume
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
 
+  const handleOpenChange = (isOpen: boolean) => {
+    onOpenChange(isOpen)
+  }
+
   const handleSave = async () => {
-    if (!selectedDebentureId) {
-      toast.error('Selecione a escritura/emissor.')
-      return
-    }
     if (!formData.series_number || !formData.volume) {
       toast.error('Número da Série e Volume são obrigatórios.')
       return
     }
+
     if (isVolumeExceeded) {
       toast.error('O volume da série excede o saldo disponível na escritura.')
       return
@@ -98,23 +90,25 @@ export function AddSeriesDialog({
 
     setSaving(true)
     try {
-      const { error } = await supabase.from('debenture_series').insert({
-        debenture_id: selectedDebentureId,
-        series_number: formData.series_number,
-        volume: Number(formData.volume),
-        indexer: formData.indexer,
-        rate: Number(formData.rate) || 0,
-        maturity_date: formData.maturity_date || null,
-      })
+      const { error } = await supabase
+        .from('debenture_series')
+        .update({
+          series_number: formData.series_number,
+          volume: Number(formData.volume),
+          indexer: formData.indexer,
+          rate: Number(formData.rate) || 0,
+          maturity_date: formData.maturity_date || null,
+        })
+        .eq('id', series.id)
 
-      if (error) throw new Error(`Erro ao salvar série: ${error.message}`)
+      if (error) throw new Error(`Erro ao atualizar série: ${error.message}`)
 
-      toast.success('Série adicionada com sucesso!')
+      toast.success('Série atualizada com sucesso!')
       onSuccess?.()
-      handleOpenChange(false)
+      onOpenChange(false)
     } catch (err: any) {
       console.error(err)
-      toast.error(err.message || 'Erro ao processar o cadastro da série.')
+      toast.error(err.message || 'Erro ao processar a edição da série.')
     } finally {
       setSaving(false)
     }
@@ -125,39 +119,16 @@ export function AddSeriesDialog({
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <PlusCircle className="h-5 w-5 text-primary" /> Nova Série
+            <Edit2 className="h-5 w-5 text-primary" /> Editar Série
           </DialogTitle>
           <DialogDescription>
-            {debenture ? (
-              <>
-                Adicionar uma nova série à escritura de <strong>{debenture.issuer_name}</strong>.
-              </>
-            ) : (
-              'Cadastre uma nova série selecionando a escritura base correspondente.'
-            )}
+            Ajuste os dados cadastrais da série. O volume está sujeito ao limite total da escritura
+            de <strong>{parentDebenture?.issuer_name}</strong>.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {!debenture && (
-            <div className="space-y-1.5">
-              <Label>Escritura / Emissor Base</Label>
-              <Select value={selectedDebentureId} onValueChange={setSelectedDebentureId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a emissão" />
-                </SelectTrigger>
-                <SelectContent>
-                  {debentures.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.issuer_name} ({new Date(d.created_at).toLocaleDateString('pt-BR')})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {selectedDebentureObj && (
+          {parentDebenture && (
             <div className="bg-muted/50 p-3 rounded-md text-sm border flex items-center justify-between">
               <span className="text-muted-foreground">Saldo disponível na escritura:</span>
               <span
@@ -240,7 +211,7 @@ export function AddSeriesDialog({
           </Button>
           <Button
             onClick={handleSave}
-            disabled={saving || (!debenture && !selectedDebentureId) || isVolumeExceeded}
+            disabled={saving || isVolumeExceeded}
             className="min-w-[120px]"
           >
             {saving ? (
@@ -248,7 +219,7 @@ export function AddSeriesDialog({
             ) : (
               <Save className="h-4 w-4 mr-2" />
             )}
-            {saving ? 'Salvando...' : 'Salvar Série'}
+            {saving ? 'Salvando...' : 'Salvar Alterações'}
           </Button>
         </DialogFooter>
       </DialogContent>

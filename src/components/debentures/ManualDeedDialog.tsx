@@ -77,9 +77,22 @@ export function ManualDeedDialog({ open, onOpenChange, onSuccess }: ManualDeedDi
     onOpenChange(isOpen)
   }
 
+  const totalVolume = Number(data.total_volume || 0)
+  const seriesVolumeSum = data.series.reduce((sum, s) => sum + Number(s.volume || 0), 0)
+  const availableVolume = totalVolume - seriesVolumeSum
+  const isVolumeExceeded = seriesVolumeSum > totalVolume
+
+  const formatCurrency = (val: number) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
+
   const handleSave = async () => {
     if (!data.issuer_name || !data.total_volume) {
       toast.error('Emissor e Volume Total são obrigatórios.')
+      return
+    }
+
+    if (isVolumeExceeded) {
+      toast.error('A soma dos volumes das séries excede o volume total da escritura.')
       return
     }
 
@@ -191,7 +204,7 @@ export function ManualDeedDialog({ open, onOpenChange, onSuccess }: ManualDeedDi
           </section>
 
           <section className="space-y-4">
-            <div className="flex items-center justify-between border-b pb-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b pb-2 gap-2">
               <h3 className="text-sm font-semibold">2. Séries e Subscrições</h3>
               <Button
                 variant="outline"
@@ -213,6 +226,31 @@ export function ManualDeedDialog({ open, onOpenChange, onSuccess }: ManualDeedDi
                 <Plus className="h-3.5 w-3.5" /> Nova Série
               </Button>
             </div>
+
+            {totalVolume > 0 && (
+              <div className="bg-muted/30 p-3 rounded-md border flex flex-col sm:flex-row justify-between items-start sm:items-center text-sm gap-2">
+                <span>
+                  Volume Total: <strong className="font-mono">{formatCurrency(totalVolume)}</strong>
+                </span>
+                <span
+                  className={
+                    isVolumeExceeded
+                      ? 'text-destructive font-bold flex items-center gap-1'
+                      : 'text-primary font-bold flex items-center gap-1'
+                  }
+                >
+                  Saldo Disponível:{' '}
+                  <span className="font-mono">{formatCurrency(availableVolume)}</span>
+                </span>
+              </div>
+            )}
+
+            {isVolumeExceeded && (
+              <div className="text-xs text-destructive bg-destructive/10 p-2 rounded border border-destructive/20">
+                Atenção: A soma dos volumes das séries ({formatCurrency(seriesVolumeSum)})
+                ultrapassou o limite total da escritura. Ajuste os valores para salvar.
+              </div>
+            )}
 
             <div className="space-y-4">
               {data.series.map((series, idx) => (
@@ -240,7 +278,11 @@ export function ManualDeedDialog({ open, onOpenChange, onSuccess }: ManualDeedDi
           <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={saving}>
             Cancelar
           </Button>
-          <Button onClick={handleSave} disabled={saving} className="min-w-[140px]">
+          <Button
+            onClick={handleSave}
+            disabled={saving || isVolumeExceeded}
+            className="min-w-[140px]"
+          >
             {saving ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search, Loader2, Users } from 'lucide-react'
+import { Search, Loader2, Users, Edit2 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ManageSubscriptionsDialog } from './ManageSubscriptionsDialog'
+import { EditSeriesDialog } from './EditSeriesDialog'
 
 interface SeriesListTabProps {
   debentures: any[]
@@ -43,6 +44,7 @@ export function SeriesListTab({
   const [searchTerm, setSearchTerm] = useState('')
   const [indexerFilter, setIndexerFilter] = useState('all')
   const [manageSeriesId, setManageSeriesId] = useState<string | null>(null)
+  const [editSeriesId, setEditSeriesId] = useState<string | null>(null)
 
   const allSeries = debentures.flatMap((d) =>
     (d.series || []).map((s: any) => ({
@@ -66,6 +68,7 @@ export function SeriesListTab({
   ) as string[]
 
   const manageSeries = allSeries.find((s) => s.id === manageSeriesId) || null
+  const editSeries = allSeries.find((s) => s.id === editSeriesId) || null
 
   return (
     <Card>
@@ -111,7 +114,7 @@ export function SeriesListTab({
                 <TableHead>Indexador e Taxa</TableHead>
                 <TableHead>Vencimento</TableHead>
                 <TableHead className="text-right">Volume (R$)</TableHead>
-                <TableHead className="text-center w-[160px]">Ações</TableHead>
+                <TableHead className="text-center w-[180px]">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -135,15 +138,24 @@ export function SeriesListTab({
                     <TableCell className="text-right font-mono">
                       {formatCurrency(s.volume)}
                     </TableCell>
-                    <TableCell className="text-center">
+                    <TableCell className="text-center space-x-1 whitespace-nowrap">
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-8 gap-1 w-full"
+                        className="h-8 gap-1"
                         onClick={() => setManageSeriesId(s.id)}
                       >
                         <Users className="h-3.5 w-3.5" />
                         Subs ({s.debenture_subscriptions?.length || 0})
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-primary"
+                        onClick={() => setEditSeriesId(s.id)}
+                        title="Editar Série"
+                      >
+                        <Edit2 className="h-4 w-4" />
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -165,6 +177,16 @@ export function SeriesListTab({
         open={!!manageSeriesId}
         onOpenChange={(op: boolean) => {
           if (!op) setManageSeriesId(null)
+        }}
+        onSuccess={onRefresh}
+      />
+
+      <EditSeriesDialog
+        series={editSeries}
+        debentures={debentures}
+        open={!!editSeriesId}
+        onOpenChange={(op: boolean) => {
+          if (!op) setEditSeriesId(null)
         }}
         onSuccess={onRefresh}
       />
