@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useState } from 'react'
+import { ReactNode } from 'react'
 import { useAuth, AppRole } from '@/hooks/use-auth'
 import { Loader2, ShieldAlert } from 'lucide-react'
 
@@ -9,26 +9,13 @@ interface RoleGuardProps {
 
 export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
   const { user, profile, activeRole, availableRoles, loading } = useAuth()
-  const [isVerifying, setIsVerifying] = useState(true)
 
-  // Ensure we have a small buffer to let the auth context settle completely
-  // Eliminating premature loading states that could block navigation
-  useEffect(() => {
-    if (!loading) {
-      const timer = setTimeout(() => setIsVerifying(false), 400)
-      return () => clearTimeout(timer)
-    } else {
-      setIsVerifying(true)
-    }
-  }, [loading])
-
-  if (loading || isVerifying) {
+  // 1. Eliminação total de esperas artificiais (removido setTimeout e estados intermediários)
+  if (loading) {
     return (
-      <div className="flex h-[60vh] w-full flex-col items-center justify-center space-y-4 animate-in fade-in duration-300">
+      <div className="flex h-[60vh] w-full flex-col items-center justify-center space-y-4 animate-in fade-in duration-200">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground animate-pulse">
-          Verificando permissões de acesso...
-        </p>
+        <p className="text-sm text-muted-foreground">Verificando autorização...</p>
       </div>
     )
   }
@@ -37,27 +24,19 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
     return null
   }
 
+  // 2. Passe Livre / Bypass Absoluto para o Super Admin
+  // Garante acesso imediato ignorando qualquer falha de cache ou atraso no banco
   const isSuperAdmin = user.email === 'andersonleandro28@gmail.com'
-
-  if (!profile && !isSuperAdmin) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[60vh] space-y-4 animate-in fade-in duration-300">
-        <div className="h-16 w-16 bg-destructive/10 rounded-full flex items-center justify-center mb-2">
-          <ShieldAlert className="h-8 w-8 text-destructive" />
-        </div>
-        <h2 className="text-2xl font-bold text-foreground">Perfil Incompleto</h2>
-        <p className="text-muted-foreground text-center max-w-md">
-          Não foi possível carregar as informações do seu perfil. Verifique sua conexão ou contate o
-          suporte.
-        </p>
-      </div>
-    )
+  if (isSuperAdmin) {
+    return <>{children}</>
   }
 
+  // 3. Avaliação síncrona e direta das permissões reais vs em cache
   const roleToCheck =
     activeRole || (availableRoles && availableRoles.length > 0 ? availableRoles[0] : null)
   const hasAccess = roleToCheck && allowedRoles.includes(roleToCheck)
 
+  // Fallback seguro caso o sessionStorage (cache) esteja corrompido mas o perfil real no banco tenha o acesso
   let hasFallbackAccess = false
   if (profile) {
     hasFallbackAccess = allowedRoles.some(
@@ -69,16 +48,15 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
     )
   }
 
-  if (!hasAccess && !hasFallbackAccess && !isSuperAdmin) {
+  if (!hasAccess && !hasFallbackAccess) {
     return (
-      <div className="flex flex-col items-center justify-center h-[60vh] space-y-4 animate-in fade-in duration-300">
+      <div className="flex flex-col items-center justify-center h-[60vh] space-y-4 animate-in fade-in zoom-in-95 duration-200">
         <div className="h-16 w-16 bg-destructive/10 rounded-full flex items-center justify-center mb-2">
           <ShieldAlert className="h-8 w-8 text-destructive" />
         </div>
         <h2 className="text-2xl font-bold text-foreground">Acesso Restrito</h2>
         <p className="text-muted-foreground text-center max-w-md">
-          Seu perfil atual ({roleToCheck || profile?.role || 'não definido'}) não possui as
-          permissões necessárias para visualizar este recurso.
+          Sua conta atual não possui as permissões necessárias para visualizar este recurso.
         </p>
       </div>
     )
