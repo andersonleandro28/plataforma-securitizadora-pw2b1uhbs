@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -22,7 +22,8 @@ import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 
 interface AddSeriesDialogProps {
-  debenture: any
+  debenture?: any
+  debentures?: any[]
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess?: () => void
@@ -30,11 +31,13 @@ interface AddSeriesDialogProps {
 
 export function AddSeriesDialog({
   debenture,
+  debentures = [],
   open,
   onOpenChange,
   onSuccess,
 }: AddSeriesDialogProps) {
   const [saving, setSaving] = useState(false)
+  const [selectedDebentureId, setSelectedDebentureId] = useState<string>('')
   const [formData, setFormData] = useState({
     series_number: '',
     volume: '',
@@ -42,6 +45,14 @@ export function AddSeriesDialog({
     rate: '',
     maturity_date: '',
   })
+
+  useEffect(() => {
+    if (debenture) {
+      setSelectedDebentureId(debenture.id)
+    } else {
+      setSelectedDebentureId('')
+    }
+  }, [debenture, open])
 
   const resetForm = () => {
     setFormData({
@@ -51,6 +62,7 @@ export function AddSeriesDialog({
       rate: '',
       maturity_date: '',
     })
+    if (!debenture) setSelectedDebentureId('')
   }
 
   const handleOpenChange = (isOpen: boolean) => {
@@ -59,6 +71,10 @@ export function AddSeriesDialog({
   }
 
   const handleSave = async () => {
+    if (!selectedDebentureId) {
+      toast.error('Selecione a escritura/emissor.')
+      return
+    }
     if (!formData.series_number || !formData.volume) {
       toast.error('Número da Série e Volume são obrigatórios.')
       return
@@ -67,7 +83,7 @@ export function AddSeriesDialog({
     setSaving(true)
     try {
       const { error } = await supabase.from('debenture_series').insert({
-        debenture_id: debenture.id,
+        debenture_id: selectedDebentureId,
         series_number: formData.series_number,
         volume: Number(formData.volume),
         indexer: formData.indexer,
@@ -96,11 +112,35 @@ export function AddSeriesDialog({
             <PlusCircle className="h-5 w-5 text-primary" /> Nova Série
           </DialogTitle>
           <DialogDescription>
-            Adicionar uma nova série à escritura de <strong>{debenture?.issuer_name}</strong>.
+            {debenture ? (
+              <>
+                Adicionar uma nova série à escritura de <strong>{debenture.issuer_name}</strong>.
+              </>
+            ) : (
+              'Cadastre uma nova série selecionando a escritura base correspondente.'
+            )}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          {!debenture && (
+            <div className="space-y-1.5">
+              <Label>Escritura / Emissor Base</Label>
+              <Select value={selectedDebentureId} onValueChange={setSelectedDebentureId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a emissão" />
+                </SelectTrigger>
+                <SelectContent>
+                  {debentures.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.issuer_name} ({new Date(d.created_at).toLocaleDateString('pt-BR')})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Número da Série</Label>
@@ -164,7 +204,11 @@ export function AddSeriesDialog({
           <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={saving}>
             Cancelar
           </Button>
-          <Button onClick={handleSave} disabled={saving} className="min-w-[120px]">
+          <Button
+            onClick={handleSave}
+            disabled={saving || (!debenture && !selectedDebentureId)}
+            className="min-w-[120px]"
+          >
             {saving ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (

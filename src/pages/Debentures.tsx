@@ -13,6 +13,7 @@ import {
   ListFilter,
   FileSignature,
   DollarSign,
+  PlusCircle,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -22,6 +23,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DeedUploadDialog } from '@/components/debentures/DeedUploadDialog'
 import { ManualDeedDialog } from '@/components/debentures/ManualDeedDialog'
+import { AddSeriesDialog } from '@/components/debentures/AddSeriesDialog'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line } from 'recharts'
 import { supabase } from '@/lib/supabase/client'
@@ -47,6 +49,7 @@ const formatDateStr = (dateStr: string | null | undefined) => {
 export default function Debentures() {
   const [uploadOpen, setUploadOpen] = useState(false)
   const [manualOpen, setManualOpen] = useState(false)
+  const [addSeriesOpen, setAddSeriesOpen] = useState(false)
   const [debentures, setDebentures] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedSeriesId, setSelectedSeriesId] = useState<string>('')
@@ -199,11 +202,18 @@ export default function Debentures() {
             <Download className="h-4 w-4" /> Exportar
           </Button>
           <Button
+            onClick={() => setAddSeriesOpen(true)}
+            className="gap-2 shadow-sm"
+            variant="secondary"
+          >
+            <PlusCircle className="h-4 w-4" /> Nova Série
+          </Button>
+          <Button
             onClick={() => setManualOpen(true)}
             className="gap-2 shadow-sm"
             variant="secondary"
           >
-            <FileSignature className="h-4 w-4" /> Cadastro Manual
+            <FileSignature className="h-4 w-4" /> Nova Escritura
           </Button>
           <Button onClick={() => setUploadOpen(true)} className="gap-2 shadow-sm">
             <FileUp className="h-4 w-4" /> Processar Escritura (IA)
@@ -579,6 +589,12 @@ export default function Debentures() {
       <ManualDeedDialog
         open={manualOpen}
         onOpenChange={setManualOpen}
+        onSuccess={fetchDebentures}
+      />
+      <AddSeriesDialog
+        debentures={debentures}
+        open={addSeriesOpen}
+        onOpenChange={setAddSeriesOpen}
         onSuccess={fetchDebentures}
       />
     </div>

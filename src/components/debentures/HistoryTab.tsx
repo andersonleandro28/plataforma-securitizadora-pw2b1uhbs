@@ -297,46 +297,64 @@ export function HistoryTab({ debentures, loading, formatCurrency, onRefresh }: H
                   </TableRow>,
                 ]
 
-                if (expandedRows[deb.id] && deb.series && deb.series.length > 0) {
+                if (expandedRows[deb.id]) {
                   rows.push(
                     <TableRow key={`${deb.id}-expanded`} className="bg-muted/5 hover:bg-muted/5">
                       <TableCell colSpan={7} className="p-0 border-b">
                         <div className="p-4 pl-14 animate-in slide-in-from-top-2 duration-200">
-                          <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                            <ListFilter className="h-4 w-4 text-primary" /> Detalhamento das Séries
-                          </h4>
-                          <div className="border rounded-md bg-background shadow-sm overflow-hidden">
-                            <Table>
-                              <TableHeader>
-                                <TableRow className="bg-muted/30">
-                                  <TableHead className="text-xs h-8">Série</TableHead>
-                                  <TableHead className="text-xs h-8">Indexador</TableHead>
-                                  <TableHead className="text-xs h-8">Taxa (%)</TableHead>
-                                  <TableHead className="text-xs h-8">Vencimento</TableHead>
-                                  <TableHead className="text-right text-xs h-8">
-                                    Volume (R$)
-                                  </TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {deb.series.map((s: any) => (
-                                  <TableRow key={s.id}>
-                                    <TableCell className="font-medium text-xs py-2">
-                                      {s.series_number}
-                                    </TableCell>
-                                    <TableCell className="text-xs py-2">{s.indexer}</TableCell>
-                                    <TableCell className="text-xs py-2">{s.rate}</TableCell>
-                                    <TableCell className="text-xs py-2">
-                                      {formatDateStr(s.maturity_date)}
-                                    </TableCell>
-                                    <TableCell className="text-right font-mono text-xs py-2">
-                                      {formatCurrency(s.volume)}
-                                    </TableCell>
-                                  </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
+                          <div className="flex items-center justify-between mb-3">
+                            <h4 className="text-sm font-semibold flex items-center gap-2">
+                              <ListFilter className="h-4 w-4 text-primary" /> Detalhamento das
+                              Séries
+                            </h4>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 gap-1 bg-background"
+                              onClick={() => setAddingSeriesFor(deb)}
+                            >
+                              <PlusCircle className="h-3.5 w-3.5" /> Adicionar Série
+                            </Button>
                           </div>
+
+                          {deb.series && deb.series.length > 0 ? (
+                            <div className="border rounded-md bg-background shadow-sm overflow-hidden">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow className="bg-muted/30">
+                                    <TableHead className="text-xs h-8">Série</TableHead>
+                                    <TableHead className="text-xs h-8">Indexador</TableHead>
+                                    <TableHead className="text-xs h-8">Taxa (%)</TableHead>
+                                    <TableHead className="text-xs h-8">Vencimento</TableHead>
+                                    <TableHead className="text-right text-xs h-8">
+                                      Volume (R$)
+                                    </TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {deb.series.map((s: any) => (
+                                    <TableRow key={s.id}>
+                                      <TableCell className="font-medium text-xs py-2">
+                                        {s.series_number}
+                                      </TableCell>
+                                      <TableCell className="text-xs py-2">{s.indexer}</TableCell>
+                                      <TableCell className="text-xs py-2">{s.rate}</TableCell>
+                                      <TableCell className="text-xs py-2">
+                                        {formatDateStr(s.maturity_date)}
+                                      </TableCell>
+                                      <TableCell className="text-right font-mono text-xs py-2">
+                                        {formatCurrency(s.volume)}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          ) : (
+                            <div className="text-center py-6 text-sm text-muted-foreground bg-background border rounded-md border-dashed">
+                              Nenhuma série vinculada a esta escritura ainda.
+                            </div>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>,
