@@ -8,7 +8,7 @@ interface RoleGuardProps {
 }
 
 export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
-  const { user, profile, activeRole, loading } = useAuth()
+  const { user, profile, activeRole, availableRoles, loading } = useAuth()
 
   if (loading) {
     return (
@@ -38,16 +38,17 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
     )
   }
 
-  const hasAccess = activeRole && allowedRoles.includes(activeRole)
-  const hasFallbackAccess =
-    !activeRole &&
-    allowedRoles.some(
-      (role) =>
-        (role === 'admin' && profile.is_admin) ||
-        (role === 'staff' && profile.is_staff) ||
-        (role === 'investor' && profile.is_investor) ||
-        (role === 'borrower' && profile.is_borrower),
-    )
+  const roleToCheck =
+    activeRole || (availableRoles && availableRoles.length > 0 ? availableRoles[0] : null)
+  const hasAccess = roleToCheck && allowedRoles.includes(roleToCheck)
+
+  const hasFallbackAccess = allowedRoles.some(
+    (role) =>
+      (role === 'admin' && (profile.is_admin || profile.role === 'admin')) ||
+      (role === 'staff' && (profile.is_staff || profile.role === 'staff')) ||
+      (role === 'investor' && (profile.is_investor || profile.role === 'investor')) ||
+      (role === 'borrower' && (profile.is_borrower || profile.role === 'borrower')),
+  )
 
   if (!hasAccess && !hasFallbackAccess) {
     return (

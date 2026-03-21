@@ -140,22 +140,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
           if (p) {
             const roles: AppRole[] = []
-            if (p.is_admin) roles.push('admin')
-            if (p.is_staff) roles.push('staff')
-            if (p.is_investor) roles.push('investor')
-            if (p.is_borrower) roles.push('borrower')
-            setAvailableRoles(roles)
+            if (p.is_admin || p.role === 'admin') roles.push('admin')
+            if (p.is_staff || p.role === 'staff') roles.push('staff')
+            if (p.is_investor || p.role === 'investor') roles.push('investor')
+            if (p.is_borrower || p.role === 'borrower') roles.push('borrower')
+
+            const uniqueRoles = Array.from(new Set(roles))
+            setAvailableRoles(uniqueRoles)
 
             const currentActive = sessionStorage.getItem('activeRole') as AppRole | null
-            if (roles.length === 1) {
-              setActiveRole(roles[0])
-            } else if (roles.length > 1) {
-              if (currentActive && !roles.includes(currentActive)) {
-                setActiveRole(roles[0]) // Auto-select first available if stored is invalid
+            if (uniqueRoles.length === 1) {
+              setActiveRole(uniqueRoles[0])
+            } else if (uniqueRoles.length > 1) {
+              if (currentActive && !uniqueRoles.includes(currentActive)) {
+                setActiveRole(uniqueRoles[0]) // Auto-select first available if stored is invalid
               } else if (currentActive) {
                 setActiveRole(currentActive)
               } else {
-                setActiveRole(roles[0])
+                setActiveRole(uniqueRoles[0])
               }
             } else {
               setActiveRole(null)

@@ -91,6 +91,10 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
     setSaving(true)
     try {
       if (data.type === 'subscription') {
+        if (!data.series || data.series.length === 0) {
+          throw new Error('Nenhuma série extraída. Verifique os dados no grid antes de prosseguir.')
+        }
+
         const { data: debData, error: debErr } = await supabase
           .from('debentures')
           .insert({
@@ -531,7 +535,8 @@ export function DeedUploadDialog({ open, onOpenChange, onSuccess }: DeedUploadDi
               onClick={handleSave}
               disabled={
                 saving ||
-                (data.type === 'investors' && (!data.profiles || data.profiles.length === 0))
+                (data.type === 'investors' && (!data.profiles || data.profiles.length === 0)) ||
+                (data.type === 'subscription' && (!data.series || data.series.length === 0))
               }
               className="bg-primary text-primary-foreground"
             >
