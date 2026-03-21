@@ -39,14 +39,9 @@ const App = () => (
               </AuthGuard>
             }
           >
-            <Route
-              path="/"
-              element={
-                <RoleGuard allowedRoles={['admin', 'staff', 'investor', 'borrower']}>
-                  <Index />
-                </RoleGuard>
-              }
-            />
+            {/* Rota inicial sem RoleGuard para acesso imediato */}
+            <Route path="/" element={<Index />} />
+
             <Route
               path="/kyc"
               element={

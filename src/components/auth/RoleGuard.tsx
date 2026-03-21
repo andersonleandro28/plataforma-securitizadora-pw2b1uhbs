@@ -10,7 +10,13 @@ interface RoleGuardProps {
 export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
   const { user, profile, activeRole, availableRoles, loading } = useAuth()
 
-  // 1. Eliminação total de esperas artificiais (removido setTimeout e estados intermediários)
+  // 1. PASSE LIVRE ABSOLUTO E IMEDIATO PARA SUPER ADMIN
+  // Ignora completamente qualquer estado de "loading" ou banco de dados se o usuário já estiver identificado
+  if (user?.email === 'andersonleandro28@gmail.com') {
+    return <>{children}</>
+  }
+
+  // 2. Avaliação de carregamento para usuários normais (admins já passaram direto acima)
   if (loading) {
     return (
       <div className="flex h-[60vh] w-full flex-col items-center justify-center space-y-4 animate-in fade-in duration-200">
@@ -22,13 +28,6 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
 
   if (!user) {
     return null
-  }
-
-  // 2. Passe Livre / Bypass Absoluto para o Super Admin
-  // Garante acesso imediato ignorando qualquer falha de cache ou atraso no banco
-  const isSuperAdmin = user.email === 'andersonleandro28@gmail.com'
-  if (isSuperAdmin) {
-    return <>{children}</>
   }
 
   // 3. Avaliação síncrona e direta das permissões reais vs em cache

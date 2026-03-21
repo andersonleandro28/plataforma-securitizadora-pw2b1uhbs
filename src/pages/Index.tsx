@@ -8,11 +8,15 @@ import { Link } from 'react-router-dom'
 import { AlertCircle, Clock } from 'lucide-react'
 
 export default function Index() {
-  const { profile, activeRole } = useAuth()
+  const { profile, activeRole, user } = useAuth()
+
+  // Força o papel de admin imediatamente para não piscar a tela de erro enquanto o activeRole carrega
+  const isSuperAdmin = user?.email === 'andersonleandro28@gmail.com'
+  const effectiveRole = isSuperAdmin && !activeRole ? 'admin' : activeRole
 
   const renderKycBanner = () => {
     if (!profile) return null
-    if (activeRole === 'admin' || activeRole === 'staff') return null
+    if (effectiveRole === 'admin' || effectiveRole === 'staff') return null
     if (profile.kyc_status === 'approved') return null
 
     let alertConfig = {
@@ -74,11 +78,11 @@ export default function Index() {
   return (
     <div className="space-y-6">
       {renderKycBanner()}
-      {activeRole === 'admin' || activeRole === 'staff' ? (
+      {effectiveRole === 'admin' || effectiveRole === 'staff' ? (
         <AdminDashboard />
-      ) : activeRole === 'borrower' ? (
+      ) : effectiveRole === 'borrower' ? (
         <BorrowerDashboard />
-      ) : activeRole === 'investor' ? (
+      ) : effectiveRole === 'investor' ? (
         <InvestorDashboard />
       ) : (
         <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
