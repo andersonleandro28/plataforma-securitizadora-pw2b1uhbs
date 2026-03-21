@@ -66,14 +66,8 @@ const App = () => (
                 </RoleGuard>
               }
             />
-            <Route
-              path="/debentures"
-              element={
-                <RoleGuard allowedRoles={['admin', 'staff']}>
-                  <Debentures />
-                </RoleGuard>
-              }
-            />
+            {/* Rota de debentures sem RoleGuard para evitar bloqueios conforme plano de ação */}
+            <Route path="/debentures" element={<Debentures />} />
             <Route
               path="/investments"
               element={
