@@ -21,10 +21,10 @@ Deno.serve(async (req: Request) => {
       .single()
     if (opErr || !op) throw new Error('Operation not found')
 
-    // Fetch total portfolio value (excluding reprovado/cancelado) to calculate concentration
+    // Fetch total portfolio value to calculate concentration
     const { data: allOps } = await supabase
       .from('credit_operations')
-      .select('sacado, requested_value')
+      .select('sacado, requested_value, id')
       .in('status', ['aprovado', 'pago', 'em_analise', 'em_triagem', 'aguardando_formalizacao'])
 
     let totalPortfolio = 0
@@ -32,16 +32,15 @@ Deno.serve(async (req: Request) => {
     const sacadoName = op.sacado
 
     if (allOps) {
-      allOps.forEach((o: any) => {
+      for (const o of allOps) {
         const val = Number(o.requested_value || 0)
         totalPortfolio += val
         if (o.sacado === sacadoName) {
           sacadoTotal += val
         }
-      })
+      }
     }
 
-    // Add current op if not already in the list
     if (!allOps?.find((o: any) => o.id === operation_id)) {
       totalPortfolio += Number(op.requested_value || 0)
       sacadoTotal += Number(op.requested_value || 0)
@@ -49,7 +48,7 @@ Deno.serve(async (req: Request) => {
 
     const concentration = totalPortfolio > 0 ? (sacadoTotal / totalPortfolio) * 100 : 0
 
-    // Fetch Serasa Score (Call internal integration function)
+    // Fetch Serasa Score
     const document = sacado_document || op.document_number
     const serasaRes = await fetch(`${supabaseUrl}/functions/v1/serasa-integration`, {
       method: 'POST',
@@ -77,18 +76,17 @@ Deno.serve(async (req: Request) => {
       Math.round((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
     )
 
-    // SIO Calculation (Score Interno de Operação)
     let sio = 0
     const triggers: string[] = []
     let isHardRule = false
 
-    // 1. Serasa Score (Peso 50%)
+    // 1. Serasa Score
     if (serasa_score > 700) sio += 50
     else if (serasa_score >= 500) sio += 35
     else if (serasa_score >= 300) sio += 20
     else sio += 0
 
-    // 2. Apontamentos (Peso 20%)
+    // 2. Apontamentos
     if (bankruptcies > 0) {
       triggers.push('Recuperação Judicial / Falência detectada.')
       isHardRule = true
@@ -100,14 +98,14 @@ Deno.serve(async (req: Request) => {
       sio += 20
     }
 
-    // 3. Prazo (Peso 15%)
+    // 3. Prazo
     if (termDays <= 30) sio += 15
     else if (termDays <= 60) sio += 9
     else sio += 3
 
     if (termDays > 60) triggers.push(`Prazo alongado (${termDays} dias)`)
 
-    // 4. Concentração (Peso 15%)
+    // 4. Concentração
     if (concentration > 15) {
       triggers.push(`Concentração no Sacado excede 15% (Atual: ${concentration.toFixed(1)}%)`)
     } else {
@@ -120,7 +118,7 @@ Deno.serve(async (req: Request) => {
       isHardRule = true
     }
 
-    // 5. Limite de Crédito Dinâmico (Dynamic Credit Limit Verification)
+    // 5. Limite de Crédito Dinâmico
     const { data: profile } = await supabase
       .from('profiles')
       .select('credit_limit')
@@ -136,28 +134,29 @@ Deno.serve(async (req: Request) => {
     let usedCredit = 0
     let dynamicBonus = 0
 
-    historyOps?.forEach((o: any) => {
-      if (o.status === 'liquidado') {
-        dynamicBonus += Number(o.requested_value || 0) * 0.2 // 20% increase in limit for good payment history
-      } else if (
-        [
-          'em_analise',
-          'em_triagem',
-          'pendencia_documental',
-          'aprovado',
-          'aguardando_formalizacao',
-          'pago',
-        ].includes(o.status)
-      ) {
-        if (o.id !== operation_id) {
-          usedCredit += Number(o.requested_value || 0)
+    if (historyOps) {
+      for (const o of historyOps) {
+        if (o.status === 'liquidado') {
+          dynamicBonus += Number(o.requested_value || 0) * 0.2
+        } else if (
+          [
+            'em_analise',
+            'em_triagem',
+            'pendencia_documental',
+            'aprovado',
+            'aguardando_formalizacao',
+            'pago',
+          ].includes(o.status)
+        ) {
+          if (o.id !== operation_id) {
+            usedCredit += Number(o.requested_value || 0)
+          }
         }
       }
-    })
+    }
 
     const finalCreditLimit = baseLimit + dynamicBonus
 
-    // Persist dynamic limit if it changed
     if (finalCreditLimit !== baseLimit) {
       await supabase
         .from('profiles')
@@ -176,12 +175,10 @@ Deno.serve(async (req: Request) => {
 
     if (isHardRule) {
       suggestion = 'Reprovação Sugerida'
-      // Auto-reprove action
-      const { error: updErr } = await supabase
+      await supabase
         .from('credit_operations')
         .update({ status: 'reprovado' })
         .eq('id', operation_id)
-      if (updErr) console.error('Error auto reproving:', updErr)
       triggers.push('Operação Reprovada Automaticamente (Hard Rule)')
     } else if (sio < 50) {
       suggestion = 'Reprovação Sugerida'
@@ -192,7 +189,6 @@ Deno.serve(async (req: Request) => {
       suggestion = 'Aprovação Sugerida'
     }
 
-    // Identify user caller for audit trail
     const authHeader = req.headers.get('Authorization')
     let userId = null
     if (authHeader) {
@@ -203,7 +199,6 @@ Deno.serve(async (req: Request) => {
       if (userResp?.user) userId = userResp.user.id
     }
 
-    // Insert into risk_analysis_history
     const { data: riskRecord, error: riskErr } = await supabase
       .from('risk_analysis_history')
       .insert({
