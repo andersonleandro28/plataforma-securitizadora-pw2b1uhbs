@@ -87,14 +87,38 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
           .order('changed_at', { ascending: false }),
         supabase
           .from('contract_versions')
-          .select('*, created_by:profiles(full_name)')
+          .select('*') // Manual join below to avoid HTTP 400 schema cache error
           .eq('operation_id', opId)
           .order('version_number', { ascending: false }),
       ])
+
       setDocs(docsRes.data || [])
       setCalc(calcRes.data || null)
       setHistory(histRes.data || [])
-      setVersions(verRes.data || [])
+
+      let fetchedVersions = verRes.data || []
+
+      // Manual join for profiles to ensure robustness against schema cache latency
+      if (fetchedVersions.length > 0) {
+        const userIds = [
+          ...new Set(fetchedVersions.map((v: any) => v.created_by).filter(Boolean)),
+        ] as string[]
+        if (userIds.length > 0) {
+          const { data: profilesData } = await supabase
+            .from('profiles')
+            .select('id, full_name')
+            .in('id', userIds)
+
+          if (profilesData) {
+            fetchedVersions = fetchedVersions.map((v: any) => ({
+              ...v,
+              created_by: profilesData.find((p: any) => p.id === v.created_by) || null,
+            }))
+          }
+        }
+      }
+
+      setVersions(fetchedVersions)
     }
     setLoading(false)
   }
