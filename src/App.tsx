@@ -18,6 +18,7 @@ import Trustee from './pages/Trustee'
 import Treasury from './pages/Treasury'
 import Profile from './pages/Profile'
 import Users from './pages/admin/Users'
+import FinancialParameters from './pages/admin/FinancialParameters'
 import KycOnboarding from './pages/KycOnboarding'
 import { AuthGuard } from './components/auth/AuthGuard'
 import { RoleGuard } from './components/auth/RoleGuard'
@@ -39,7 +40,6 @@ const App = () => (
               </AuthGuard>
             }
           >
-            {/* Rota inicial sem RoleGuard para acesso imediato */}
             <Route path="/" element={<Index />} />
 
             <Route
@@ -66,7 +66,6 @@ const App = () => (
                 </RoleGuard>
               }
             />
-            {/* Rota de debentures sem RoleGuard para evitar bloqueios conforme plano de ação */}
             <Route path="/debentures" element={<Debentures />} />
             <Route
               path="/investments"
@@ -97,6 +96,14 @@ const App = () => (
               element={
                 <RoleGuard allowedRoles={['admin']}>
                   <Users />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/admin/parameters"
+              element={
+                <RoleGuard allowedRoles={['admin']}>
+                  <FinancialParameters />
                 </RoleGuard>
               }
             />

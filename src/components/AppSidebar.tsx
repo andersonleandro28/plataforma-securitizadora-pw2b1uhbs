@@ -9,6 +9,7 @@ import {
   PieChart,
   Users as UsersIcon,
   TrendingUp,
+  Settings2,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -37,13 +38,19 @@ const allNavItems = [
     roles: ['admin'],
   },
   {
+    title: 'Parâmetros Financeiros',
+    path: '/admin/parameters',
+    icon: Settings2,
+    roles: ['admin'],
+  },
+  {
     title: 'Compliance & KYC',
     path: '/onboarding',
     icon: ShieldCheck,
     roles: ['admin', 'staff'],
   },
   {
-    title: 'Operações (Lastro)',
+    title: 'Mesa de Operações',
     path: '/operations',
     icon: FileText,
     roles: ['admin', 'staff'],
