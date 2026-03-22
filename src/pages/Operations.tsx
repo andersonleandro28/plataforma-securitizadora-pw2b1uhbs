@@ -33,9 +33,7 @@ export default function Operations() {
     setLoading(true)
     const { data } = await supabase
       .from('credit_operations')
-      .select(
-        '*, profiles!credit_operations_borrower_id_fkey(full_name), operation_calculations(net_value)',
-      )
+      .select('*, profiles(full_name), operation_calculations(net_value)')
       .order('created_at', { ascending: false })
 
     if (data) setOperations(data)

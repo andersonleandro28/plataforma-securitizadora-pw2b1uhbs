@@ -41,9 +41,7 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
     setLoading(true)
     const { data: operation } = await supabase
       .from('credit_operations')
-      .select(
-        '*, profiles!credit_operations_borrower_id_fkey(full_name, email, document_number, phone)',
-      )
+      .select('*, profiles(full_name, email, document_number, phone)')
       .eq('id', opId)
       .single()
     if (operation) {
@@ -54,7 +52,7 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
         supabase.from('operation_calculations').select('*').eq('operation_id', opId).maybeSingle(),
         supabase
           .from('operation_status_history')
-          .select('*, changed_by:profiles!operation_status_history_changed_by_fkey(full_name)')
+          .select('*, changed_by:profiles(full_name)')
           .eq('operation_id', opId)
           .order('changed_at', { ascending: false }),
       ])
