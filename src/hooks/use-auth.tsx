@@ -158,15 +158,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             setAvailableRoles(uniqueRoles)
 
             const currentActive = sessionStorage.getItem('activeRole') as AppRole | null
+
             if (uniqueRoles.length === 1) {
               setActiveRole(uniqueRoles[0])
             } else if (uniqueRoles.length > 1) {
-              if (currentActive && !uniqueRoles.includes(currentActive)) {
-                setActiveRole(uniqueRoles[0]) // Auto-select first available if stored is invalid
-              } else if (currentActive) {
+              // Se há múltiplos papéis e o usuário já selecionou um válido, mantém
+              if (currentActive && uniqueRoles.includes(currentActive)) {
                 setActiveRole(currentActive)
               } else {
-                setActiveRole(uniqueRoles[0])
+                // Caso contrário (primeiro login ou valor inválido), deixa nulo para forçar a escolha
+                setActiveRole(null)
               }
             } else {
               setActiveRole(null)

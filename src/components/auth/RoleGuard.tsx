@@ -8,7 +8,7 @@ interface RoleGuardProps {
 }
 
 export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
-  const { user, profile, activeRole, availableRoles, loading } = useAuth()
+  const { user, profile, activeRole, loading } = useAuth()
 
   // 1. PASSE LIVRE ABSOLUTO E IMEDIATO PARA SUPER ADMIN
   // Ignora completamente qualquer estado de "loading" ou banco de dados se o usuário já estiver identificado
@@ -30,14 +30,13 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
     return null
   }
 
-  // 3. Avaliação síncrona e direta das permissões reais vs em cache
-  const roleToCheck =
-    activeRole || (availableRoles && availableRoles.length > 0 ? availableRoles[0] : null)
+  // 3. Avaliação síncrona e direta das permissões baseada apenas no papel ativamente selecionado
+  const roleToCheck = activeRole
   const hasAccess = roleToCheck && allowedRoles.includes(roleToCheck)
 
   // Fallback seguro caso o sessionStorage (cache) esteja corrompido mas o perfil real no banco tenha o acesso
   let hasFallbackAccess = false
-  if (profile) {
+  if (profile && !roleToCheck) {
     hasFallbackAccess = allowedRoles.some(
       (role) =>
         (role === 'admin' && (profile.is_admin || profile.role === 'admin')) ||
