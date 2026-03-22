@@ -1,11 +1,17 @@
 // AVOID UPDATING THIS FILE DIRECTLY. It is automatically generated.
-export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
 
 export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: '14.4'
+    PostgrestVersion: "14.4"
   }
   public: {
     Tables: {
@@ -24,6 +30,36 @@ export type Database = {
           created_at?: string
           id?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      audit_logs: {
+        Row: {
+          action: string
+          created_at: string | null
+          details: Json | null
+          entity_id: string | null
+          entity_type: string
+          id: string
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          details?: Json | null
+          entity_id?: string | null
+          entity_type: string
+          id?: string
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          details?: Json | null
+          entity_id?: string | null
+          entity_type?: string
+          id?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -60,11 +96,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'border_items_border_id_fkey'
-            columns: ['border_id']
+            foreignKeyName: "border_items_border_id_fkey"
+            columns: ["border_id"]
             isOneToOne: false
-            referencedRelation: 'borders'
-            referencedColumns: ['id']
+            referencedRelation: "borders"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -95,6 +131,63 @@ export type Database = {
           id?: string
           items_count?: number | null
           status?: string
+        }
+        Relationships: []
+      }
+      credit_operations: {
+        Row: {
+          borrower_id: string
+          cedente: string
+          created_at: string | null
+          document_number: string
+          due_date: string
+          face_value: number
+          id: string
+          installments: number | null
+          issue_date: string
+          observations: string | null
+          receivable_type: string
+          receivable_type_other: string | null
+          requested_value: number
+          sacado: string
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          borrower_id: string
+          cedente: string
+          created_at?: string | null
+          document_number: string
+          due_date: string
+          face_value: number
+          id?: string
+          installments?: number | null
+          issue_date: string
+          observations?: string | null
+          receivable_type: string
+          receivable_type_other?: string | null
+          requested_value: number
+          sacado: string
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          borrower_id?: string
+          cedente?: string
+          created_at?: string | null
+          document_number?: string
+          due_date?: string
+          face_value?: number
+          id?: string
+          installments?: number | null
+          issue_date?: string
+          observations?: string | null
+          receivable_type?: string
+          receivable_type_other?: string | null
+          requested_value?: number
+          sacado?: string
+          status?: string | null
+          updated_at?: string | null
         }
         Relationships: []
       }
@@ -131,11 +224,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'debenture_series_debenture_id_fkey'
-            columns: ['debenture_id']
+            foreignKeyName: "debenture_series_debenture_id_fkey"
+            columns: ["debenture_id"]
             isOneToOne: false
-            referencedRelation: 'debentures'
-            referencedColumns: ['id']
+            referencedRelation: "debentures"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -175,11 +268,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'debenture_subscriptions_series_id_fkey'
-            columns: ['series_id']
+            foreignKeyName: "debenture_subscriptions_series_id_fkey"
+            columns: ["series_id"]
             isOneToOne: false
-            referencedRelation: 'debenture_series'
-            referencedColumns: ['id']
+            referencedRelation: "debenture_series"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -207,6 +300,81 @@ export type Database = {
           issue_date?: string | null
           issuer_name?: string
           total_volume?: number
+        }
+        Relationships: []
+      }
+      financial_parameters: {
+        Row: {
+          ad_valorem_base: string | null
+          ad_valorem_rate: number | null
+          analysis_fee: number | null
+          analysis_fee_type: string | null
+          collection_fee: number | null
+          default_interest_rate: number | null
+          discount_rate_monthly: number | null
+          grace_period_days: number | null
+          id: string
+          interest_rate_monthly: number | null
+          iof_daily_rate: number | null
+          iof_fixed_rate: number | null
+          max_operation_value: number | null
+          max_term_days: number | null
+          min_operation_value: number | null
+          min_term_days: number | null
+          penalty_rate: number | null
+          receivable_type: string
+          structuring_fee: number | null
+          structuring_fee_type: string | null
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          ad_valorem_base?: string | null
+          ad_valorem_rate?: number | null
+          analysis_fee?: number | null
+          analysis_fee_type?: string | null
+          collection_fee?: number | null
+          default_interest_rate?: number | null
+          discount_rate_monthly?: number | null
+          grace_period_days?: number | null
+          id?: string
+          interest_rate_monthly?: number | null
+          iof_daily_rate?: number | null
+          iof_fixed_rate?: number | null
+          max_operation_value?: number | null
+          max_term_days?: number | null
+          min_operation_value?: number | null
+          min_term_days?: number | null
+          penalty_rate?: number | null
+          receivable_type: string
+          structuring_fee?: number | null
+          structuring_fee_type?: string | null
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          ad_valorem_base?: string | null
+          ad_valorem_rate?: number | null
+          analysis_fee?: number | null
+          analysis_fee_type?: string | null
+          collection_fee?: number | null
+          default_interest_rate?: number | null
+          discount_rate_monthly?: number | null
+          grace_period_days?: number | null
+          id?: string
+          interest_rate_monthly?: number | null
+          iof_daily_rate?: number | null
+          iof_fixed_rate?: number | null
+          max_operation_value?: number | null
+          max_term_days?: number | null
+          min_operation_value?: number | null
+          min_term_days?: number | null
+          penalty_rate?: number | null
+          receivable_type?: string
+          structuring_fee?: number | null
+          structuring_fee_type?: string | null
+          updated_at?: string | null
+          updated_by?: string | null
         }
         Relationships: []
       }
@@ -261,11 +429,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'investment_products_series_id_fkey'
-            columns: ['series_id']
+            foreignKeyName: "investment_products_series_id_fkey"
+            columns: ["series_id"]
             isOneToOne: false
-            referencedRelation: 'debenture_series'
-            referencedColumns: ['id']
+            referencedRelation: "debenture_series"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -305,6 +473,185 @@ export type Database = {
         }
         Relationships: []
       }
+      operation_calculations: {
+        Row: {
+          ad_valorem_value: number | null
+          analysis_value: number | null
+          calculated_at: string | null
+          calculation_memory: Json | null
+          discount_value: number | null
+          effective_cost_rate: number | null
+          id: string
+          interest_value: number | null
+          iof_daily_value: number | null
+          iof_fixed_value: number | null
+          net_value: number | null
+          operation_id: string | null
+          structuring_value: number | null
+          term_days: number | null
+          total_discounts: number | null
+        }
+        Insert: {
+          ad_valorem_value?: number | null
+          analysis_value?: number | null
+          calculated_at?: string | null
+          calculation_memory?: Json | null
+          discount_value?: number | null
+          effective_cost_rate?: number | null
+          id?: string
+          interest_value?: number | null
+          iof_daily_value?: number | null
+          iof_fixed_value?: number | null
+          net_value?: number | null
+          operation_id?: string | null
+          structuring_value?: number | null
+          term_days?: number | null
+          total_discounts?: number | null
+        }
+        Update: {
+          ad_valorem_value?: number | null
+          analysis_value?: number | null
+          calculated_at?: string | null
+          calculation_memory?: Json | null
+          discount_value?: number | null
+          effective_cost_rate?: number | null
+          id?: string
+          interest_value?: number | null
+          iof_daily_value?: number | null
+          iof_fixed_value?: number | null
+          net_value?: number | null
+          operation_id?: string | null
+          structuring_value?: number | null
+          term_days?: number | null
+          total_discounts?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operation_calculations_operation_id_fkey"
+            columns: ["operation_id"]
+            isOneToOne: true
+            referencedRelation: "credit_operations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      operation_documents: {
+        Row: {
+          category: string | null
+          file_name: string
+          file_path: string
+          file_size: number
+          file_type: string
+          id: string
+          operation_id: string | null
+          uploaded_at: string | null
+          uploaded_by: string | null
+        }
+        Insert: {
+          category?: string | null
+          file_name: string
+          file_path: string
+          file_size: number
+          file_type: string
+          id?: string
+          operation_id?: string | null
+          uploaded_at?: string | null
+          uploaded_by?: string | null
+        }
+        Update: {
+          category?: string | null
+          file_name?: string
+          file_path?: string
+          file_size?: number
+          file_type?: string
+          id?: string
+          operation_id?: string | null
+          uploaded_at?: string | null
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operation_documents_operation_id_fkey"
+            columns: ["operation_id"]
+            isOneToOne: false
+            referencedRelation: "credit_operations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      operation_status_history: {
+        Row: {
+          borrower_observation: string | null
+          changed_at: string | null
+          changed_by: string | null
+          id: string
+          internal_observation: string | null
+          new_status: string
+          old_status: string | null
+          operation_id: string | null
+        }
+        Insert: {
+          borrower_observation?: string | null
+          changed_at?: string | null
+          changed_by?: string | null
+          id?: string
+          internal_observation?: string | null
+          new_status: string
+          old_status?: string | null
+          operation_id?: string | null
+        }
+        Update: {
+          borrower_observation?: string | null
+          changed_at?: string | null
+          changed_by?: string | null
+          id?: string
+          internal_observation?: string | null
+          new_status?: string
+          old_status?: string | null
+          operation_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operation_status_history_operation_id_fkey"
+            columns: ["operation_id"]
+            isOneToOne: false
+            referencedRelation: "credit_operations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      parameter_history: {
+        Row: {
+          changed_at: string | null
+          changed_by: string | null
+          changes: Json
+          id: string
+          parameter_id: string | null
+        }
+        Insert: {
+          changed_at?: string | null
+          changed_by?: string | null
+          changes: Json
+          id?: string
+          parameter_id?: string | null
+        }
+        Update: {
+          changed_at?: string | null
+          changed_by?: string | null
+          changes?: Json
+          id?: string
+          parameter_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parameter_history_parameter_id_fkey"
+            columns: ["parameter_id"]
+            isOneToOne: false
+            referencedRelation: "financial_parameters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           address_city: string | null
@@ -326,7 +673,7 @@ export type Database = {
           is_investor: boolean | null
           is_pep: boolean | null
           is_staff: boolean | null
-          kyc_status: Database['public']['Enums']['kyc_status'] | null
+          kyc_status: Database["public"]["Enums"]["kyc_status"] | null
           lgpd_accepted: boolean | null
           lgpd_accepted_at: string | null
           pf_birth_city: string | null
@@ -349,7 +696,7 @@ export type Database = {
           pj_tax_regime: string | null
           pj_trade_name: string | null
           requires_password_change: boolean | null
-          role: Database['public']['Enums']['app_role']
+          role: Database["public"]["Enums"]["app_role"]
           updated_at: string | null
         }
         Insert: {
@@ -372,7 +719,7 @@ export type Database = {
           is_investor?: boolean | null
           is_pep?: boolean | null
           is_staff?: boolean | null
-          kyc_status?: Database['public']['Enums']['kyc_status'] | null
+          kyc_status?: Database["public"]["Enums"]["kyc_status"] | null
           lgpd_accepted?: boolean | null
           lgpd_accepted_at?: string | null
           pf_birth_city?: string | null
@@ -395,7 +742,7 @@ export type Database = {
           pj_tax_regime?: string | null
           pj_trade_name?: string | null
           requires_password_change?: boolean | null
-          role?: Database['public']['Enums']['app_role']
+          role?: Database["public"]["Enums"]["app_role"]
           updated_at?: string | null
         }
         Update: {
@@ -418,7 +765,7 @@ export type Database = {
           is_investor?: boolean | null
           is_pep?: boolean | null
           is_staff?: boolean | null
-          kyc_status?: Database['public']['Enums']['kyc_status'] | null
+          kyc_status?: Database["public"]["Enums"]["kyc_status"] | null
           lgpd_accepted?: boolean | null
           lgpd_accepted_at?: string | null
           pf_birth_city?: string | null
@@ -441,7 +788,7 @@ export type Database = {
           pj_tax_regime?: string | null
           pj_trade_name?: string | null
           requires_password_change?: boolean | null
-          role?: Database['public']['Enums']['app_role']
+          role?: Database["public"]["Enums"]["app_role"]
           updated_at?: string | null
         }
         Relationships: []
@@ -484,8 +831,8 @@ export type Database = {
       is_admin: { Args: never; Returns: boolean }
     }
     Enums: {
-      app_role: 'admin' | 'investor' | 'borrower' | 'staff'
-      kyc_status: 'pending' | 'under_review' | 'approved' | 'rejected'
+      app_role: "admin" | "investor" | "borrower" | "staff"
+      kyc_status: "pending" | "under_review" | "approved" | "rejected"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -493,31 +840,33 @@ export type Database = {
   }
 }
 
-type DatabaseWithoutInternals = Omit<Database, '__InternalSupabase'>
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
 
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, 'public'>]
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
-    | keyof (DefaultSchema['Tables'] & DefaultSchema['Views'])
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
-        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
-      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])[TableName] extends {
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
     ? R
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema['Tables'] & DefaultSchema['Views'])
-    ? (DefaultSchema['Tables'] & DefaultSchema['Views'])[DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
         Row: infer R
       }
       ? R
@@ -526,23 +875,23 @@ export type Tables<
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema['Tables']
+    | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Insert: infer I
     }
     ? I
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema['Tables']
-    ? DefaultSchema['Tables'][DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
         Insert: infer I
       }
       ? I
@@ -551,23 +900,23 @@ export type TablesInsert<
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema['Tables']
+    | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U
     }
     ? U
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema['Tables']
-    ? DefaultSchema['Tables'][DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
         Update: infer U
       }
       ? U
@@ -576,46 +925,47 @@ export type TablesUpdate<
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema['Enums']
+    | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
   EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums']
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
     : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums'][EnumName]
-  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema['Enums']
-    ? DefaultSchema['Enums'][DefaultSchemaEnumNameOrOptions]
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
     : never
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema['CompositeTypes']
+    | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes']
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
     : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes'][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema['CompositeTypes']
-    ? DefaultSchema['CompositeTypes'][PublicCompositeTypeNameOrOptions]
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
 
 export const Constants = {
   public: {
     Enums: {
-      app_role: ['admin', 'investor', 'borrower', 'staff'],
-      kyc_status: ['pending', 'under_review', 'approved', 'rejected'],
+      app_role: ["admin", "investor", "borrower", "staff"],
+      kyc_status: ["pending", "under_review", "approved", "rejected"],
     },
   },
 } as const
+
 
 // ====== DATABASE EXTENDED CONTEXT (auto-generated) ======
 // This section contains actual PostgreSQL column types, constraints, RLS policies,
@@ -631,6 +981,14 @@ export const Constants = {
 //   id: uuid (not null, default: gen_random_uuid())
 //   user_id: uuid (not null)
 //   created_at: timestamp with time zone (not null, default: now())
+// Table: audit_logs
+//   id: uuid (not null, default: gen_random_uuid())
+//   user_id: uuid (nullable)
+//   action: text (not null)
+//   entity_type: text (not null)
+//   entity_id: uuid (nullable)
+//   details: jsonb (nullable)
+//   created_at: timestamp with time zone (nullable, default: now())
 // Table: border_items
 //   id: uuid (not null, default: gen_random_uuid())
 //   border_id: uuid (not null)
@@ -648,6 +1006,23 @@ export const Constants = {
 //   status: text (not null)
 //   items_count: integer (nullable, default: 0)
 //   created_at: timestamp with time zone (not null, default: now())
+// Table: credit_operations
+//   id: uuid (not null, default: gen_random_uuid())
+//   borrower_id: uuid (not null)
+//   receivable_type: text (not null)
+//   receivable_type_other: text (nullable)
+//   cedente: text (not null)
+//   sacado: text (not null)
+//   document_number: text (not null)
+//   face_value: numeric (not null)
+//   requested_value: numeric (not null)
+//   issue_date: date (not null)
+//   due_date: date (not null)
+//   installments: integer (nullable, default: 1)
+//   observations: text (nullable)
+//   status: text (nullable, default: 'enviado'::text)
+//   created_at: timestamp with time zone (nullable, default: now())
+//   updated_at: timestamp with time zone (nullable, default: now())
 // Table: debenture_series
 //   id: uuid (not null, default: gen_random_uuid())
 //   debenture_id: uuid (not null)
@@ -674,6 +1049,29 @@ export const Constants = {
 //   issue_date: date (nullable)
 //   created_at: timestamp with time zone (not null, default: now())
 //   created_by: uuid (nullable)
+// Table: financial_parameters
+//   id: uuid (not null, default: gen_random_uuid())
+//   receivable_type: text (not null)
+//   interest_rate_monthly: numeric (nullable, default: 0)
+//   discount_rate_monthly: numeric (nullable, default: 0)
+//   ad_valorem_rate: numeric (nullable, default: 0)
+//   ad_valorem_base: text (nullable, default: 'face_value'::text)
+//   structuring_fee: numeric (nullable, default: 0)
+//   structuring_fee_type: text (nullable, default: 'fixed'::text)
+//   analysis_fee: numeric (nullable, default: 0)
+//   analysis_fee_type: text (nullable, default: 'fixed'::text)
+//   collection_fee: numeric (nullable, default: 0)
+//   penalty_rate: numeric (nullable, default: 0)
+//   default_interest_rate: numeric (nullable, default: 0)
+//   iof_fixed_rate: numeric (nullable, default: 0)
+//   iof_daily_rate: numeric (nullable, default: 0)
+//   min_operation_value: numeric (nullable, default: 0)
+//   max_operation_value: numeric (nullable, default: 0)
+//   min_term_days: integer (nullable, default: 0)
+//   max_term_days: integer (nullable, default: 0)
+//   grace_period_days: integer (nullable, default: 0)
+//   updated_by: uuid (nullable)
+//   updated_at: timestamp with time zone (nullable, default: now())
 // Table: investment_products
 //   id: uuid (not null, default: gen_random_uuid())
 //   title: text (not null)
@@ -699,6 +1097,47 @@ export const Constants = {
 //   reviewed_at: timestamp with time zone (nullable)
 //   reviewed_by: uuid (nullable)
 //   rejection_reason: text (nullable)
+// Table: operation_calculations
+//   id: uuid (not null, default: gen_random_uuid())
+//   operation_id: uuid (nullable)
+//   term_days: integer (nullable)
+//   discount_value: numeric (nullable)
+//   interest_value: numeric (nullable)
+//   ad_valorem_value: numeric (nullable)
+//   structuring_value: numeric (nullable)
+//   analysis_value: numeric (nullable)
+//   iof_fixed_value: numeric (nullable)
+//   iof_daily_value: numeric (nullable)
+//   total_discounts: numeric (nullable)
+//   net_value: numeric (nullable)
+//   effective_cost_rate: numeric (nullable)
+//   calculation_memory: jsonb (nullable)
+//   calculated_at: timestamp with time zone (nullable, default: now())
+// Table: operation_documents
+//   id: uuid (not null, default: gen_random_uuid())
+//   operation_id: uuid (nullable)
+//   file_path: text (not null)
+//   file_name: text (not null)
+//   file_type: text (not null)
+//   file_size: bigint (not null)
+//   category: text (nullable, default: 'comprobatorio'::text)
+//   uploaded_by: uuid (nullable)
+//   uploaded_at: timestamp with time zone (nullable, default: now())
+// Table: operation_status_history
+//   id: uuid (not null, default: gen_random_uuid())
+//   operation_id: uuid (nullable)
+//   old_status: text (nullable)
+//   new_status: text (not null)
+//   changed_by: uuid (nullable)
+//   changed_at: timestamp with time zone (nullable, default: now())
+//   internal_observation: text (nullable)
+//   borrower_observation: text (nullable)
+// Table: parameter_history
+//   id: uuid (not null, default: gen_random_uuid())
+//   parameter_id: uuid (nullable)
+//   changes: jsonb (not null)
+//   changed_by: uuid (nullable)
+//   changed_at: timestamp with time zone (nullable, default: now())
 // Table: profiles
 //   id: uuid (not null)
 //   full_name: text (nullable)
@@ -757,11 +1196,17 @@ export const Constants = {
 // Table: access_logs
 //   PRIMARY KEY access_logs_pkey: PRIMARY KEY (id)
 //   FOREIGN KEY access_logs_user_id_fkey: FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
+// Table: audit_logs
+//   PRIMARY KEY audit_logs_pkey: PRIMARY KEY (id)
+//   FOREIGN KEY audit_logs_user_id_fkey: FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE SET NULL
 // Table: border_items
 //   FOREIGN KEY border_items_border_id_fkey: FOREIGN KEY (border_id) REFERENCES borders(id) ON DELETE CASCADE
 //   PRIMARY KEY border_items_pkey: PRIMARY KEY (id)
 // Table: borders
 //   PRIMARY KEY borders_pkey: PRIMARY KEY (id)
+// Table: credit_operations
+//   FOREIGN KEY credit_operations_borrower_id_fkey: FOREIGN KEY (borrower_id) REFERENCES auth.users(id)
+//   PRIMARY KEY credit_operations_pkey: PRIMARY KEY (id)
 // Table: debenture_series
 //   FOREIGN KEY debenture_series_debenture_id_fkey: FOREIGN KEY (debenture_id) REFERENCES debentures(id) ON DELETE CASCADE
 //   PRIMARY KEY debenture_series_pkey: PRIMARY KEY (id)
@@ -771,6 +1216,10 @@ export const Constants = {
 // Table: debentures
 //   FOREIGN KEY debentures_created_by_fkey: FOREIGN KEY (created_by) REFERENCES auth.users(id)
 //   PRIMARY KEY debentures_pkey: PRIMARY KEY (id)
+// Table: financial_parameters
+//   PRIMARY KEY financial_parameters_pkey: PRIMARY KEY (id)
+//   UNIQUE financial_parameters_receivable_type_key: UNIQUE (receivable_type)
+//   FOREIGN KEY financial_parameters_updated_by_fkey: FOREIGN KEY (updated_by) REFERENCES auth.users(id) ON DELETE SET NULL
 // Table: investment_products
 //   PRIMARY KEY investment_products_pkey: PRIMARY KEY (id)
 //   FOREIGN KEY investment_products_series_id_fkey: FOREIGN KEY (series_id) REFERENCES debenture_series(id) ON DELETE SET NULL
@@ -778,6 +1227,22 @@ export const Constants = {
 //   PRIMARY KEY kyc_documents_pkey: PRIMARY KEY (id)
 //   FOREIGN KEY kyc_documents_reviewed_by_fkey: FOREIGN KEY (reviewed_by) REFERENCES auth.users(id)
 //   FOREIGN KEY kyc_documents_user_id_fkey: FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
+// Table: operation_calculations
+//   FOREIGN KEY operation_calculations_operation_id_fkey: FOREIGN KEY (operation_id) REFERENCES credit_operations(id) ON DELETE CASCADE
+//   UNIQUE operation_calculations_operation_id_key: UNIQUE (operation_id)
+//   PRIMARY KEY operation_calculations_pkey: PRIMARY KEY (id)
+// Table: operation_documents
+//   FOREIGN KEY operation_documents_operation_id_fkey: FOREIGN KEY (operation_id) REFERENCES credit_operations(id) ON DELETE CASCADE
+//   PRIMARY KEY operation_documents_pkey: PRIMARY KEY (id)
+//   FOREIGN KEY operation_documents_uploaded_by_fkey: FOREIGN KEY (uploaded_by) REFERENCES auth.users(id) ON DELETE SET NULL
+// Table: operation_status_history
+//   FOREIGN KEY operation_status_history_changed_by_fkey: FOREIGN KEY (changed_by) REFERENCES auth.users(id) ON DELETE SET NULL
+//   FOREIGN KEY operation_status_history_operation_id_fkey: FOREIGN KEY (operation_id) REFERENCES credit_operations(id) ON DELETE CASCADE
+//   PRIMARY KEY operation_status_history_pkey: PRIMARY KEY (id)
+// Table: parameter_history
+//   FOREIGN KEY parameter_history_changed_by_fkey: FOREIGN KEY (changed_by) REFERENCES auth.users(id) ON DELETE SET NULL
+//   FOREIGN KEY parameter_history_parameter_id_fkey: FOREIGN KEY (parameter_id) REFERENCES financial_parameters(id) ON DELETE CASCADE
+//   PRIMARY KEY parameter_history_pkey: PRIMARY KEY (id)
 // Table: profiles
 //   CHECK profiles_entity_type_check: CHECK ((entity_type = ANY (ARRAY['pf'::text, 'pj'::text])))
 //   FOREIGN KEY profiles_id_fkey: FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE
@@ -792,12 +1257,20 @@ export const Constants = {
 //     WITH CHECK: ((auth.uid() = user_id) OR (auth.role() = 'anon'::text))
 //   Policy "access_logs_select_own" (SELECT, PERMISSIVE) roles={authenticated}
 //     USING: (auth.uid() = user_id)
+// Table: audit_logs
+//   Policy "auth_all_audit_logs" (ALL, PERMISSIVE) roles={authenticated}
+//     USING: true
+//     WITH CHECK: true
 // Table: border_items
 //   Policy "auth_all_border_items" (ALL, PERMISSIVE) roles={authenticated}
 //     USING: true
 //     WITH CHECK: true
 // Table: borders
 //   Policy "auth_all_borders" (ALL, PERMISSIVE) roles={authenticated}
+//     USING: true
+//     WITH CHECK: true
+// Table: credit_operations
+//   Policy "auth_all_credit_operations" (ALL, PERMISSIVE) roles={authenticated}
 //     USING: true
 //     WITH CHECK: true
 // Table: debenture_series
@@ -812,6 +1285,10 @@ export const Constants = {
 //   Policy "auth_all_debentures" (ALL, PERMISSIVE) roles={authenticated}
 //     USING: true
 //     WITH CHECK: true
+// Table: financial_parameters
+//   Policy "auth_all_financial_parameters" (ALL, PERMISSIVE) roles={authenticated}
+//     USING: true
+//     WITH CHECK: true
 // Table: investment_products
 //   Policy "auth_all_investment_products" (ALL, PERMISSIVE) roles={authenticated}
 //     USING: true
@@ -823,6 +1300,22 @@ export const Constants = {
 //     WITH CHECK: (auth.uid() = user_id)
 //   Policy "kyc_docs_select_own" (SELECT, PERMISSIVE) roles={authenticated}
 //     USING: (auth.uid() = user_id)
+// Table: operation_calculations
+//   Policy "auth_all_operation_calculations" (ALL, PERMISSIVE) roles={authenticated}
+//     USING: true
+//     WITH CHECK: true
+// Table: operation_documents
+//   Policy "auth_all_operation_documents" (ALL, PERMISSIVE) roles={authenticated}
+//     USING: true
+//     WITH CHECK: true
+// Table: operation_status_history
+//   Policy "auth_all_operation_status_history" (ALL, PERMISSIVE) roles={authenticated}
+//     USING: true
+//     WITH CHECK: true
+// Table: parameter_history
+//   Policy "auth_all_parameter_history" (ALL, PERMISSIVE) roles={authenticated}
+//     USING: true
+//     WITH CHECK: true
 // Table: profiles
 //   Policy "admin_select_profiles" (SELECT, PERMISSIVE) roles={authenticated}
 //     USING: is_admin()
@@ -854,7 +1347,7 @@ export const Constants = {
 //     RETURN NEW;
 //   END;
 //   $function$
-//
+//   
 // FUNCTION invoke_login_notification()
 //   CREATE OR REPLACE FUNCTION public.invoke_login_notification()
 //    RETURNS trigger
@@ -875,7 +1368,7 @@ export const Constants = {
 //     RETURN NEW;
 //   END;
 //   $function$
-//
+//   
 // FUNCTION is_admin()
 //   CREATE OR REPLACE FUNCTION public.is_admin()
 //    RETURNS boolean
@@ -888,8 +1381,32 @@ export const Constants = {
 //       WHERE id = auth.uid() AND (role = 'admin'::app_role OR is_admin = true)
 //     );
 //   $function$
-//
+//   
+// FUNCTION log_operation_status_change()
+//   CREATE OR REPLACE FUNCTION public.log_operation_status_change()
+//    RETURNS trigger
+//    LANGUAGE plpgsql
+//    SECURITY DEFINER
+//   AS $function$
+//   BEGIN
+//     IF OLD.status IS DISTINCT FROM NEW.status THEN
+//       INSERT INTO public.operation_status_history (operation_id, old_status, new_status, changed_by)
+//       VALUES (NEW.id, OLD.status, NEW.status, auth.uid());
+//     END IF;
+//     RETURN NEW;
+//   END;
+//   $function$
+//   
 
 // --- TRIGGERS ---
 // Table: access_logs
 //   on_access_log_created: CREATE TRIGGER on_access_log_created AFTER INSERT ON public.access_logs FOR EACH ROW EXECUTE FUNCTION invoke_login_notification()
+// Table: credit_operations
+//   on_operation_status_change: CREATE TRIGGER on_operation_status_change AFTER UPDATE ON public.credit_operations FOR EACH ROW EXECUTE FUNCTION log_operation_status_change()
+
+// --- INDEXES ---
+// Table: financial_parameters
+//   CREATE UNIQUE INDEX financial_parameters_receivable_type_key ON public.financial_parameters USING btree (receivable_type)
+// Table: operation_calculations
+//   CREATE UNIQUE INDEX operation_calculations_operation_id_key ON public.operation_calculations USING btree (operation_id)
+
