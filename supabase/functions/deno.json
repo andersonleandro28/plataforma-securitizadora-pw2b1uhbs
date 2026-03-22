@@ -1,6 +1,6 @@
 {
   "_versions": {
-    "serasa-integration": 4,
+    "serasa-integration": 5,
     "send-login-notification": 1,
     "invite-user": 2,
     "public-signup": 1,
@@ -8,6 +8,7 @@
     "extract-debenture-data": 9,
     "batch-import-users": 2,
     "calculate-operation": 2,
-    "send-operation-email": 1
+    "send-operation-email": 1,
+    "calculate-risk": 1
   }
 }

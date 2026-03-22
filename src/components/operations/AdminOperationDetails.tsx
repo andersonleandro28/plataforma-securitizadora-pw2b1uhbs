@@ -20,6 +20,7 @@ import { format } from 'date-fns'
 import { toast } from 'sonner'
 import { Loader2, Download, User, FileText, CheckCircle2, XCircle, AlertCircle } from 'lucide-react'
 import { getStatusBadge } from '../dashboard/BorrowerOperationsList'
+import { RiskDossier } from './RiskDossier'
 
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
@@ -89,7 +90,7 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+      <SheetContent className="w-full sm:max-w-xl md:max-w-2xl overflow-y-auto">
         <SheetHeader className="pb-4 border-b">
           <SheetTitle className="flex justify-between items-center pr-6">
             <span>Gestão de Operação</span>
@@ -198,6 +199,17 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                 </CardContent>
               </Card>
             </div>
+
+            {/* Risk Dossier */}
+            <RiskDossier
+              operationId={op.id}
+              sacadoDocument={op.document_number}
+              onStatusChanged={(s: string) => {
+                setStatusInput(s)
+                fetchData()
+                if (onRefresh) onRefresh()
+              }}
+            />
 
             {/* Calc Memory */}
             <Card className="shadow-none border-primary/20 bg-muted/10">
