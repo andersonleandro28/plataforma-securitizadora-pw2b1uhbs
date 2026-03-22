@@ -1,8 +1,17 @@
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ShieldAlert, ShieldCheck, Activity, RefreshCw, Loader2, AlertTriangle } from 'lucide-react'
+import {
+  ShieldAlert,
+  ShieldCheck,
+  Activity,
+  RefreshCw,
+  Loader2,
+  AlertTriangle,
+  CreditCard,
+} from 'lucide-react'
 import { calculateRisk, getRiskHistory } from '@/services/risk'
+import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 
@@ -15,6 +24,11 @@ interface RiskDossierProps {
 export function RiskDossier({ operationId, sacadoDocument, onStatusChanged }: RiskDossierProps) {
   const [loading, setLoading] = useState(false)
   const [history, setHistory] = useState<any[]>([])
+  const [creditInfo, setCreditInfo] = useState<{
+    limit: number
+    used: number
+    requested: number
+  } | null>(null)
 
   const fetchHistory = async () => {
     try {
@@ -25,8 +39,55 @@ export function RiskDossier({ operationId, sacadoDocument, onStatusChanged }: Ri
     }
   }
 
+  const fetchCreditInfo = async () => {
+    try {
+      const { data: opData } = await supabase
+        .from('credit_operations')
+        .select('borrower_id, requested_value')
+        .eq('id', operationId)
+        .single()
+
+      if (opData) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('credit_limit')
+          .eq('id', opData.borrower_id)
+          .single()
+
+        const { data: usedOps } = await supabase
+          .from('credit_operations')
+          .select('requested_value, id')
+          .eq('borrower_id', opData.borrower_id)
+          .in('status', [
+            'em_analise',
+            'em_triagem',
+            'pendencia_documental',
+            'aprovado',
+            'aguardando_formalizacao',
+            'pago',
+          ])
+
+        let used = 0
+        usedOps?.forEach((o) => {
+          if (o.id !== operationId) {
+            used += Number(o.requested_value || 0)
+          }
+        })
+
+        setCreditInfo({
+          limit: profile?.credit_limit || 100000,
+          used: used,
+          requested: Number(opData.requested_value || 0),
+        })
+      }
+    } catch (err) {
+      console.error('Erro ao buscar info de crédito:', err)
+    }
+  }
+
   useEffect(() => {
     fetchHistory()
+    fetchCreditInfo()
   }, [operationId])
 
   const handleUpdate = async () => {
@@ -35,6 +96,7 @@ export function RiskDossier({ operationId, sacadoDocument, onStatusChanged }: Ri
       const result = await calculateRisk(operationId, sacadoDocument)
       toast.success('Análise de risco executada com sucesso.')
       fetchHistory()
+      fetchCreditInfo() // Refresh credit usage
 
       // Notify parent if the engine automatically reproved the operation based on a hard rule
       if (
@@ -136,6 +198,53 @@ export function RiskDossier({ operationId, sacadoDocument, onStatusChanged }: Ri
                   {format(new Date(latest.created_at), 'dd/MM/yyyy HH:mm')}
                 </p>
               </div>
+
+              {creditInfo && (
+                <div className="p-3 border rounded bg-background col-span-2">
+                  <div className="flex justify-between items-end mb-2">
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold flex items-center gap-1.5">
+                        <CreditCard className="w-3.5 h-3.5" /> Limite de Crédito Dinâmico (Cedente)
+                      </p>
+                      <p className="text-sm font-medium mt-0.5">
+                        R$ {creditInfo.limit.toLocaleString('pt-BR')}
+                      </p>
+                    </div>
+                    <div className="text-right text-xs">
+                      <span className="text-muted-foreground">Utilizado Total: </span>
+                      <span className="font-medium text-destructive">
+                        R$ {(creditInfo.used + creditInfo.requested).toLocaleString('pt-BR')}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-2.5 overflow-hidden flex mt-2">
+                    <div
+                      className="bg-destructive/70 h-full transition-all duration-500"
+                      style={{
+                        width: `${Math.min(100, (creditInfo.used / (creditInfo.limit || 1)) * 100)}%`,
+                      }}
+                      title={`Já Utilizado: R$ ${creditInfo.used.toLocaleString('pt-BR')}`}
+                    />
+                    <div
+                      className="bg-amber-500 h-full transition-all duration-500"
+                      style={{
+                        width: `${Math.min(100, (creditInfo.requested / (creditInfo.limit || 1)) * 100)}%`,
+                      }}
+                      title={`Esta Operação: R$ ${creditInfo.requested.toLocaleString('pt-BR')}`}
+                    />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1.5 text-right flex items-center justify-end gap-2">
+                    <span className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-destructive/70 inline-block"></span>{' '}
+                      Operações Anteriores
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>{' '}
+                      Operação Atual
+                    </span>
+                  </p>
+                </div>
+              )}
             </div>
 
             {latest.triggers && latest.triggers.length > 0 && (

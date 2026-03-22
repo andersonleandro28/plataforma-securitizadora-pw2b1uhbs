@@ -7,10 +7,22 @@ import {
   ShieldAlert,
   Landmark,
   Loader2,
+  PieChart as PieChartIcon,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { supabase } from '@/lib/supabase/client'
 
@@ -24,55 +36,14 @@ export default function AdminDashboard() {
     totalAUM: 0,
     pdl: 0,
     pendingBaixas: 0,
+    revenue: 0,
     cashFlowData: [] as any[],
     concentrations: [] as any[],
     alerts: [] as any[],
+    riskDistribution: [] as any[],
   })
 
   useEffect(() => {
-    const checkMetaMaskConnection = async () => {
-      try {
-        if (typeof window !== 'undefined' && 'ethereum' in window) {
-          const ethereum = (window as any).ethereum
-          if (ethereum && ethereum.isMetaMask) {
-            try {
-              await ethereum.request({ method: 'eth_accounts' })
-            } catch (connectionError) {
-              console.warn('Intercepted MetaMask connection error:', connectionError)
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Safeguard caught an error during MetaMask provider check:', error)
-      }
-    }
-
-    checkMetaMaskConnection()
-
-    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-      const reason = event.reason
-      const isMetaMaskError =
-        reason === 'Failed to connect to MetaMask' ||
-        (reason instanceof Error && reason.message.includes('Failed to connect to MetaMask')) ||
-        (reason &&
-          typeof reason === 'object' &&
-          'message' in reason &&
-          String(reason.message).includes('Failed to connect to MetaMask'))
-
-      if (isMetaMaskError) {
-        event.preventDefault()
-      }
-    }
-
-    const handleError = (event: ErrorEvent) => {
-      if (event.message && event.message.includes('Failed to connect to MetaMask')) {
-        event.preventDefault()
-      }
-    }
-
-    window.addEventListener('unhandledrejection', handleUnhandledRejection)
-    window.addEventListener('error', handleError)
-
     const fetchDashboardData = async () => {
       try {
         const { data: debentures, error } = await supabase.from('debentures').select(`
@@ -138,13 +109,56 @@ export default function AdminDashboard() {
           })
         }
 
+        // BI: Estimated Revenue (Fees)
+        const { data: calcs } = await supabase
+          .from('operation_calculations')
+          .select('total_discounts, credit_operations!inner(status)')
+        let revenue = 0
+        calcs?.forEach((c: any) => {
+          if (
+            c.credit_operations?.status !== 'reprovado' &&
+            c.credit_operations?.status !== 'cancelado'
+          ) {
+            revenue += Number(c.total_discounts || 0)
+          }
+        })
+
+        // BI: Risk Distribution
+        const { data: risks } = await supabase
+          .from('risk_analysis_history')
+          .select('operation_id, risk_level')
+          .order('created_at', { ascending: false })
+        const riskMap = new Map()
+        risks?.forEach((r) => {
+          if (!riskMap.has(r.operation_id) && r.risk_level) {
+            riskMap.set(r.operation_id, r.risk_level)
+          }
+        })
+
+        let verde = 0,
+          amarelo = 0,
+          vermelho = 0
+        riskMap.forEach((level) => {
+          if (level === 'Aprovação Sugerida') verde++
+          else if (level === 'Análise Manual') amarelo++
+          else if (level === 'Reprovação Sugerida') vermelho++
+        })
+
+        const riskDistribution = [
+          { name: 'Aprovação Sugerida', value: verde, fill: '#10b981' },
+          { name: 'Análise Manual', value: amarelo, fill: '#f59e0b' },
+          { name: 'Reprovação Sugerida', value: vermelho, fill: '#ef4444' },
+        ].filter((d) => d.value > 0)
+
         setMetrics({
           totalAUM,
           pdl: totalAUM > 0 ? 1.2 : 0,
           pendingBaixas: debentures?.length || 0,
+          revenue,
           cashFlowData,
           concentrations,
           alerts,
+          riskDistribution,
         })
       } catch (error) {
         console.error(error)
@@ -154,11 +168,6 @@ export default function AdminDashboard() {
     }
 
     fetchDashboardData()
-
-    return () => {
-      window.removeEventListener('unhandledrejection', handleUnhandledRejection)
-      window.removeEventListener('error', handleError)
-    }
   }, [])
 
   const formatCurrency = (val: number) =>
@@ -177,11 +186,11 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto animate-in fade-in duration-500">
+    <div className="space-y-6 max-w-7xl mx-auto animate-in fade-in duration-500 pb-10">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Executive Dashboard</h1>
         <p className="text-muted-foreground">
-          Visão geral do fundo e saúde financeira real das emissões processadas.
+          Visão geral do fundo, saúde financeira real das emissões e análise de risco (BI).
         </p>
       </div>
 
@@ -194,23 +203,21 @@ export default function AdminDashboard() {
           <CardContent>
             <div className="text-2xl font-bold font-mono">{formatCurrency(metrics.totalAUM)}</div>
             <p className="text-xs text-secondary mt-1 flex items-center gap-1">
-              <ArrowUpRight className="h-3 w-3" /> Calculado via extrato
+              <ArrowUpRight className="h-3 w-3" /> Volume sob gestão
             </p>
           </CardContent>
         </Card>
 
         <Card className="hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Status ALM</CardTitle>
-            <Scale className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Receita Estimada (Fees)</CardTitle>
+            <Landmark className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-secondary">
-              {metrics.totalAUM > 0 ? 'Positivo' : 'N/A'}
+            <div className="text-2xl font-bold text-emerald-600">
+              {formatCurrency(metrics.revenue)}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {metrics.totalAUM > 0 ? 'Cobertura adequada ao risco' : 'Aguardando operações'}
-            </p>
+            <p className="text-xs text-muted-foreground mt-1">Taxas e deságios acumulados</p>
           </CardContent>
         </Card>
 
@@ -228,7 +235,7 @@ export default function AdminDashboard() {
         <Card className="hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Escrituras Base</CardTitle>
-            <Landmark className="h-4 w-4 text-muted-foreground" />
+            <Scale className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold font-mono">{metrics.pendingBaixas}</div>
@@ -238,7 +245,7 @@ export default function AdminDashboard() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-7">
-        <Card className="col-span-4">
+        <Card className="col-span-1 md:col-span-4 lg:col-span-4">
           <CardHeader>
             <CardTitle>Projeção de Maturidade (ALM)</CardTitle>
             <CardDescription>Volume vincendo projetado (Próximos meses com dados)</CardDescription>
@@ -274,19 +281,64 @@ export default function AdminDashboard() {
                 </AreaChart>
               </ChartContainer>
             ) : (
-              <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
+              <div className="flex h-full items-center justify-center text-muted-foreground text-sm border border-dashed rounded-md bg-muted/20">
                 Aguardando inserção de séries para projeção.
               </div>
             )}
           </CardContent>
         </Card>
 
-        <Card className="col-span-3">
-          <CardHeader>
-            <CardTitle>AI Insights & Portfólio</CardTitle>
-            <CardDescription>Análises extraídas da base real</CardDescription>
+        <Card className="col-span-1 md:col-span-3 lg:col-span-3">
+          <CardHeader className="pb-0">
+            <CardTitle className="flex items-center gap-2">
+              <PieChartIcon className="w-5 h-5 text-primary" /> Risco da Carteira
+            </CardTitle>
+            <CardDescription>Distribuição Baseada no Motor SIO</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="flex justify-center items-center h-[280px] pb-6 mt-4">
+            {metrics.riskDistribution.length > 0 ? (
+              <ChartContainer config={{}} className="w-full h-full">
+                <PieChart>
+                  <Pie
+                    data={metrics.riskDistribution}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={2}
+                    stroke="none"
+                  >
+                    {metrics.riskDistribution.map((entry: any, index: number) => (
+                      <Cell key={`cell-${index}`} fill={entry.fill} />
+                    ))}
+                  </Pie>
+                  <ChartTooltip content={<ChartTooltipContent hideLabel />} />
+                  <Legend
+                    verticalAlign="bottom"
+                    height={36}
+                    iconType="circle"
+                    wrapperStyle={{ fontSize: '12px' }}
+                  />
+                </PieChart>
+              </ChartContainer>
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-muted-foreground text-sm border border-dashed rounded-md bg-muted/20">
+                Sem dados de risco processados.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>AI Insights</CardTitle>
+            <CardDescription>Anomalias e alertas de vencimento da base real</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
             {metrics.alerts.length > 0 ? (
               metrics.alerts.map((alert, idx) => (
                 <Alert
@@ -307,45 +359,50 @@ export default function AdminDashboard() {
                   Portfólio Saudável
                 </AlertTitle>
                 <AlertDescription className="text-xs mt-1 text-muted-foreground">
-                  Sem anomalias de risco ou alertas de curto prazo.
+                  Sem anomalias de risco crítico ou alertas de curto prazo.
                 </AlertDescription>
               </Alert>
             )}
+          </CardContent>
+        </Card>
 
-            <div>
-              <h4 className="text-sm font-medium mb-3">Concentração por Emissor (Top 3)</h4>
-              {metrics.concentrations.length > 0 ? (
-                <div className="space-y-3">
-                  {metrics.concentrations.map((conc, idx) => (
-                    <div key={conc.name} className="flex items-center gap-3">
-                      <div className="w-full bg-muted rounded-full h-2">
-                        <div
-                          className={
-                            idx === 0
-                              ? 'bg-primary h-2 rounded-full'
-                              : idx === 1
-                                ? 'bg-accent h-2 rounded-full'
-                                : 'bg-warning h-2 rounded-full'
-                          }
-                          style={{ width: `${conc.percentage}%` }}
-                        ></div>
-                      </div>
-                      <span
-                        className="text-xs w-32 text-right truncate font-medium"
-                        title={conc.name}
-                      >
-                        {conc.name}{' '}
-                        <span className="text-muted-foreground ml-1">({conc.percentage}%)</span>
-                      </span>
+        <Card>
+          <CardHeader>
+            <CardTitle>Concentração por Emissor</CardTitle>
+            <CardDescription>Top 3 exposições financeiras na carteira</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {metrics.concentrations.length > 0 ? (
+              <div className="space-y-4">
+                {metrics.concentrations.map((conc, idx) => (
+                  <div key={conc.name} className="flex items-center gap-3">
+                    <div className="w-full bg-muted rounded-full h-2">
+                      <div
+                        className={
+                          idx === 0
+                            ? 'bg-primary h-2 rounded-full'
+                            : idx === 1
+                              ? 'bg-accent h-2 rounded-full'
+                              : 'bg-warning h-2 rounded-full'
+                        }
+                        style={{ width: `${conc.percentage}%` }}
+                      ></div>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-xs text-muted-foreground text-center py-4 bg-muted/20 rounded-md">
-                  Aguardando emissões reais
-                </div>
-              )}
-            </div>
+                    <span
+                      className="text-xs w-32 text-right truncate font-medium"
+                      title={conc.name}
+                    >
+                      {conc.name}{' '}
+                      <span className="text-muted-foreground ml-1">({conc.percentage}%)</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-xs text-muted-foreground text-center py-4 border border-dashed bg-muted/20 rounded-md">
+                Aguardando emissões reais para analisar concentração
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

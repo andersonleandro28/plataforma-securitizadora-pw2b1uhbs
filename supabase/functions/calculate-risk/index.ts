@@ -111,6 +111,40 @@ Deno.serve(async (req: Request) => {
         isHardRule = true
     }
 
+    // 5. Limite de Crédito Dinâmico (Dynamic Credit Limit Verification)
+    const { data: profile } = await supabase.from('profiles').select('credit_limit').eq('id', op.borrower_id).single()
+    let baseLimit = profile?.credit_limit || 100000
+
+    const { data: historyOps } = await supabase
+      .from('credit_operations')
+      .select('requested_value, status, id')
+      .eq('borrower_id', op.borrower_id)
+
+    let usedCredit = 0;
+    let dynamicBonus = 0;
+
+    historyOps?.forEach((o: any) => {
+      if (o.status === 'liquidado') {
+         dynamicBonus += Number(o.requested_value || 0) * 0.20 // 20% increase in limit for good payment history
+      } else if ['em_analise', 'em_triagem', 'pendencia_documental', 'aprovado', 'aguardando_formalizacao', 'pago'].includes(o.status) {
+         if (o.id !== operation_id) {
+           usedCredit += Number(o.requested_value || 0)
+         }
+      }
+    })
+
+    const finalCreditLimit = baseLimit + dynamicBonus
+
+    // Persist dynamic limit if it changed
+    if (finalCreditLimit !== baseLimit) {
+       await supabase.from('profiles').update({ credit_limit: finalCreditLimit }).eq('id', op.borrower_id)
+    }
+
+    if (usedCredit + Number(op.requested_value || 0) > finalCreditLimit) {
+        triggers.push(`Limite de crédito excedido (Disponível: R$ ${(Math.max(0, finalCreditLimit - usedCredit)).toLocaleString('pt-BR')} | Solicitado: R$ ${Number(op.requested_value || 0).toLocaleString('pt-BR')})`)
+        isHardRule = true
+    }
+
     let suggestion = ''
 
     if (isHardRule) {
