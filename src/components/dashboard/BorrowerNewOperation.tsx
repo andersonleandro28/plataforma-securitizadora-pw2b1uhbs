@@ -129,14 +129,12 @@ export function BorrowerNewOperation({ onSuccess }: { onSuccess?: () => void }) 
 
       // 3. Trigger Calculation & Audit
       await supabase.functions.invoke('calculate-operation', { body: { operation_id: op.id } })
-      await supabase
-        .from('audit_logs')
-        .insert({
-          user_id: user?.id,
-          action: 'CREATE_OPERATION',
-          entity_type: 'credit_operations',
-          entity_id: op.id,
-        })
+      await supabase.from('audit_logs').insert({
+        user_id: user?.id,
+        action: 'CREATE_OPERATION',
+        entity_type: 'credit_operations',
+        entity_id: op.id,
+      })
 
       toast.success('Borderô enviado com sucesso para análise!')
 

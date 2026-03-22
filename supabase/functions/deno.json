@@ -6,6 +6,7 @@
     "public-signup": 1,
     "delete-user": 1,
     "extract-debenture-data": 9,
-    "batch-import-users": 2
+    "batch-import-users": 2,
+    "calculate-operation": 1
   }
 }

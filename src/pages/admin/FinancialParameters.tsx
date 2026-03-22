@@ -104,14 +104,12 @@ export default function FinancialParameters() {
         await supabase
           .from('parameter_history')
           .insert({ parameter_id: pId, changes: payload, changed_by: user?.id })
-        await supabase
-          .from('audit_logs')
-          .insert({
-            user_id: user?.id,
-            action: 'UPDATE_PARAMETERS',
-            entity_type: 'financial_parameters',
-            entity_id: pId,
-          })
+        await supabase.from('audit_logs').insert({
+          user_id: user?.id,
+          action: 'UPDATE_PARAMETERS',
+          entity_type: 'financial_parameters',
+          entity_id: pId,
+        })
       }
 
       toast.success('Parâmetros financeiros atualizados com sucesso.')

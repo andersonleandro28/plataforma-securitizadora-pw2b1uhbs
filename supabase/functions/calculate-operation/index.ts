@@ -1,6 +1,12 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { corsHeaders } from '../_shared/cors.ts'
+
+export const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, x-supabase-client-platform, apikey, content-type',
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -28,8 +34,8 @@ Deno.serve(async (req: Request) => {
     // Fetch parameters
     const { data: paramsData } = await supabase.from('financial_parameters').select('*')
     let params =
-      paramsData?.find((p) => p.receivable_type === opData.receivable_type) ||
-      paramsData?.find((p) => p.receivable_type === 'global') ||
+      paramsData?.find((p: any) => p.receivable_type === opData.receivable_type) ||
+      paramsData?.find((p: any) => p.receivable_type === 'global') ||
       {}
 
     if (override_params) {
