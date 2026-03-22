@@ -1,7 +1,18 @@
 import { useEffect, useState } from 'react'
-import { FileText, Loader2, Search, Filter } from 'lucide-react'
+import {
+  FileText,
+  Loader2,
+  Search,
+  Filter,
+  Mail,
+  Eye,
+  CheckCircle2,
+  XCircle,
+  PenTool,
+} from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import {
   Table,
   TableBody,
@@ -57,6 +68,66 @@ export default function Operations() {
     const matchStatus = statusFilter === 'all' || op.status === statusFilter
     return matchSearch && matchStatus
   })
+
+  const getSignatureIcon = (status: string) => {
+    switch (status) {
+      case 'enviado':
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="p-1.5 rounded-full bg-blue-100 text-blue-600">
+                <Mail className="w-4 h-4" />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>Enviado para assinatura</TooltipContent>
+          </Tooltip>
+        )
+      case 'visualizado':
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="p-1.5 rounded-full bg-amber-100 text-amber-600">
+                <Eye className="w-4 h-4" />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>Visualizado pelo cliente</TooltipContent>
+          </Tooltip>
+        )
+      case 'assinado':
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="p-1.5 rounded-full bg-emerald-100 text-emerald-600">
+                <CheckCircle2 className="w-4 h-4" />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>Assinado digitalmente</TooltipContent>
+          </Tooltip>
+        )
+      case 'recusado':
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="p-1.5 rounded-full bg-destructive/10 text-destructive">
+                <XCircle className="w-4 h-4" />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>Recusado pelo signatário</TooltipContent>
+          </Tooltip>
+        )
+      default:
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="p-1.5 rounded-full bg-muted text-muted-foreground/60">
+                <PenTool className="w-4 h-4" />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>Pendente de emissão</TooltipContent>
+          </Tooltip>
+        )
+    }
+  }
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up pb-10">
@@ -127,6 +198,7 @@ export default function Operations() {
                     <TableHead>Valor Face (VF)</TableHead>
                     <TableHead>Valor Líquido</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead className="text-center">Formalização</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -157,6 +229,11 @@ export default function Operations() {
                           : '---'}
                       </TableCell>
                       <TableCell>{getStatusBadge(op.status)}</TableCell>
+                      <TableCell>
+                        <div className="flex justify-center">
+                          {getSignatureIcon(op.signature_status)}
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
