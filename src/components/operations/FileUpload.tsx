@@ -1,6 +1,7 @@
-import { useState, useCallback } from 'react'
-import { UploadCloud, X, File as FileIcon, AlertCircle } from 'lucide-react'
+import { useState, useCallback, useRef } from 'react'
+import { UploadCloud, X, File as FileIcon, AlertCircle, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Progress } from '@/components/ui/progress'
 
 interface FileUploadProps {
   files: File[]
@@ -17,6 +18,7 @@ export function FileUpload({
 }: FileUploadProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const onDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -34,7 +36,7 @@ export function FileUpload({
     }
     const ext = '.' + file.name.split('.').pop()?.toLowerCase()
     if (!allowedTypes.includes(ext)) {
-      return `Formato não permitido: ${ext}`
+      return `Formato não permitido: ${ext}. Use: ${allowedTypes.join(', ')}`
     }
     return null
   }
@@ -49,23 +51,25 @@ export function FileUpload({
 
     if (err) setError(err)
     if (validFiles.length > 0) {
+      // Create a clean new array to trigger re-renders properly
       setFiles((prev) => [...prev, ...validFiles])
     }
+
+    // Reset input value so the same file can be selected again if removed
+    if (inputRef.current) inputRef.current.value = ''
   }
 
-  const onDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault()
-      setIsDragging(false)
-      setError(null)
-      const droppedFiles = Array.from(e.dataTransfer.files)
-      handleFiles(droppedFiles)
-    },
-    [files],
-  )
+  const onDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+    setError(null)
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFiles(Array.from(e.dataTransfer.files))
+    }
+  }, [])
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
+    if (e.target.files && e.target.files.length > 0) {
       setError(null)
       handleFiles(Array.from(e.target.files))
     }
@@ -81,55 +85,72 @@ export function FileUpload({
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
+        onClick={() => inputRef.current?.click()}
         className={cn(
-          'border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center transition-colors cursor-pointer text-center relative',
+          'border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center transition-all cursor-pointer text-center relative overflow-hidden group',
           isDragging
-            ? 'border-primary bg-primary/5'
-            : 'border-muted-foreground/30 hover:bg-muted/30',
+            ? 'border-primary bg-primary/10 scale-[1.02]'
+            : 'border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/30',
         )}
       >
         <input
+          ref={inputRef}
           type="file"
           multiple
           onChange={handleFileInput}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          className="hidden"
           accept={allowedTypes.join(',')}
         />
-        <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-3">
-          <UploadCloud className="h-6 w-6 text-primary" />
+        <div
+          className={cn(
+            'w-14 h-14 rounded-full flex items-center justify-center mb-4 transition-colors',
+            isDragging
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground',
+          )}
+        >
+          <UploadCloud className="h-7 w-7" />
         </div>
-        <p className="text-sm font-medium">Clique para buscar ou arraste os arquivos</p>
-        <p className="text-xs text-muted-foreground mt-1">
+        <p className="text-base font-semibold">Clique para buscar ou arraste os arquivos aqui</p>
+        <p className="text-xs text-muted-foreground mt-2">
           Suporta {allowedTypes.join(', ')} (Máx. {maxSizeMB}MB)
         </p>
       </div>
 
       {error && (
-        <div className="text-xs text-destructive flex items-center gap-1 bg-destructive/10 p-2 rounded">
-          <AlertCircle className="h-3.5 w-3.5" /> {error}
+        <div className="text-sm text-destructive flex items-center gap-2 bg-destructive/10 p-3 rounded-md border border-destructive/20 animate-in fade-in">
+          <AlertCircle className="h-4 w-4 shrink-0" /> {error}
         </div>
       )}
 
       {files.length > 0 && (
-        <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
+        <div className="space-y-2 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
           {files.map((file, idx) => (
             <div
-              key={idx}
-              className="flex items-center justify-between p-3 border rounded-md bg-background shadow-sm"
+              key={`${file.name}-${idx}`}
+              className="flex items-center justify-between p-3 border rounded-md bg-background shadow-sm hover:shadow transition-shadow animate-in slide-in-from-bottom-2"
             >
               <div className="flex items-center gap-3 overflow-hidden">
-                <FileIcon className="h-5 w-5 text-muted-foreground shrink-0" />
+                <div className="bg-muted p-2 rounded shrink-0">
+                  <FileIcon className="h-5 w-5 text-primary" />
+                </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{file.name}</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-sm font-medium truncate" title={file.name}>
+                    {file.name}
+                  </p>
+                  <p className="text-xs text-muted-foreground font-mono">
                     {(file.size / 1024 / 1024).toFixed(2)} MB
                   </p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => removeFile(idx)}
-                className="p-1 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded transition-colors shrink-0"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  removeFile(idx)
+                }}
+                className="p-2 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-md transition-colors shrink-0"
+                title="Remover arquivo"
               >
                 <X className="h-4 w-4" />
               </button>

@@ -22,25 +22,31 @@ import { useAuth } from '@/hooks/use-auth'
 import { format } from 'date-fns'
 import { Loader2, Search } from 'lucide-react'
 
+// Utilizando cores padrão financeiro: Verde (Aprovado/Pago), Amarelo (Análise/Pendência), Vermelho (Reprovado).
 export function getStatusBadge(status: string) {
   switch (status) {
     case 'pago':
     case 'liquidado':
-      return <Badge className="bg-emerald-500 hover:bg-emerald-600 uppercase">{status}</Badge>
     case 'aprovado':
     case 'formalizado':
-      return <Badge className="bg-blue-500 hover:bg-blue-600 uppercase">{status}</Badge>
+      return (
+        <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white uppercase">
+          {status.replace('_', ' ')}
+        </Badge>
+      )
     case 'reprovado':
     case 'cancelado':
       return (
         <Badge variant="destructive" className="uppercase">
-          {status}
+          {status.replace('_', ' ')}
         </Badge>
       )
+    case 'em_analise':
     case 'pendencia_documental':
+    case 'em_triagem':
       return (
-        <Badge variant="secondary" className="bg-warning/20 text-warning-foreground uppercase">
-          Pendência
+        <Badge variant="secondary" className="bg-amber-500 hover:bg-amber-600 text-white uppercase">
+          {status.replace('_', ' ')}
         </Badge>
       )
     default:
@@ -124,7 +130,7 @@ export function BorrowerOperationsList() {
             <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
           </div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-10 text-muted-foreground bg-muted/20 rounded-lg">
+          <div className="text-center py-10 text-muted-foreground bg-muted/20 rounded-lg border border-dashed">
             Nenhuma operação encontrada.
           </div>
         ) : (

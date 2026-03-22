@@ -90,7 +90,7 @@ export function BorrowerNewOperation({ onSuccess }: { onSuccess?: () => void }) 
 
     setSubmitting(true)
     try {
-      // 1. Create operation
+      // 1. Create operation - This persists the operation in DB
       const { data: op, error: opErr } = await supabase
         .from('credit_operations')
         .insert({
@@ -113,22 +113,29 @@ export function BorrowerNewOperation({ onSuccess }: { onSuccess?: () => void }) 
 
       if (opErr) throw opErr
 
-      // 2. Upload files
+      // 2. Upload files reliably as multipart/form-data linked to operation ID
       for (const file of files) {
         const path = `${op.id}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
-        await supabase.storage.from('operation-docs').upload(path, file)
-        await supabase.from('operation_documents').insert({
-          operation_id: op.id,
-          file_path: path,
-          file_name: file.name,
-          file_type: file.type,
-          file_size: file.size,
-          uploaded_by: user?.id,
-        })
+        const { error: uploadError } = await supabase.storage
+          .from('operation-docs')
+          .upload(path, file)
+
+        if (!uploadError) {
+          await supabase.from('operation_documents').insert({
+            operation_id: op.id,
+            file_path: path,
+            file_name: file.name,
+            file_type: file.type,
+            file_size: file.size,
+            uploaded_by: user?.id,
+          })
+        }
       }
 
-      // 3. Trigger Calculation & Audit
+      // 3. Trigger robust Server-side Calculation ensuring values are permanently saved
       await supabase.functions.invoke('calculate-operation', { body: { operation_id: op.id } })
+
+      // Audit trail
       await supabase.from('audit_logs').insert({
         user_id: user?.id,
         action: 'CREATE_OPERATION',
@@ -178,8 +185,8 @@ export function BorrowerNewOperation({ onSuccess }: { onSuccess?: () => void }) 
                 value={formData.receivableType}
                 onValueChange={(v) => setFormData({ ...formData, receivableType: v })}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione..." />
+                <SelectTrigger className="bg-background">
+                  <SelectValue placeholder="Selecione o Ativo..." />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="cheque">Cheque</SelectItem>
@@ -188,7 +195,7 @@ export function BorrowerNewOperation({ onSuccess }: { onSuccess?: () => void }) 
                   <SelectItem value="mutuo">Contrato de Mútuo</SelectItem>
                   <SelectItem value="confissao_divida">Confissão de Dívida</SelectItem>
                   <SelectItem value="contratual">Recebível Contratual</SelectItem>
-                  <SelectItem value="outro">Outro</SelectItem>
+                  <SelectItem value="outro">Outros</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -256,21 +263,23 @@ export function BorrowerNewOperation({ onSuccess }: { onSuccess?: () => void }) 
 
           <div className="grid md:grid-cols-2 gap-4 pt-2">
             <div className="space-y-2">
-              <Label>Valor de Face (R$) *</Label>
+              <Label>Valor de Face (VF) *</Label>
               <Input
                 type="number"
                 step="0.01"
                 value={formData.faceValue}
                 onChange={(e) => setFormData({ ...formData, faceValue: e.target.value })}
+                placeholder="R$ 0,00"
               />
             </div>
             <div className="space-y-2">
-              <Label>Valor Solicitado p/ Antecipação (R$) *</Label>
+              <Label>Valor Solicitado p/ Antecipação (VS) *</Label>
               <Input
                 type="number"
                 step="0.01"
                 value={formData.requestedValue}
                 onChange={(e) => setFormData({ ...formData, requestedValue: e.target.value })}
+                placeholder="R$ 0,00"
               />
             </div>
           </div>
@@ -280,36 +289,45 @@ export function BorrowerNewOperation({ onSuccess }: { onSuccess?: () => void }) 
             <Textarea
               value={formData.observations}
               onChange={(e) => setFormData({ ...formData, observations: e.target.value })}
+              placeholder="Informações relevantes para a análise..."
             />
           </div>
 
           <div className="space-y-2 pt-4">
-            <Label>Documentos Comprobatórios (XML, PDF, JPG) *</Label>
+            <Label>Documentos Comprobatórios (XML, PDF, JPG, etc) *</Label>
             <FileUpload files={files} setFiles={setFiles} />
           </div>
         </CardContent>
         <CardFooter className="bg-muted/20 border-t py-4">
           <Button
             onClick={handleSubmit}
-            disabled={submitting || !formData.receivableType || !files.length}
+            disabled={
+              submitting ||
+              !formData.receivableType ||
+              !files.length ||
+              Number(formData.requestedValue) > Number(formData.faceValue)
+            }
             className="w-full gap-2"
+            size="lg"
           >
             {submitting ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-5 h-5 animate-spin" />
             ) : (
-              <Send className="w-4 h-4" />
+              <Send className="w-5 h-5" />
             )}
             Enviar para Análise
           </Button>
         </CardFooter>
       </Card>
 
-      <Card className="h-fit shadow-sm border-primary/20">
+      <Card className="h-fit shadow-sm border-primary/20 sticky top-6">
         <CardHeader className="pb-4 bg-primary/5">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Calculator className="h-5 w-5 text-primary" /> Simulador Dinâmico
           </CardTitle>
-          <CardDescription>Estimativa em tempo real com base nas taxas atuais.</CardDescription>
+          <CardDescription>
+            Cálculo em tempo real (Server-side) baseado nos parâmetros do ativo.
+          </CardDescription>
         </CardHeader>
         <CardContent className="pt-6 space-y-4">
           {simulating ? (
@@ -320,15 +338,17 @@ export function BorrowerNewOperation({ onSuccess }: { onSuccess?: () => void }) 
             <div className="space-y-3 text-sm">
               <div className="flex justify-between text-muted-foreground">
                 <span>Prazo Base:</span>
-                <span>{simulation.termDays} dias</span>
+                <span className="font-medium text-foreground">{simulation.termDays} dias</span>
               </div>
               <div className="flex justify-between">
-                <span>Valor de Face:</span>
+                <span>Valor de Face (VF):</span>
                 <span className="font-mono">{formatCurrency(Number(formData.faceValue))}</span>
               </div>
               <div className="flex justify-between">
-                <span>Valor Solicitado:</span>
-                <span className="font-mono">{formatCurrency(Number(formData.requestedValue))}</span>
+                <span>Valor Solicitado (VS):</span>
+                <span className="font-mono font-medium">
+                  {formatCurrency(Number(formData.requestedValue))}
+                </span>
               </div>
               <div className="border-t my-2 pt-2 space-y-2">
                 <div className="flex justify-between text-destructive">
@@ -336,41 +356,44 @@ export function BorrowerNewOperation({ onSuccess }: { onSuccess?: () => void }) 
                   <span>-{formatCurrency(simulation.discount_val)}</span>
                 </div>
                 <div className="flex justify-between text-destructive">
-                  <span>Juros:</span>
+                  <span>Juros Proporcionais:</span>
                   <span>-{formatCurrency(simulation.interest_val)}</span>
                 </div>
                 <div className="flex justify-between text-destructive">
-                  <span>Taxas (Ad Valorem/Estrut.):</span>
-                  <span>
-                    -
-                    {formatCurrency(
-                      simulation.ad_valorem_val +
-                        simulation.structuring_val +
-                        simulation.analysis_val,
-                    )}
-                  </span>
+                  <span>Custo Ad Valorem:</span>
+                  <span>-{formatCurrency(simulation.ad_valorem_val)}</span>
                 </div>
                 <div className="flex justify-between text-destructive">
-                  <span>Impostos (IOF):</span>
+                  <span>Custo Estruturação:</span>
+                  <span>-{formatCurrency(simulation.structuring_val)}</span>
+                </div>
+                <div className="flex justify-between text-destructive">
+                  <span>Taxa de Análise:</span>
+                  <span>-{formatCurrency(simulation.analysis_val)}</span>
+                </div>
+                <div className="flex justify-between text-destructive">
+                  <span>IOF (Fixo + Diário):</span>
                   <span>
                     -{formatCurrency(simulation.iof_daily_val + simulation.iof_fixed_val)}
                   </span>
                 </div>
               </div>
-              <div className="flex justify-between border-t border-b py-3 font-semibold text-lg items-center">
+              <div className="flex justify-between border-t border-b py-3 font-semibold text-lg items-center bg-muted/10 px-2 rounded-sm mt-2">
                 <span>Líquido Estimado:</span>
                 <span className="text-emerald-600 font-mono">
                   {formatCurrency(simulation.net_value)}
                 </span>
               </div>
               <p className="text-xs text-muted-foreground text-center mt-4">
-                Custo Efetivo: {simulation.effective_cost.toFixed(2)}%<br />* Valores sujeitos a
-                análise de crédito.
+                Custo Efetivo Total (CET): <strong>{simulation.effective_cost.toFixed(2)}%</strong>
+                <br />
+                <span className="opacity-75">* Valores sujeitos a análise de crédito.</span>
               </p>
             </div>
           ) : (
-            <div className="text-center py-8 text-muted-foreground text-sm bg-muted/20 rounded-md">
-              Preencha o valor, data de vencimento e tipo de recebível para visualizar a simulação.
+            <div className="text-center py-8 text-muted-foreground text-sm bg-muted/20 rounded-md border border-dashed">
+              Selecione o tipo de ativo, datas e preencha os valores para visualizar a simulação
+              transparente.
             </div>
           )}
         </CardContent>

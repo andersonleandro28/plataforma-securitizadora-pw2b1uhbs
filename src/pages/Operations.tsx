@@ -54,18 +54,19 @@ export default function Operations() {
     const matchSearch =
       op.document_number.includes(sStr) ||
       op.cedente.toLowerCase().includes(sStr) ||
-      op.profiles?.full_name?.toLowerCase().includes(sStr)
+      op.profiles?.full_name?.toLowerCase().includes(sStr) ||
+      op.id.split('-')[0].toLowerCase().includes(sStr) // Search by short ID
     const matchStatus = statusFilter === 'all' || op.status === statusFilter
     return matchSearch && matchStatus
   })
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up">
+    <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up pb-10">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Mesa de Operações (Esteira)</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Gestão de Operações</h1>
           <p className="text-muted-foreground">
-            Análise de lastro, aprovação de borderôs e controle de pagamentos.
+            Acompanhe e analise a esteira completa de borderôs submetidos pelos tomadores.
           </p>
         </div>
       </div>
@@ -82,7 +83,7 @@ export default function Operations() {
             <div className="relative w-full sm:w-[250px]">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar sacado, tomador ou docto..."
+                placeholder="Buscar ID, sacado, tomador..."
                 className="pl-9"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -102,6 +103,7 @@ export default function Operations() {
                 <SelectItem value="aprovado">Aprovados</SelectItem>
                 <SelectItem value="aguardando_formalizacao">Formalizando</SelectItem>
                 <SelectItem value="pago">Pagos / Liquidados</SelectItem>
+                <SelectItem value="reprovado">Reprovados</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -109,7 +111,7 @@ export default function Operations() {
         <CardContent>
           {loading ? (
             <div className="flex h-48 items-center justify-center">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           ) : filtered.length === 0 ? (
             <div className="text-center py-16 px-6 text-muted-foreground bg-muted/20 border border-dashed rounded-lg">
@@ -120,11 +122,12 @@ export default function Operations() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>ID</TableHead>
                     <TableHead>Data</TableHead>
                     <TableHead>Tomador</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Valor Face</TableHead>
-                    <TableHead>Vencimento</TableHead>
+                    <TableHead>Tipo Ativo</TableHead>
+                    <TableHead>Valor Face (VF)</TableHead>
+                    <TableHead>Valor Líquido</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -132,23 +135,28 @@ export default function Operations() {
                   {filtered.map((op) => (
                     <TableRow
                       key={op.id}
-                      className="cursor-pointer hover:bg-muted/50"
+                      className="cursor-pointer hover:bg-muted/50 transition-colors"
                       onClick={() => setSelectedOpId(op.id)}
                     >
+                      <TableCell className="font-mono text-xs text-muted-foreground font-medium">
+                        #{op.id.split('-')[0].toUpperCase()}
+                      </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {format(new Date(op.created_at), 'dd/MM/yyyy HH:mm')}
                       </TableCell>
                       <TableCell className="font-medium text-sm truncate max-w-[150px]">
                         {op.profiles?.full_name || 'Desconhecido'}
                       </TableCell>
-                      <TableCell className="capitalize text-sm">
+                      <TableCell className="uppercase text-xs font-semibold text-muted-foreground">
                         {op.receivable_type.replace('_', ' ')}
                       </TableCell>
                       <TableCell className="font-mono text-sm">
                         {formatCurrency(op.face_value)}
                       </TableCell>
-                      <TableCell className="text-sm">
-                        {format(new Date(op.due_date), 'dd/MM/yyyy')}
+                      <TableCell className="font-mono text-sm font-medium text-emerald-600">
+                        {op.operation_calculations?.[0]?.net_value
+                          ? formatCurrency(op.operation_calculations[0].net_value)
+                          : '---'}
                       </TableCell>
                       <TableCell>{getStatusBadge(op.status)}</TableCell>
                     </TableRow>
