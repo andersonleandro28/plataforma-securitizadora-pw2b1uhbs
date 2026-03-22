@@ -325,7 +325,7 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                   <CardContent className="p-4 pt-0 space-y-1 text-muted-foreground">
                     <p>
                       <span className="font-medium text-foreground">Tipo:</span>{' '}
-                      {op.receivable_type.replace('_', ' ').toUpperCase()}
+                      {op.receivable_type?.replace('_', ' ').toUpperCase()}
                     </p>
                     <p>
                       <span className="font-medium text-foreground">Cedente:</span> {op.cedente}
@@ -335,7 +335,7 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                     </p>
                     <p>
                       <span className="font-medium text-foreground">Vencimento:</span>{' '}
-                      {format(new Date(op.due_date), 'dd/MM/yyyy')}
+                      {op.due_date ? format(new Date(op.due_date), 'dd/MM/yyyy') : '-'}
                     </p>
                   </CardContent>
                 </Card>
@@ -371,7 +371,7 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                           <div>
                             <p className="text-sm font-semibold flex items-center gap-2">
                               Aditivo de Cessão - Versão {v.version_number}
-                              {v.version_number === versions[0].version_number && (
+                              {v.version_number === versions[0]?.version_number && (
                                 <span className="bg-emerald-100 text-emerald-700 text-[10px] px-1.5 py-0.5 rounded font-bold uppercase">
                                   Atual
                                 </span>
@@ -542,7 +542,7 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                         <div className="flex flex-col space-y-1">
                           <div className="flex items-center justify-between">
                             <span className="font-semibold text-sm uppercase">
-                              {h.new_status.replace('_', ' ')}
+                              {h.new_status?.replace('_', ' ')}
                             </span>
                           </div>
                           <span className="text-xs text-muted-foreground">

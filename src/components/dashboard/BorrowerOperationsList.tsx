@@ -33,8 +33,9 @@ import { toast } from 'sonner'
 import { Loader2, Search, PenTool, CheckCircle2, Eye, FileSignature } from 'lucide-react'
 
 // Utilizando cores padrão financeiro: Verde (Aprovado/Pago), Amarelo (Análise/Pendência), Vermelho (Reprovado).
-export function getStatusBadge(status: string) {
-  switch (status) {
+export function getStatusBadge(status?: string | null) {
+  const safeStatus = status || 'enviado'
+  switch (safeStatus) {
     case 'pago':
     case 'liquidado':
     case 'aprovado':
@@ -42,14 +43,14 @@ export function getStatusBadge(status: string) {
     case 'aguardando_formalizacao':
       return (
         <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white uppercase">
-          {status.replace('_', ' ')}
+          {safeStatus.replace('_', ' ')}
         </Badge>
       )
     case 'reprovado':
     case 'cancelado':
       return (
         <Badge variant="destructive" className="uppercase">
-          {status.replace('_', ' ')}
+          {safeStatus.replace('_', ' ')}
         </Badge>
       )
     case 'em_analise':
@@ -57,13 +58,13 @@ export function getStatusBadge(status: string) {
     case 'em_triagem':
       return (
         <Badge variant="secondary" className="bg-amber-500 hover:bg-amber-600 text-white uppercase">
-          {status.replace('_', ' ')}
+          {safeStatus.replace('_', ' ')}
         </Badge>
       )
     default:
       return (
         <Badge variant="outline" className="uppercase">
-          {status.replace('_', ' ')}
+          {safeStatus.replace('_', ' ')}
         </Badge>
       )
   }
@@ -100,9 +101,9 @@ export function BorrowerOperationsList() {
 
   const filtered = operations.filter((op) => {
     const matchSearch =
-      op.document_number.includes(search) ||
-      op.cedente.toLowerCase().includes(search.toLowerCase()) ||
-      op.sacado.toLowerCase().includes(search.toLowerCase())
+      op.document_number?.toLowerCase().includes(search.toLowerCase()) ||
+      op.cedente?.toLowerCase().includes(search.toLowerCase()) ||
+      op.sacado?.toLowerCase().includes(search.toLowerCase())
     const matchStatus = statusFilter === 'all' || op.status === statusFilter
     return matchSearch && matchStatus
   })
@@ -194,7 +195,7 @@ export function BorrowerOperationsList() {
                         {format(new Date(op.created_at), 'dd/MM/yyyy HH:mm')}
                       </TableCell>
                       <TableCell className="capitalize text-sm font-medium">
-                        {op.receivable_type.replace('_', ' ')}
+                        {op.receivable_type?.replace('_', ' ')}
                       </TableCell>
                       <TableCell className="text-sm truncate max-w-[150px]" title={op.sacado}>
                         {op.sacado}
@@ -250,7 +251,7 @@ export function BorrowerOperationsList() {
             <DialogTitle>Assinatura Digital de Aditivo</DialogTitle>
             <DialogDescription>
               Você está prestes a assinar o Aditivo de Cessão referente à operação #
-              {opToSign?.id.split('-')[0].toUpperCase()}. Esta interface simula a integração com
+              {opToSign?.id?.split('-')[0]?.toUpperCase()}. Esta interface simula a integração com
               provedores de assinatura (ex: ClickSign/DocuSign).
             </DialogDescription>
           </DialogHeader>

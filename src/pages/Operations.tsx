@@ -61,10 +61,11 @@ export default function Operations() {
   const filtered = operations.filter((op) => {
     const sStr = search.toLowerCase()
     const matchSearch =
-      op.document_number.includes(sStr) ||
-      op.cedente.toLowerCase().includes(sStr) ||
+      op.document_number?.toLowerCase().includes(sStr) ||
+      op.cedente?.toLowerCase().includes(sStr) ||
       op.profiles?.full_name?.toLowerCase().includes(sStr) ||
-      op.id.split('-')[0].toLowerCase().includes(sStr) // Search by short ID
+      op.id?.split('-')[0]?.toLowerCase().includes(sStr) ||
+      false // Search by short ID
     const matchStatus = statusFilter === 'all' || op.status === statusFilter
     return matchSearch && matchStatus
   })
@@ -209,7 +210,7 @@ export default function Operations() {
                       onClick={() => setSelectedOpId(op.id)}
                     >
                       <TableCell className="font-mono text-xs text-muted-foreground font-medium">
-                        #{op.id.split('-')[0].toUpperCase()}
+                        #{op.id?.split('-')[0]?.toUpperCase()}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {format(new Date(op.created_at), 'dd/MM/yyyy HH:mm')}
@@ -218,7 +219,7 @@ export default function Operations() {
                         {op.profiles?.full_name || 'Desconhecido'}
                       </TableCell>
                       <TableCell className="uppercase text-xs font-semibold text-muted-foreground">
-                        {op.receivable_type.replace('_', ' ')}
+                        {op.receivable_type?.replace('_', ' ')}
                       </TableCell>
                       <TableCell className="font-mono text-sm">
                         {formatCurrency(op.face_value)}
