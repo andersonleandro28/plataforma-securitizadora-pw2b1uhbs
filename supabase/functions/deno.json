@@ -10,7 +10,7 @@
     "calculate-operation": 2,
     "send-operation-email": 1,
     "calculate-risk": 1,
-    "generate-aditivo": 2,
+    "generate-aditivo": 3,
     "send-to-signature": 1,
     "signature-webhook": 1
   }

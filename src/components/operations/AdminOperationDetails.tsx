@@ -251,11 +251,16 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                       disabled={generatingDoc}
                     >
                       {generatingDoc ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Gerando Documento...
+                        </>
                       ) : (
-                        <FileSignature className="w-4 h-4 mr-2 text-emerald-600" />
+                        <>
+                          <FileSignature className="w-4 h-4 mr-2 text-emerald-600" />
+                          Gerar Aditivo
+                        </>
                       )}
-                      Gerar Aditivo
                     </Button>
 
                     {versions.length > 0 && op.signature_status !== 'assinado' && (
