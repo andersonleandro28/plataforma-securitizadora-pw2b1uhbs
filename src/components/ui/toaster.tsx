@@ -1,4 +1,3 @@
-/* Toaster Component - A component that displays a toaster (a component that displays a toast) - from shadcn/ui (exposes Toaster) */
 import { useToast } from '@/hooks/use-toast'
 import {
   Toast,
@@ -8,11 +7,20 @@ import {
   ToastTitle,
   ToastViewport,
 } from '@/components/ui/toast'
+import { createPortal } from 'react-dom'
+import { useEffect, useState } from 'react'
 
 export function Toaster() {
   const { toasts } = useToast()
+  const [mounted, setMounted] = useState(false)
 
-  return (
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted) return null
+
+  return createPortal(
     <ToastProvider>
       {toasts.map(function ({ id, title, description, action, ...props }) {
         return (
@@ -27,6 +35,7 @@ export function Toaster() {
         )
       })}
       <ToastViewport />
-    </ToastProvider>
+    </ToastProvider>,
+    document.body,
   )
 }

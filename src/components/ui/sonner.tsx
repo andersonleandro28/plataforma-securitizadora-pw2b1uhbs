@@ -1,18 +1,26 @@
-/* Toaster Component - A component that displays a toaster (a component that displays a toast) - from shadcn/ui (exposes Toaster) */
 import './sonner.css'
 import { useTheme } from 'next-themes'
 import { Toaster as Sonner } from 'sonner'
+import { createPortal } from 'react-dom'
+import { useEffect, useState } from 'react'
 
 type ToasterProps = React.ComponentProps<typeof Sonner>
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = 'system' } = useTheme()
+  const [mounted, setMounted] = useState(false)
 
-  return (
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted) return null
+
+  return createPortal(
     <Sonner
       theme={theme as ToasterProps['theme']}
       className="toaster group"
-      style={{ zIndex: 9999 }}
+      style={{ zIndex: 99999 }}
       toastOptions={{
         classNames: {
           toast:
@@ -23,7 +31,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
         },
       }}
       {...props}
-    />
+    />,
+    document.body,
   )
 }
 
