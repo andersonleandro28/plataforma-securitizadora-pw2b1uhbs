@@ -9,6 +9,7 @@
     "batch-import-users": 2,
     "calculate-operation": 2,
     "send-operation-email": 1,
-    "calculate-risk": 1
+    "calculate-risk": 1,
+    "generate-aditivo": 1
   }
 }

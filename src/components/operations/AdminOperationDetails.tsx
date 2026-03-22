@@ -18,7 +18,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { supabase } from '@/lib/supabase/client'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
-import { Loader2, Download, User, FileText, CheckCircle2, XCircle, AlertCircle } from 'lucide-react'
+import {
+  Loader2,
+  Download,
+  User,
+  FileText,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  FileSignature,
+} from 'lucide-react'
 import { getStatusBadge } from '../dashboard/BorrowerOperationsList'
 import { RiskDossier } from './RiskDossier'
 
@@ -32,6 +41,7 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
   const [history, setHistory] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
+  const [generatingDoc, setGeneratingDoc] = useState(false)
   const [statusInput, setStatusInput] = useState('')
 
   useEffect(() => {
@@ -49,7 +59,11 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
       setOp(operation)
       setStatusInput(operation.status)
       const [docsRes, calcRes, histRes] = await Promise.all([
-        supabase.from('operation_documents').select('*').eq('operation_id', opId),
+        supabase
+          .from('operation_documents')
+          .select('*')
+          .eq('operation_id', opId)
+          .order('uploaded_at', { ascending: false }),
         supabase.from('operation_calculations').select('*').eq('operation_id', opId).maybeSingle(),
         supabase
           .from('operation_status_history')
@@ -84,6 +98,25 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
       toast.error('Erro ao atualizar status.')
     }
     setActionLoading(false)
+  }
+
+  const handleGenerateAditivo = async () => {
+    setGeneratingDoc(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-aditivo', {
+        body: { operationId: opId },
+      })
+
+      if (error) throw error
+      if (data?.error) throw new Error(data.error)
+
+      toast.success('Aditivo de Cessão gerado com sucesso.')
+      fetchData() // Refresh documents
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao gerar aditivo em PDF.')
+    } finally {
+      setGeneratingDoc(false)
+    }
   }
 
   if (!open) return null
@@ -133,6 +166,25 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
               >
                 <AlertCircle className="w-4 h-4 mr-2" /> Solicitar Documento
               </Button>
+
+              {/* Trigger: Gerar Aditivo apenas se aprovado */}
+              {op.status === 'aprovado' && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="bg-white hover:bg-emerald-50 text-emerald-700 border-emerald-200 ml-auto"
+                  onClick={handleGenerateAditivo}
+                  disabled={generatingDoc}
+                >
+                  {generatingDoc ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <FileSignature className="w-4 h-4 mr-2 text-emerald-600" />
+                  )}
+                  Gerar Aditivo de Cessão
+                </Button>
+              )}
+
               <div className="flex-1 min-w-[180px] flex gap-2 ml-auto">
                 <Select
                   value={statusInput}
@@ -309,9 +361,17 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                       <div className="flex items-center gap-3 overflow-hidden">
                         <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
                         <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">{d.file_name}</p>
+                          <p className="text-sm font-medium truncate flex items-center gap-2">
+                            {d.file_name}
+                            {d.category === 'Aditivo Contratual' && (
+                              <span className="bg-primary/10 text-primary text-[10px] px-2 py-0.5 rounded-full font-semibold">
+                                Gerado pelo Sistema
+                              </span>
+                            )}
+                          </p>
                           <p className="text-xs text-muted-foreground">
-                            {(d.file_size / 1024 / 1024).toFixed(2)} MB
+                            {(d.file_size / 1024 / 1024).toFixed(2)} MB -{' '}
+                            {format(new Date(d.uploaded_at), 'dd/MM/yyyy HH:mm')}
                           </p>
                         </div>
                       </div>
