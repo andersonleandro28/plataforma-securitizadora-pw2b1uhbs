@@ -196,7 +196,7 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent className="w-full sm:max-w-xl md:max-w-2xl overflow-y-auto z-[40]">
+        <SheetContent className="w-full sm:max-w-xl md:max-w-2xl overflow-y-auto">
           <SheetHeader className="pb-4 border-b">
             <SheetTitle className="flex justify-between items-center pr-6">
               <span>Gestão de Operação</span>
@@ -565,7 +565,7 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
 
       {/* Reemissão Dialog */}
       <Dialog open={reasonOpen} onOpenChange={setReasonOpen}>
-        <DialogContent className="z-[50]">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Gerar Nova Versão do Aditivo</DialogTitle>
             <DialogDescription>
