@@ -123,10 +123,43 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
     setLoading(false)
   }
 
-  const handleDownload = async (path: string) => {
-    const { data } = await supabase.storage.from('operation-docs').createSignedUrl(path, 60)
-    if (data?.signedUrl) window.open(data.signedUrl, '_blank')
-    else toast.error('Erro ao acessar documento.')
+  const handleDownload = async (path: string, fileName?: string) => {
+    try {
+      // 1. Gera URL assinada temporária (15 mins = 900s) forçando o Content-Disposition
+      const { data, error } = await supabase.storage
+        .from('operation-docs')
+        .createSignedUrl(path, 900, {
+          download: fileName || 'aditivo.pdf',
+        })
+
+      if (error || !data?.signedUrl) {
+        throw new Error('Erro ao gerar link seguro para o documento.')
+      }
+
+      // 2. Inicia o download via link temporário para evitar bloqueio do navegador
+      const link = document.createElement('a')
+      link.href = data.signedUrl
+      link.setAttribute('download', fileName || 'aditivo.pdf')
+      link.style.display = 'none'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } catch (err: any) {
+      console.error('Download error:', err)
+      const errorMsg = err.message?.toLowerCase() || ''
+      // 3. Tratamento amigável para falhas de rede / AdBlock
+      if (
+        errorMsg.includes('failed to fetch') ||
+        errorMsg.includes('blocked_by_client') ||
+        errorMsg.includes('networkerror')
+      ) {
+        toast.error(
+          'Detectamos um bloqueio no seu navegador. Por favor, desative extensões de AdBlock ou tente usar uma aba anônima.',
+        )
+      } else {
+        toast.error(err.message || 'Erro ao acessar documento.')
+      }
+    }
   }
 
   const handleStatusChange = async (newStatus: string) => {
@@ -168,7 +201,19 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
       setReason('')
       fetchData()
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao gerar aditivo em PDF.')
+      console.error('Generate Aditivo Error:', err)
+      const errorMsg = err.message?.toLowerCase() || ''
+      if (
+        errorMsg.includes('failed to fetch') ||
+        errorMsg.includes('blocked_by_client') ||
+        errorMsg.includes('networkerror')
+      ) {
+        toast.error(
+          'Detectamos um bloqueio no seu navegador. Por favor, desative extensões de AdBlock ou tente usar uma aba anônima.',
+        )
+      } else {
+        toast.error(err.message || 'Erro ao gerar aditivo em PDF.')
+      }
     } finally {
       setGeneratingDoc(false)
     }
@@ -394,7 +439,7 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleDownload(v.file_path)}
+                          onClick={() => handleDownload(v.file_path, v.file_name)}
                           className="text-primary hover:text-primary shrink-0"
                         >
                           <Download className="w-4 h-4 mr-2" /> Baixar
@@ -520,7 +565,7 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleDownload(d.file_path)}
+                          onClick={() => handleDownload(d.file_path, d.file_name)}
                           className="gap-2 shrink-0 text-primary hover:text-primary"
                         >
                           <Download className="w-4 h-4" /> Baixar

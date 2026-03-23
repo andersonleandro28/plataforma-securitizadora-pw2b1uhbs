@@ -5,11 +5,12 @@
     "invite-user": 2,
     "public-signup": 1,
     "delete-user": 1,
+    "extract-debenture-data": 9,
     "batch-import-users": 2,
     "calculate-operation": 2,
     "send-operation-email": 1,
     "calculate-risk": 1,
-    "generate-aditivo": 4,
+    "generate-aditivo": 5,
     "send-to-signature": 1,
     "signature-webhook": 1
   }
