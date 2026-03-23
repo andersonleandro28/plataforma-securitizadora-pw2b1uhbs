@@ -10,6 +10,7 @@ import {
   Users as UsersIcon,
   TrendingUp,
   Settings2,
+  Package,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -42,6 +43,12 @@ const allNavItems = [
     path: '/admin/parameters',
     icon: Settings2,
     roles: ['admin'],
+  },
+  {
+    title: 'Gestão de Produtos',
+    path: '/admin/products',
+    icon: Package,
+    roles: ['admin', 'staff'],
   },
   {
     title: 'Compliance & KYC',
