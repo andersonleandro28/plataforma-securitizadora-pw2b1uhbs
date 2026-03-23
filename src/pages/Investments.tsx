@@ -9,6 +9,7 @@ import {
   AlertCircle,
   CheckSquare,
   Layers,
+  Landmark,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -28,32 +29,38 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { toast } from 'sonner'
+import { useNavigate } from 'react-router-dom'
 
 export default function Investments() {
-  const { profile } = useAuth()
+  const { profile, user } = useAuth()
+  const navigate = useNavigate()
   const [products, setProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [investProduct, setInvestProduct] = useState<any>(null)
   const [quotasToBuy, setQuotasToBuy] = useState<number>(1)
   const [acceptedTerms, setAcceptedTerms] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [activeBank, setActiveBank] = useState<any>(null)
 
-  const fetchProducts = async () => {
+  const fetchData = async () => {
     setLoading(true)
-    const { data } = await supabase
-      .from('investment_products')
-      .select('*, debenture_series(id, indexer)')
-      .eq('is_active', true)
-      .eq('is_archived', false)
-      .order('is_highlighted', { ascending: false })
-      .order('created_at', { ascending: false })
-
-    if (data) setProducts(data)
+    const [prodRes, bankRes] = await Promise.all([
+      supabase
+        .from('investment_products')
+        .select('*, debenture_series(id, indexer)')
+        .eq('is_active', true)
+        .eq('is_archived', false)
+        .order('is_highlighted', { ascending: false })
+        .order('created_at', { ascending: false }),
+      supabase.from('company_bank_accounts').select('*').eq('is_active', true).maybeSingle(),
+    ])
+    if (prodRes.data) setProducts(prodRes.data)
+    if (bankRes.data) setActiveBank(bankRes.data)
     setLoading(false)
   }
 
   useEffect(() => {
-    fetchProducts()
+    fetchData()
   }, [])
 
   const formatCurrency = (val: number) =>
@@ -64,45 +71,38 @@ export default function Investments() {
     const minQ = investProduct.min_quotas_per_investor || 1
     const maxQ = investProduct.max_quotas_per_investor || 999999
 
-    if (!investProduct.series_id)
-      return toast.error('Produto não vinculado a uma série oficial. Impossível aportar.')
     if (quotasToBuy < minQ) return toast.error(`A aplicação mínima é de ${minQ} cotas.`)
     if (quotasToBuy > maxQ) return toast.error(`A aplicação máxima é de ${maxQ} cotas.`)
-    if (quotasToBuy > available)
-      return toast.error(`Temos apenas ${available} cotas disponíveis no momento.`)
+    if (quotasToBuy > available) return toast.error(`Temos apenas ${available} cotas disponíveis.`)
     if (!acceptedTerms) return toast.error('Você precisa aceitar os termos do contrato.')
-    if (!profile?.document_number)
-      return toast.error('Complete seu cadastro (CPF/CNPJ) no perfil antes de investir.')
+    if (!profile?.document_number || !user)
+      return toast.error('Complete seu cadastro antes de investir.')
 
     setSaving(true)
     try {
       const qValue = investProduct.quota_value || investProduct.min_investment || 1000
       const totalAmount = quotasToBuy * qValue
 
-      // Insert subscription
-      const { error: subErr } = await supabase.from('debenture_subscriptions').insert({
-        series_id: investProduct.series_id,
-        investor_name: profile.full_name || profile.email || 'Investidor',
-        document_number: profile.document_number,
-        quantity: quotasToBuy,
-        unit_price: qValue,
-        total_amount: totalAmount,
-        subscription_date: new Date().toISOString().split('T')[0],
-      })
+      const { data: inv, error: subErr } = await supabase
+        .from('investments')
+        .insert({
+          user_id: user.id,
+          product_id: investProduct.id,
+          bank_account_id: activeBank?.id || null,
+          quotas: quotasToBuy,
+          unit_price: qValue,
+          total_value: totalAmount,
+          status: 'pending_transfer',
+        })
+        .select()
+        .single()
+
       if (subErr) throw subErr
 
-      // Increment sold quotas
-      const { error: updErr } = await supabase
-        .from('investment_products')
-        .update({ sold_quotas: (investProduct.sold_quotas || 0) + quotasToBuy })
-        .eq('id', investProduct.id)
-      if (updErr) console.error('Error updating sold quotas:', updErr)
-
-      toast.success('Parabéns! Investimento realizado com sucesso.')
-      setInvestProduct(null)
-      fetchProducts()
+      toast.success('Reserva confirmada. Por favor, envie o comprovante.')
+      navigate(`/investments/checkout/${inv.id}`)
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao processar o investimento.')
+      toast.error(err.message || 'Erro ao processar a reserva.')
     } finally {
       setSaving(false)
     }
@@ -192,7 +192,6 @@ export default function Investments() {
                       <p className="font-semibold">{product.currency || 'BRL'}</p>
                     </div>
                   </div>
-
                   {product.global_quotas > 0 && (
                     <div className="pt-2 space-y-2">
                       <div className="flex justify-between text-xs text-muted-foreground">
@@ -276,9 +275,40 @@ export default function Investments() {
                 </div>
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   <AlertCircle className="h-3 w-3" /> Mínimo:{' '}
-                  {investProduct.min_quotas_per_investor || 1} cota(s) | Máximo:{' '}
+                  {investProduct.min_quotas_per_investor || 1} | Máximo:{' '}
                   {investProduct.max_quotas_per_investor || 'Sem limite'}
                 </p>
+              </div>
+
+              <div className="border border-primary/30 bg-primary/5 rounded-md p-4 space-y-2">
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <Landmark className="h-4 w-4" /> Instruções de Depósito
+                </h4>
+                {activeBank ? (
+                  <div className="text-xs space-y-1">
+                    <p>
+                      Banco: <strong>{activeBank.bank_name}</strong> - Ag:{' '}
+                      <strong>{activeBank.branch}</strong> / CC:{' '}
+                      <strong>{activeBank.account_number}</strong>
+                    </p>
+                    <p>
+                      Titular: <strong>{activeBank.owner_name}</strong> ({activeBank.owner_document}
+                      )
+                    </p>
+                    {activeBank.pix_key && (
+                      <p>
+                        PIX: <strong className="font-mono">{activeBank.pix_key}</strong>
+                      </p>
+                    )}
+                    <p className="mt-2 italic text-muted-foreground">
+                      O envio do comprovante será solicitado na próxima etapa.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-destructive">
+                    Dados bancários não configurados pela administração.
+                  </p>
+                )}
               </div>
 
               <div className="flex items-start space-x-3 bg-muted/20 p-4 rounded-md border">
@@ -293,9 +323,7 @@ export default function Investments() {
                     Li e concordo com o Termo de Subscrição
                   </label>
                   <p className="text-xs text-muted-foreground pt-1">
-                    Declaro ciência sobre as regras de resgate, carência de{' '}
-                    {investProduct.application_cotization_months || 0} meses e incidência de
-                    tributação aplicável.
+                    Declaro ciência sobre as regras do produto e incidência de tributação aplicável.
                   </p>
                 </div>
               </div>
@@ -311,7 +339,7 @@ export default function Investments() {
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
               ) : (
                 <CheckSquare className="h-4 w-4 mr-2" />
-              )}
+              )}{' '}
               Confirmar Investimento
             </Button>
           </DialogFooter>

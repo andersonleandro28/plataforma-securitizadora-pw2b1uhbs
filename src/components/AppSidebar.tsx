@@ -11,6 +11,8 @@ import {
   TrendingUp,
   Settings2,
   Package,
+  CreditCard,
+  CheckSquare,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -45,9 +47,21 @@ const allNavItems = [
     roles: ['admin'],
   },
   {
+    title: 'Contas Bancárias',
+    path: '/admin/bank-accounts',
+    icon: CreditCard,
+    roles: ['admin'],
+  },
+  {
     title: 'Gestão de Produtos',
     path: '/admin/products',
     icon: Package,
+    roles: ['admin', 'staff'],
+  },
+  {
+    title: 'Aprovações de Aportes',
+    path: '/admin/investments',
+    icon: CheckSquare,
     roles: ['admin', 'staff'],
   },
   {

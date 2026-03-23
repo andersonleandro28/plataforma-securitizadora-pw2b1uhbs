@@ -14,12 +14,15 @@ import Onboarding from './pages/Onboarding'
 import Operations from './pages/Operations'
 import Debentures from './pages/Debentures'
 import Investments from './pages/Investments'
+import InvestmentCheckout from './pages/investor/InvestmentCheckout'
 import Trustee from './pages/Trustee'
 import Treasury from './pages/Treasury'
 import Profile from './pages/Profile'
 import Users from './pages/admin/Users'
 import FinancialParameters from './pages/admin/FinancialParameters'
 import InvestmentProducts from './pages/admin/InvestmentProducts'
+import BankAccounts from './pages/admin/BankAccounts'
+import InvestmentsReview from './pages/admin/InvestmentsReview'
 import KycOnboarding from './pages/KycOnboarding'
 import { AuthGuard } from './components/auth/AuthGuard'
 import { RoleGuard } from './components/auth/RoleGuard'
@@ -77,6 +80,14 @@ const App = () => (
               }
             />
             <Route
+              path="/investments/checkout/:id"
+              element={
+                <RoleGuard allowedRoles={['investor']}>
+                  <InvestmentCheckout />
+                </RoleGuard>
+              }
+            />
+            <Route
               path="/trustee"
               element={
                 <RoleGuard allowedRoles={['admin', 'staff']}>
@@ -92,6 +103,7 @@ const App = () => (
                 </RoleGuard>
               }
             />
+
             <Route
               path="/admin/users"
               element={
@@ -116,6 +128,23 @@ const App = () => (
                 </RoleGuard>
               }
             />
+            <Route
+              path="/admin/bank-accounts"
+              element={
+                <RoleGuard allowedRoles={['admin']}>
+                  <BankAccounts />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/admin/investments"
+              element={
+                <RoleGuard allowedRoles={['admin', 'staff']}>
+                  <InvestmentsReview />
+                </RoleGuard>
+              }
+            />
+
             <Route path="/profile" element={<Profile />} />
           </Route>
           <Route path="*" element={<NotFound />} />
