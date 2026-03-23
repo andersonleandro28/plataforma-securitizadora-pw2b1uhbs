@@ -1,9 +1,10 @@
 section[aria-label^='Notifications'] {
   padding: 0 !important;
   margin: 0 !important;
-  z-index: 9999 !important;
+  z-index: 3000 !important;
+  pointer-events: none !important;
 }
 
 [data-sonner-toaster] {
-  z-index: 9999 !important;
+  z-index: 3000 !important;
 }
