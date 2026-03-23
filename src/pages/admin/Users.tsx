@@ -39,11 +39,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Shield, UserPlus, Mail, Loader2, Trash2, Settings2 } from 'lucide-react'
+import { Shield, UserPlus, Mail, Loader2, Trash2, Settings2, Landmark } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/use-auth'
 import { ManageRolesDialog } from '@/components/admin/ManageRolesDialog'
+import { UserBankAccountsAdminDialog } from '@/components/admin/UserBankAccountsAdminDialog'
 
 export default function Users() {
   const { session } = useAuth()
@@ -58,6 +59,7 @@ export default function Users() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const [manageRolesUser, setManageRolesUser] = useState<any>(null)
+  const [manageBanksUser, setManageBanksUser] = useState<any>(null)
 
   const loadUsers = async () => {
     setLoading(true)
@@ -211,6 +213,12 @@ export default function Users() {
         currentUserId={session?.user?.id}
       />
 
+      <UserBankAccountsAdminDialog
+        user={manageBanksUser}
+        open={!!manageBanksUser}
+        onOpenChange={(v: boolean) => !v && setManageBanksUser(null)}
+      />
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -292,6 +300,14 @@ export default function Users() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 gap-1.5"
+                          onClick={() => setManageBanksUser(u)}
+                        >
+                          <Landmark className="h-3.5 w-3.5" /> Contas
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"
