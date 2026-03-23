@@ -19,6 +19,7 @@ import Treasury from './pages/Treasury'
 import Profile from './pages/Profile'
 import Users from './pages/admin/Users'
 import FinancialParameters from './pages/admin/FinancialParameters'
+import InvestmentProducts from './pages/admin/InvestmentProducts'
 import KycOnboarding from './pages/KycOnboarding'
 import { AuthGuard } from './components/auth/AuthGuard'
 import { RoleGuard } from './components/auth/RoleGuard'
@@ -104,6 +105,14 @@ const App = () => (
               element={
                 <RoleGuard allowedRoles={['admin']}>
                   <FinancialParameters />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/admin/products"
+              element={
+                <RoleGuard allowedRoles={['admin', 'staff']}>
+                  <InvestmentProducts />
                 </RoleGuard>
               }
             />
