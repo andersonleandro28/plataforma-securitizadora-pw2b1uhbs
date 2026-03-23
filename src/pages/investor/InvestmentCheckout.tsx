@@ -61,14 +61,12 @@ export default function InvestmentCheckout() {
         .upload(filePath, file)
       if (uploadErr) throw uploadErr
 
-      await supabase
-        .from('investment_proofs')
-        .insert({
-          investment_id: id,
-          file_path: filePath,
-          file_name: file.name,
-          file_size: file.size,
-        })
+      await supabase.from('investment_proofs').insert({
+        investment_id: id,
+        file_path: filePath,
+        file_name: file.name,
+        file_size: file.size,
+      })
 
       const { error } = await supabase
         .from('investments')

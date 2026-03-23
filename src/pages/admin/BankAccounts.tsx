@@ -33,6 +33,7 @@ export default function BankAccounts() {
 
   const [formData, setFormData] = useState({
     id: '',
+    bank_code: '',
     bank_name: '',
     branch: '',
     account_number: '',
@@ -62,9 +63,12 @@ export default function BankAccounts() {
     try {
       const payload = { ...formData, updated_by: user?.id, updated_at: new Date().toISOString() }
       if (formData.id) {
-        await supabase.from('company_bank_accounts').update(payload).eq('id', formData.id)
+        await supabase
+          .from('company_bank_accounts')
+          .update(payload as any)
+          .eq('id', formData.id)
       } else {
-        await supabase.from('company_bank_accounts').insert({ ...payload, id: undefined })
+        await supabase.from('company_bank_accounts').insert({ ...payload, id: undefined } as any)
       }
       toast.success('Conta bancária salva com sucesso.')
       setOpen(false)
@@ -99,6 +103,7 @@ export default function BankAccounts() {
           onClick={() => {
             setFormData({
               id: '',
+              bank_code: '',
               bank_name: '',
               branch: '',
               account_number: '',
@@ -152,7 +157,14 @@ export default function BankAccounts() {
               ) : (
                 accounts.map((acc) => (
                   <TableRow key={acc.id}>
-                    <TableCell className="font-medium">{acc.bank_name}</TableCell>
+                    <TableCell className="font-medium">
+                      {acc.bank_code && (
+                        <span className="text-muted-foreground mr-2 font-mono text-xs bg-muted px-1.5 py-0.5 rounded">
+                          {String(acc.bank_code).padStart(3, '0')}
+                        </span>
+                      )}
+                      {acc.bank_name}
+                    </TableCell>
                     <TableCell>
                       {acc.branch} / {acc.account_number}
                     </TableCell>
@@ -180,7 +192,10 @@ export default function BankAccounts() {
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          setFormData(acc)
+                          setFormData({
+                            ...acc,
+                            bank_code: acc.bank_code || '',
+                          })
                           setOpen(true)
                         }}
                       >
@@ -203,7 +218,19 @@ export default function BankAccounts() {
             </DialogHeader>
             <div className="grid grid-cols-2 gap-4 py-4">
               <div className="space-y-2 col-span-2">
-                <Label>Instituição Financeira</Label>
+                <Label>Código do Banco (COMPE/FEBRABAN)</Label>
+                <Input
+                  required
+                  type="number"
+                  min="1"
+                  max="999"
+                  placeholder="Ex: 001 (BB), 104 (Caixa), 547 (BNK Digital)"
+                  value={formData.bank_code}
+                  onChange={(e) => setFormData({ ...formData, bank_code: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2 col-span-2">
+                <Label>Instituição Financeira (Banco)</Label>
                 <Input
                   required
                   value={formData.bank_name}
