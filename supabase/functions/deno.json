@@ -10,9 +10,9 @@
     "calculate-operation": 2,
     "send-operation-email": 1,
     "calculate-risk": 1,
-    "generate-aditivo": 5,
+    "generate-aditivo": 6,
     "send-to-signature": 1,
     "signature-webhook": 1,
-    "submit-ccb": 1
+    "submit-ccb": 2
   }
 }
