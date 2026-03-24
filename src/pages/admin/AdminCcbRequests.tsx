@@ -25,6 +25,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -195,6 +196,10 @@ export default function AdminCcbRequests() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Gerenciar Solicitação BDIGITAL</DialogTitle>
+            <DialogDescription>
+              Atualize o status da solicitação e anexe os retornos ou comprovantes do parceiro
+              emissor.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
