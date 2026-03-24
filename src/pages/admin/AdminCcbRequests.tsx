@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/select'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { Loader2, FileText, Eye } from 'lucide-react'
+import { Loader2, FileText, Forward, Settings, Download } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -35,6 +35,7 @@ export default function AdminCcbRequests() {
   const [requests, setRequests] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [manageId, setManageId] = useState<string | null>(null)
+  const [docsModal, setDocsModal] = useState<any>(null)
   const [statusVal, setStatusVal] = useState('')
   const [notes, setNotes] = useState('')
   const [file, setFile] = useState<File | null>(null)
@@ -54,9 +55,72 @@ export default function AdminCcbRequests() {
     fetchRequests()
   }, [])
 
-  const handleDownload = async (path: string) => {
-    const { data } = await supabase.storage.from('ccb-docs').createSignedUrl(path, 60)
-    if (data?.signedUrl) window.open(data.signedUrl, '_blank')
+  const downloadFile = async (path: string, fileName: string) => {
+    try {
+      const { data, error } = await supabase.storage.from('ccb-docs').download(path)
+      if (error) throw error
+      if (data) {
+        const url = URL.createObjectURL(data)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = fileName
+        document.body.appendChild(a)
+        a.click()
+        URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+      }
+    } catch (e) {
+      console.error('Error downloading file', e)
+      toast.error(`Falha ao baixar ${fileName}`)
+    }
+  }
+
+  const renderDocs = (req: any) => {
+    const paths = req.docs_paths || {}
+    const items = []
+    if (req.pdf_file_path) items.push({ label: 'PDF Espelho CCB', path: req.pdf_file_path })
+    if (paths.identity) items.push({ label: 'Documento de Identidade', path: paths.identity })
+    if (paths.address) items.push({ label: 'Comprovante de Residência', path: paths.address })
+    if (paths.bank_extract) items.push({ label: 'Extrato Bancário', path: paths.bank_extract })
+    if (paths.ir_document) items.push({ label: 'Declaração IR', path: paths.ir_document })
+    if (paths.borderos && Array.isArray(paths.borderos)) {
+      paths.borderos.forEach((b: string, i: number) => {
+        items.push({ label: `Borderô / NF ${i + 1}`, path: b })
+      })
+    }
+    return items
+  }
+
+  const handleEncaminhar = async (req: any) => {
+    setSaving(true)
+    try {
+      const docs = renderDocs(req)
+      toast.info(`Preparando download de ${docs.length} arquivos...`)
+
+      for (const doc of docs) {
+        const ext = doc.path.split('.').pop() || 'pdf'
+        const safeName = doc.label.replace(/[^a-z0-9]/gi, '_')
+        const fileName = `${safeName}_${req.id.substring(0, 5)}.${ext}`
+        await downloadFile(doc.path, fileName)
+        await new Promise((r) => setTimeout(r, 500))
+      }
+
+      if (req.status === 'pendente') {
+        const { error } = await supabase
+          .from('ccb_solicitacoes')
+          .update({ status: 'em_analise' })
+          .eq('id', req.id)
+        if (error) throw error
+        toast.success('Arquivos baixados e status atualizado para "Enviado BDIGITAL".')
+        fetchRequests()
+      } else {
+        toast.success('Arquivos baixados com sucesso.')
+      }
+    } catch (err: any) {
+      toast.error('Erro ao encaminhar: ' + err.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleUpdate = async () => {
@@ -105,15 +169,15 @@ export default function AdminCcbRequests() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Gestão de CCB (BDIGITAL)</h1>
         <p className="text-muted-foreground">
-          Analise as emissões solicitadas e envie as respostas do banco.
+          Analise as emissões solicitadas e encaminhe os documentos para a BDIGITAL.
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Solicitações Pendentes</CardTitle>
+          <CardTitle>Solicitações de CCB</CardTitle>
           <CardDescription>
-            Fluxo de análise e aprovação de Cédula de Crédito Bancário.
+            Fluxo de análise e encaminhamento de Cédula de Crédito Bancário.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -164,24 +228,37 @@ export default function AdminCcbRequests() {
                               ? 'destructive'
                               : 'secondary'
                         }
-                        className={req.status === 'aprovada' ? 'bg-emerald-500' : ''}
+                        className={
+                          req.status === 'aprovada'
+                            ? 'bg-emerald-500'
+                            : req.status === 'em_analise'
+                              ? 'bg-amber-500 hover:bg-amber-600'
+                              : ''
+                        }
                       >
-                        {req.status}
+                        {req.status === 'em_analise' ? 'Enviado BDIG' : req.status}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right space-x-2">
-                      {req.pdf_file_path && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDownload(req.pdf_file_path)}
-                          title="Visualizar PDF Espelho da BDIGITAL"
-                        >
-                          <FileText className="h-4 w-4 mr-1" /> PDF Espelho
-                        </Button>
-                      )}
+                      <Button variant="outline" size="sm" onClick={() => setDocsModal(req)}>
+                        <FileText className="h-4 w-4 mr-1" /> Docs ({renderDocs(req).length})
+                      </Button>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => handleEncaminhar(req)}
+                        disabled={saving}
+                        className={
+                          req.status === 'pendente'
+                            ? 'bg-[#00C2E0] hover:bg-[#00a9c4] text-white'
+                            : ''
+                        }
+                      >
+                        <Forward className="h-4 w-4 mr-1" />{' '}
+                        {req.status === 'pendente' ? 'Encaminhar' : 'Baixar Docs'}
+                      </Button>
                       <Button variant="secondary" size="sm" onClick={() => openManage(req)}>
-                        <Eye className="h-4 w-4 mr-1" /> Gerir
+                        <Settings className="h-4 w-4 mr-1" /> Gerir
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -192,11 +269,53 @@ export default function AdminCcbRequests() {
         </CardContent>
       </Card>
 
+      <Dialog open={!!docsModal} onOpenChange={(v) => !v && setDocsModal(null)}>
+        <DialogContent aria-describedby="docs-dialog-description">
+          <DialogHeader>
+            <DialogTitle>Documentos da Solicitação</DialogTitle>
+            <DialogDescription id="docs-dialog-description">
+              Visualize e baixe os documentos enviados pelo tomador.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+            {docsModal &&
+              renderDocs(docsModal).map((doc, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between p-3 border rounded-md bg-muted/30 hover:bg-muted/50 transition-colors"
+                >
+                  <span className="text-sm font-medium">{doc.label}</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const ext = doc.path.split('.').pop() || 'pdf'
+                      downloadFile(doc.path, `${doc.label.replace(/[^a-z0-9]/gi, '_')}.${ext}`)
+                    }}
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            {docsModal && renderDocs(docsModal).length === 0 && (
+              <div className="text-center text-muted-foreground p-4">
+                Nenhum documento encontrado.
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDocsModal(null)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!manageId} onOpenChange={(v) => !v && setManageId(null)}>
-        <DialogContent>
+        <DialogContent aria-describedby="manage-dialog-description">
           <DialogHeader>
             <DialogTitle>Gerenciar Solicitação BDIGITAL</DialogTitle>
-            <DialogDescription>
+            <DialogDescription id="manage-dialog-description">
               Atualize o status da solicitação e anexe os retornos ou comprovantes do parceiro
               emissor.
             </DialogDescription>
@@ -210,7 +329,7 @@ export default function AdminCcbRequests() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="pendente">Pendente</SelectItem>
-                  <SelectItem value="em_analise">Em Análise BDIGITAL</SelectItem>
+                  <SelectItem value="em_analise">Enviado BDIGITAL</SelectItem>
                   <SelectItem value="aprovada">Aprovada</SelectItem>
                   <SelectItem value="rejeitada">Rejeitada</SelectItem>
                 </SelectContent>

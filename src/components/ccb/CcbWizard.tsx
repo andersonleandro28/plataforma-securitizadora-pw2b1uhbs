@@ -83,7 +83,28 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
     }
   }
 
-  const handleNext = () => setStep((s) => Math.min(s + 1, 4))
+  const handleNext = () => {
+    if (step === 1) {
+      if (!kycData.name || !kycData.document) {
+        toast.error('Preencha os campos obrigatórios (Nome e Documento).')
+        return
+      }
+    }
+    if (step === 2) {
+      if (!docsFiles.idDoc || !docsFiles.proofAddress || !docsFiles.bankExtract) {
+        toast.error('Por favor, anexe a Identidade, Comprovante de Residência e Extrato Bancário.')
+        return
+      }
+    }
+    if (step === 3) {
+      if (!opData.requestedValue || !opData.termMonths) {
+        toast.error('Preencha o valor solicitado e o prazo.')
+        return
+      }
+    }
+    setStep((s) => Math.min(s + 1, 4))
+  }
+
   const handlePrev = () => setStep((s) => Math.max(s - 1, 1))
 
   const addSacado = () =>
@@ -305,7 +326,7 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
             <h3 className="font-semibold text-lg border-b pb-2">3. Dados da Operação</h3>
             <div className="grid md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label>Valor Solicitado (R$)</Label>
+                <Label>Valor Solicitado (R$) *</Label>
                 <Input
                   type="number"
                   min="5000"
@@ -315,7 +336,7 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Prazo (Meses)</Label>
+                <Label>Prazo (Meses) *</Label>
                 <Input
                   type="number"
                   min="3"

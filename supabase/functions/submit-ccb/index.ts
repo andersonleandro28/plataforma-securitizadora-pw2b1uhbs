@@ -4,13 +4,14 @@ import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib'
 import { corsHeaders } from '../_shared/cors.ts'
 
 const sanitize = (text: any) => {
-  if (text === null || text === undefined) return ''
+  if (text === null || text === undefined || text === '') return 'Não informado'
   return String(text)
     .replace(/[\r\n\t]/g, ' ')
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201C\u201D]/g, '"')
     .replace(/[\u2013\u2014]/g, '-')
     .replace(/[^\x20-\x7E\xA0-\xFF]/g, '')
+    .trim()
 }
 
 Deno.serve(async (req: Request) => {
@@ -18,17 +19,20 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { borrowerData, operationData, guaranteesData, docsPaths } = await req.json()
-    
+
     const authHeader = req.headers.get('Authorization')!
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-    
+
     const client = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } }
+      global: { headers: { Authorization: authHeader } },
     })
-    
-    const { data: { user }, error: authErr } = await client.auth.getUser()
+
+    const {
+      data: { user },
+      error: authErr,
+    } = await client.auth.getUser()
     if (authErr || !user) throw new Error('Unauthorized')
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
@@ -42,123 +46,287 @@ Deno.serve(async (req: Request) => {
     const margin = 40
     let currentY = 595.28 - margin
 
-    const drawLine = (y: number) => page.drawLine({ start: { x: margin, y }, end: { x: 841.89 - margin, y }, thickness: 1, color: rgb(0.8, 0.8, 0.8) })
+    const drawLine = (y: number) =>
+      page.drawLine({
+        start: { x: margin, y },
+        end: { x: 841.89 - margin, y },
+        thickness: 1,
+        color: rgb(0.8, 0.8, 0.8),
+      })
     const drawH2 = (title: string, y: number) => {
       page.drawText(title, { x: margin, y, font: fontBold, size: 12 })
-      page.drawLine({ start: { x: margin, y: y - 5 }, end: { x: 841.89 - margin, y: y - 5 }, thickness: 1 })
+      page.drawLine({
+        start: { x: margin, y: y - 5 },
+        end: { x: 841.89 - margin, y: y - 5 },
+        thickness: 1,
+      })
     }
 
     // HEADER
-    page.drawText('BDIGITAL', { x: margin, y: currentY, font: fontBold, size: 24, color: rgb(0, 0.4, 0.7) })
-    page.drawText('SOLICITAÇÃO DE EMISSÃO DE CCB', { x: margin + 150, y: currentY + 4, font: fontBold, size: 16 })
+    page.drawText('BDIGITAL', {
+      x: margin,
+      y: currentY,
+      font: fontBold,
+      size: 24,
+      color: rgb(0, 0.4, 0.7),
+    })
+    page.drawText('SOLICITAÇÃO DE EMISSÃO DE CCB', {
+      x: margin + 150,
+      y: currentY + 4,
+      font: fontBold,
+      size: 16,
+    })
     currentY -= 20
-    page.drawText(`Tomador: ${sanitize(borrowerData.name)} | Documento: ${sanitize(borrowerData.document)}`, { x: margin, y: currentY, font, size: 10 })
+    page.drawText(
+      `Tomador: ${sanitize(borrowerData?.name).substring(0, 50)} | Documento: ${sanitize(borrowerData?.document)}`,
+      { x: margin, y: currentY, font, size: 10 },
+    )
     currentY -= 15
-    page.drawText(`Data/Hora: ${new Date().toLocaleString('pt-BR')} | ID Solicitação: ${ccbId.split('-')[0].toUpperCase()}`, { x: margin, y: currentY, font, size: 10 })
+    page.drawText(
+      `Data/Hora: ${new Date().toLocaleString('pt-BR')} | ID Solicitação: ${ccbId.split('-')[0].toUpperCase()}`,
+      { x: margin, y: currentY, font, size: 10 },
+    )
     currentY -= 30
 
     // SEC 1: KYC
     drawH2('1. DADOS DO SOLICITANTE (KYC)', currentY)
     currentY -= 20
-    page.drawText(`Nome Completo: ${sanitize(borrowerData.name)}`, { x: margin, y: currentY, font, size: 10 })
-    page.drawText(`CPF/CNPJ: ${sanitize(borrowerData.document)}`, { x: 400, y: currentY, font, size: 10 })
+    page.drawText(`Nome Completo: ${sanitize(borrowerData?.name).substring(0, 60)}`, {
+      x: margin,
+      y: currentY,
+      font,
+      size: 10,
+    })
+    page.drawText(`CPF/CNPJ: ${sanitize(borrowerData?.document)}`, {
+      x: 400,
+      y: currentY,
+      font,
+      size: 10,
+    })
     currentY -= 15
-    page.drawText(`Data Nasc.: ${sanitize(borrowerData.dob)}`, { x: margin, y: currentY, font, size: 10 })
-    page.drawText(`Estado Civil: ${sanitize(borrowerData.maritalStatus)}`, { x: 250, y: currentY, font, size: 10 })
-    page.drawText(`Profissão: ${sanitize(borrowerData.occupation)}`, { x: 500, y: currentY, font, size: 10 })
+    page.drawText(`Data Nasc.: ${sanitize(borrowerData?.dob)}`, {
+      x: margin,
+      y: currentY,
+      font,
+      size: 10,
+    })
+    page.drawText(`Estado Civil: ${sanitize(borrowerData?.maritalStatus)}`, {
+      x: 250,
+      y: currentY,
+      font,
+      size: 10,
+    })
+    page.drawText(`Profissão: ${sanitize(borrowerData?.occupation).substring(0, 40)}`, {
+      x: 500,
+      y: currentY,
+      font,
+      size: 10,
+    })
     currentY -= 15
-    page.drawText(`Renda Mensal: R$ ${sanitize(borrowerData.income)}`, { x: margin, y: currentY, font, size: 10 })
-    page.drawText(`Telefone: ${sanitize(borrowerData.phone)}`, { x: 250, y: currentY, font, size: 10 })
-    page.drawText(`E-mail: ${sanitize(borrowerData.email)}`, { x: 500, y: currentY, font, size: 10 })
+    page.drawText(`Renda Mensal: R$ ${sanitize(borrowerData?.income)}`, {
+      x: margin,
+      y: currentY,
+      font,
+      size: 10,
+    })
+    page.drawText(`Telefone: ${sanitize(borrowerData?.phone)}`, {
+      x: 250,
+      y: currentY,
+      font,
+      size: 10,
+    })
+    page.drawText(`E-mail: ${sanitize(borrowerData?.email).substring(0, 40)}`, {
+      x: 500,
+      y: currentY,
+      font,
+      size: 10,
+    })
     currentY -= 15
-    page.drawText(`Endereço: ${sanitize(borrowerData.street)}, ${sanitize(borrowerData.number)} - ${sanitize(borrowerData.neighborhood)} - ${sanitize(borrowerData.city)}/${sanitize(borrowerData.state)} - CEP: ${sanitize(borrowerData.zip)}`, { x: margin, y: currentY, font, size: 10 })
+
+    const endStr = `Endereço: ${sanitize(borrowerData?.street)}, ${sanitize(borrowerData?.number)} - ${sanitize(borrowerData?.neighborhood)} - ${sanitize(borrowerData?.city)}/${sanitize(borrowerData?.state)} - CEP: ${sanitize(borrowerData?.zip)}`
+    page.drawText(endStr.substring(0, 130), { x: margin, y: currentY, font, size: 10 })
     currentY -= 30
 
     // SEC 2: DOCS
     drawH2('2. DOCUMENTOS ANEXADOS', currentY)
     currentY -= 20
-    const attached = Object.keys(docsPaths || {}).filter(k => k !== 'borderos').map(k => k.toUpperCase()).join(', ') || 'Nenhum'
-    page.drawText(`Arquivos Base de KYC e Comprovação: ${attached}`, { x: margin, y: currentY, font, size: 10 })
+    const attached =
+      Object.keys(docsPaths || {})
+        .filter((k) => k !== 'borderos')
+        .map((k) => k.toUpperCase())
+        .join(', ') || 'Nenhum'
+    page.drawText(`Arquivos Base de KYC e Comprovação: ${attached}`, {
+      x: margin,
+      y: currentY,
+      font,
+      size: 10,
+    })
     currentY -= 30
 
     // SEC 3: OP
     drawH2('3. OPERAÇÃO CCB', currentY)
     currentY -= 20
-    page.drawText(`Valor Solicitado: R$ ${sanitize(operationData.requestedValue)}`, { x: margin, y: currentY, font, size: 10 })
-    page.drawText(`Prazo: ${sanitize(operationData.termMonths)} meses`, { x: 250, y: currentY, font, size: 10 })
-    page.drawText(`Finalidade: ${sanitize(operationData.purpose)}`, { x: 450, y: currentY, font, size: 10 })
-    page.drawText(`Taxa Proposta: ${sanitize(operationData.proposedRate)}% a.m.`, { x: 650, y: currentY, font, size: 10 })
+    page.drawText(`Valor Solicitado: R$ ${sanitize(operationData?.requestedValue)}`, {
+      x: margin,
+      y: currentY,
+      font,
+      size: 10,
+    })
+    page.drawText(`Prazo: ${sanitize(operationData?.termMonths)} meses`, {
+      x: 250,
+      y: currentY,
+      font,
+      size: 10,
+    })
+    page.drawText(`Finalidade: ${sanitize(operationData?.purpose)}`, {
+      x: 450,
+      y: currentY,
+      font,
+      size: 10,
+    })
+    page.drawText(`Taxa Proposta: ${sanitize(operationData?.proposedRate)}% a.m.`, {
+      x: 650,
+      y: currentY,
+      font,
+      size: 10,
+    })
     currentY -= 30
 
     // SEC 4: GUARANTEES
     drawH2('4. GARANTIAS / LASTRO', currentY)
     currentY -= 20
-    page.drawText(`Tipo de Recebível: ${sanitize(guaranteesData.receivableType).toUpperCase()}`, { x: margin, y: currentY, font, size: 10 })
+    page.drawText(`Tipo de Recebível: ${sanitize(guaranteesData?.receivableType).toUpperCase()}`, {
+      x: margin,
+      y: currentY,
+      font,
+      size: 10,
+    })
     currentY -= 15
-    page.drawText('Relação de Sacados (Resumo):', { x: margin, y: currentY, font: fontBold, size: 10 })
+    page.drawText('Relação de Sacados (Resumo):', {
+      x: margin,
+      y: currentY,
+      font: fontBold,
+      size: 10,
+    })
     currentY -= 15
-    if (guaranteesData.sacados && guaranteesData.sacados.length > 0) {
+    if (guaranteesData?.sacados && guaranteesData.sacados.length > 0) {
       guaranteesData.sacados.slice(0, 4).forEach((s: any) => {
-        page.drawText(`- Nome: ${sanitize(s.name)} | Documento: ${sanitize(s.document)} | Valor: R$ ${sanitize(s.value)}`, { x: margin + 10, y: currentY, font, size: 10 })
+        page.drawText(
+          `- Nome: ${sanitize(s.name).substring(0, 40)} | Documento: ${sanitize(s.document)} | Valor: R$ ${sanitize(s.value)}`,
+          { x: margin + 10, y: currentY, font, size: 10 },
+        )
         currentY -= 15
       })
       if (guaranteesData.sacados.length > 4) {
-        page.drawText(`... e mais ${guaranteesData.sacados.length - 4} sacados (vide arquivos em anexo na plataforma)`, { x: margin + 10, y: currentY, font, size: 10, color: rgb(0.5, 0.5, 0.5) })
+        page.drawText(
+          `... e mais ${guaranteesData.sacados.length - 4} sacados (vide arquivos em anexo na plataforma)`,
+          { x: margin + 10, y: currentY, font, size: 10, color: rgb(0.5, 0.5, 0.5) },
+        )
         currentY -= 15
       }
     } else {
-      page.drawText('Nenhum sacado informado individualmente.', { x: margin + 10, y: currentY, font, size: 10 })
+      page.drawText('Nenhum sacado informado individualmente.', {
+        x: margin + 10,
+        y: currentY,
+        font,
+        size: 10,
+      })
       currentY -= 15
     }
     const borderosCount = Array.isArray(docsPaths?.borderos) ? docsPaths.borderos.length : 0
-    page.drawText(`Anexos de Lastro (Borderôs/NFs/Boletos): ${borderosCount} arquivo(s)`, { x: margin, y: currentY, font, size: 10 })
+    page.drawText(`Anexos de Lastro (Borderôs/NFs/Boletos): ${borderosCount} arquivo(s)`, {
+      x: margin,
+      y: currentY,
+      font,
+      size: 10,
+    })
     currentY -= 40
 
     // FOOTER
     drawLine(currentY)
     currentY -= 20
-    page.drawText('Tomador assina eletronicamente via Plataforma Securitizadora.', { x: margin, y: currentY, font: fontBold, size: 10 })
-    page.drawText(`Emitido via Parceria Integrada BDIGITAL - ID Transação: ${ccbId}`, { x: margin, y: currentY - 15, font, size: 8, color: rgb(0.5, 0.5, 0.5) })
+    page.drawText('Tomador assina eletronicamente via Plataforma Securitizadora.', {
+      x: margin,
+      y: currentY,
+      font: fontBold,
+      size: 10,
+    })
+    page.drawText(`Emitido via Parceria Integrada BDIGITAL - ID Transação: ${ccbId}`, {
+      x: margin,
+      y: currentY - 15,
+      font,
+      size: 8,
+      color: rgb(0.5, 0.5, 0.5),
+    })
 
     // BDIGITAL STAMP BOX
-    const boxW = 200, boxH = 60
-    page.drawRectangle({ x: 841.89 - margin - boxW, y: currentY - 40, width: boxW, height: boxH, borderColor: rgb(0,0,0), borderWidth: 1 })
-    page.drawText('Uso Exclusivo BDIGITAL', { x: 841.89 - margin - boxW + 10, y: currentY + 5, font: fontBold, size: 8 })
-    page.drawText('Aprovação / Carimbo', { x: 841.89 - margin - boxW + 45, y: currentY - 15, font, size: 10, color: rgb(0.7, 0.7, 0.7) })
+    const boxW = 200,
+      boxH = 60
+    page.drawRectangle({
+      x: 841.89 - margin - boxW,
+      y: currentY - 40,
+      width: boxW,
+      height: boxH,
+      borderColor: rgb(0, 0, 0),
+      borderWidth: 1,
+    })
+    page.drawText('Uso Exclusivo BDIGITAL', {
+      x: 841.89 - margin - boxW + 10,
+      y: currentY + 5,
+      font: fontBold,
+      size: 8,
+    })
+    page.drawText('Aprovação / Carimbo', {
+      x: 841.89 - margin - boxW + 45,
+      y: currentY - 15,
+      font,
+      size: 10,
+      color: rgb(0.7, 0.7, 0.7),
+    })
 
     const pdfBytes = await pdfDoc.save()
-    const fileName = `CCB_Espelho_${ccbId.substring(0,8)}.pdf`
+    const fileName = `CCB_Espelho_${ccbId.substring(0, 8)}.pdf`
     const filePath = `${user.id}/${fileName}`
     const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' })
 
-    const { error: uploadErr } = await supabaseAdmin.storage.from('ccb-docs').upload(filePath, pdfBlob, { contentType: 'application/pdf' })
+    const { error: uploadErr } = await supabaseAdmin.storage
+      .from('ccb-docs')
+      .upload(filePath, pdfBlob, { contentType: 'application/pdf' })
     if (uploadErr) throw new Error(`Erro ao salvar PDF: ${uploadErr.message}`)
 
+    // Console log for debugging
+    const filledFieldsCount =
+      Object.keys(borrowerData || {}).length + Object.keys(operationData || {}).length
+    console.log(`PDF gerado com ${filledFieldsCount} campos processados e salvo em ${filePath}.`)
+
     // 2. Insert into Database using predefined UUID
-    const { data: ccbRecord, error: dbErr } = await supabaseAdmin.from('ccb_solicitacoes').insert({
+    const { data: ccbRecord, error: dbErr } = await supabaseAdmin
+      .from('ccb_solicitacoes')
+      .insert({
         id: ccbId,
         user_id: user.id,
-        requested_value: operationData.requestedValue,
-        term_months: operationData.termMonths,
-        borrower_data: borrowerData,
-        operation_data: operationData,
-        guarantees_data: guaranteesData,
-        docs_paths: docsPaths,
+        requested_value: operationData?.requestedValue || 0,
+        term_months: operationData?.termMonths || 0,
+        borrower_data: borrowerData || {},
+        operation_data: operationData || {},
+        guarantees_data: guaranteesData || {},
+        docs_paths: docsPaths || {},
         pdf_file_path: filePath,
-        status: 'pendente'
-    }).select().single()
+        status: 'pendente',
+      })
+      .select()
+      .single()
 
     if (dbErr) throw dbErr
 
-    console.log(`[EMAIL AUTOMÁTICO] Nova Solicitação de CCB BDIGITAL: ID ${ccbRecord.id} enviada por ${borrowerData.name}. PDF anexo e salvo em ${filePath}.`)
-
     return new Response(JSON.stringify({ success: true, data: ccbRecord }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
-
   } catch (err: any) {
+    console.error('Generate CCB PDF Error: ', err.message)
     return new Response(JSON.stringify({ error: err.message }), {
-      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 })
