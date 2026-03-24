@@ -12,6 +12,7 @@
     "calculate-risk": 1,
     "generate-aditivo": 5,
     "send-to-signature": 1,
-    "signature-webhook": 1
+    "signature-webhook": 1,
+    "submit-ccb": 1
   }
 }

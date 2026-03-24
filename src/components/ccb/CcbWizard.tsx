@@ -77,7 +77,9 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
             state: data.uf,
           }))
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error('Error fetching CEP:', e)
+      }
     }
   }
 
