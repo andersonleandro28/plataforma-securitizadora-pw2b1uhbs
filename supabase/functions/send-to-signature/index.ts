@@ -12,14 +12,11 @@ Deno.serve(async (req: Request) => {
 
     // Simulate API integration with DocuSign/ClickSign
     const envelopeId = crypto.randomUUID()
-
-    const { error } = await supabase
-      .from('credit_operations')
-      .update({
-        signature_envelope_id: envelopeId,
-        signature_status: 'enviado',
-      })
-      .eq('id', operationId)
+    
+    const { error } = await supabase.from('credit_operations').update({
+      signature_envelope_id: envelopeId,
+      signature_status: 'enviado'
+    }).eq('id', operationId)
 
     if (error) throw error
 
@@ -28,16 +25,15 @@ Deno.serve(async (req: Request) => {
       entity_type: 'credit_operations',
       entity_id: operationId,
       action: 'enviado_assinatura',
-      details: { envelope_id: envelopeId, provider: 'ClickSign/DocuSign (Mock)' },
+      details: { envelope_id: envelopeId, provider: 'ClickSign/DocuSign (Mock)' }
     })
 
-    return new Response(JSON.stringify({ success: true, envelopeId }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    return new Response(JSON.stringify({ success: true, envelopeId }), { 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     })
   } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    return new Response(JSON.stringify({ error: err.message }), { 
+      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     })
   }
 })
