@@ -23,7 +23,9 @@ import FinancialParameters from './pages/admin/FinancialParameters'
 import InvestmentProducts from './pages/admin/InvestmentProducts'
 import BankAccounts from './pages/admin/BankAccounts'
 import InvestmentsReview from './pages/admin/InvestmentsReview'
+import AdminCcbRequests from './pages/admin/AdminCcbRequests'
 import KycOnboarding from './pages/KycOnboarding'
+import CcbDigital from './pages/borrower/CcbDigital'
 import { AuthGuard } from './components/auth/AuthGuard'
 import { RoleGuard } from './components/auth/RoleGuard'
 
@@ -54,6 +56,16 @@ const App = () => (
                 </RoleGuard>
               }
             />
+
+            <Route
+              path="/ccb-digital"
+              element={
+                <RoleGuard allowedRoles={['borrower']}>
+                  <CcbDigital />
+                </RoleGuard>
+              }
+            />
+
             <Route
               path="/onboarding"
               element={
@@ -141,6 +153,14 @@ const App = () => (
               element={
                 <RoleGuard allowedRoles={['admin', 'staff']}>
                   <InvestmentsReview />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/admin/ccb-requests"
+              element={
+                <RoleGuard allowedRoles={['admin', 'staff']}>
+                  <AdminCcbRequests />
                 </RoleGuard>
               }
             />

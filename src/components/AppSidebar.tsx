@@ -13,6 +13,7 @@ import {
   Package,
   CreditCard,
   CheckSquare,
+  FileBadge,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -33,6 +34,18 @@ const allNavItems = [
     path: '/',
     icon: LayoutDashboard,
     roles: ['admin', 'staff', 'investor', 'borrower'],
+  },
+  {
+    title: 'CCB Digital BDIGITAL',
+    path: '/ccb-digital',
+    icon: FileBadge,
+    roles: ['borrower'],
+  },
+  {
+    title: 'Solicitações CCB',
+    path: '/admin/ccb-requests',
+    icon: FileBadge,
+    roles: ['admin', 'staff'],
   },
   {
     title: 'Gestão de Usuários',
@@ -146,8 +159,20 @@ export function AppSidebar() {
                     tooltip={item.title}
                   >
                     <Link to={item.path}>
-                      <item.icon className="text-zinc-400 group-data-[active=true]/menu-button:text-primary transition-colors" />
-                      <span className="font-medium">{item.title}</span>
+                      <item.icon
+                        className={
+                          item.path === '/ccb-digital'
+                            ? 'text-[#00C2E0]'
+                            : 'text-zinc-400 group-data-[active=true]/menu-button:text-primary transition-colors'
+                        }
+                      />
+                      <span
+                        className={
+                          item.path === '/ccb-digital' ? 'font-bold text-[#00C2E0]' : 'font-medium'
+                        }
+                      >
+                        {item.title}
+                      </span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
