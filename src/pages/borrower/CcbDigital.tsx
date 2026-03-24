@@ -72,7 +72,7 @@ export default function CcbDigital() {
             </div>
             <div className="flex items-center gap-3">
               <FileText className="h-5 w-5 text-[#00C2E0]" />
-              <span className="text-sm font-medium text-white">Zero Papel</span>
+              <span className="text-sm font-medium text-white">Espelho em PDF</span>
             </div>
             <div className="flex items-center gap-3">
               <CheckCircle2 className="h-5 w-5 text-[#00C2E0]" />
@@ -118,17 +118,18 @@ export default function CcbDigital() {
                       </span>
                       {req.pdf_file_path && (
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
-                          className="h-8 gap-1 text-[#00C2E0] hover:text-[#00C2E0] hover:bg-[#00C2E0]/10"
+                          className="h-8 gap-1 text-[#00C2E0] border-[#00C2E0]/30 hover:bg-[#00C2E0]/10"
                           onClick={async () => {
                             const { data } = await supabase.storage
                               .from('ccb-docs')
                               .createSignedUrl(req.pdf_file_path, 60)
                             if (data) window.open(data.signedUrl, '_blank')
                           }}
+                          title="Visualizar o espelho do contrato"
                         >
-                          <FileText className="h-4 w-4" /> Espelho
+                          <FileText className="h-4 w-4" /> PDF Espelho
                         </Button>
                       )}
                     </div>

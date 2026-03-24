@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/select'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { Loader2, FileText, UploadCloud, Eye } from 'lucide-react'
+import { Loader2, FileText, Eye } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -174,9 +174,9 @@ export default function AdminCcbRequests() {
                           variant="outline"
                           size="sm"
                           onClick={() => handleDownload(req.pdf_file_path)}
-                          title="Espelho"
+                          title="Visualizar PDF Espelho da BDIGITAL"
                         >
-                          <FileText className="h-4 w-4" />
+                          <FileText className="h-4 w-4 mr-1" /> PDF Espelho
                         </Button>
                       )}
                       <Button variant="secondary" size="sm" onClick={() => openManage(req)}>
@@ -212,7 +212,7 @@ export default function AdminCcbRequests() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Retorno BDIGITAL (Contrato/Comprovante)</Label>
+              <Label>Upload Retorno BDIGITAL (Contrato/Comprovante)</Label>
               <Input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
             </div>
             <div className="space-y-2">
@@ -229,7 +229,7 @@ export default function AdminCcbRequests() {
               Cancelar
             </Button>
             <Button onClick={handleUpdate} disabled={saving}>
-              {saving && <Loader2 className="w-4 h-4 animate-spin mr-2" />} Salvar Status
+              {saving && <Loader2 className="w-4 h-4 animate-spin mr-2" />} Salvar e Notificar
             </Button>
           </DialogFooter>
         </DialogContent>
