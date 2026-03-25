@@ -31,28 +31,41 @@ import { RoleGuard } from './components/auth/RoleGuard'
 
 // Ignore browser extension errors (e.g., MetaMask) that crash the preview
 if (typeof window !== 'undefined') {
-  const suppressError = (event: any) => {
-    let errorMsg = ''
-    let stack = ''
+  const isExtensionError = (err: any) => {
+    try {
+      let errorMsg = ''
+      let stack = ''
 
-    if (event instanceof ErrorEvent) {
-      errorMsg = event.message || event.error?.message || ''
-      stack = event.error?.stack || ''
-    } else if (event instanceof PromiseRejectionEvent) {
-      errorMsg = event.reason?.message || event.reason || ''
-      stack = event.reason?.stack || ''
-    } else if (event && typeof event === 'object' && event.message) {
-      errorMsg = event.message
+      if (err instanceof ErrorEvent) {
+        errorMsg = err.message || err.error?.message || ''
+        stack = err.error?.stack || ''
+      } else if (err instanceof PromiseRejectionEvent) {
+        errorMsg = err.reason?.message || err.reason || ''
+        stack = err.reason?.stack || ''
+      } else if (err instanceof Error) {
+        errorMsg = err.message
+        stack = err.stack || ''
+      } else if (typeof err === 'string') {
+        errorMsg = err
+      } else if (err && typeof err === 'object' && err.message) {
+        errorMsg = err.message
+        stack = err.stack || ''
+      }
+
+      const fullStr = (String(errorMsg) + ' ' + String(stack)).toLowerCase()
+      return (
+        fullStr.includes('metamask') ||
+        fullStr.includes('chrome-extension') ||
+        fullStr.includes('inpage.js') ||
+        fullStr.includes('ethereum')
+      )
+    } catch (e) {
+      return false
     }
+  }
 
-    const fullErrorStr = (String(errorMsg) + ' ' + String(stack)).toLowerCase()
-
-    if (
-      fullErrorStr.includes('metamask') ||
-      fullErrorStr.includes('chrome-extension') ||
-      fullErrorStr.includes('inpage.js') ||
-      fullErrorStr.includes('ethereum')
-    ) {
+  const suppressError = (event: any) => {
+    if (isExtensionError(event)) {
       if (typeof event.preventDefault === 'function') event.preventDefault()
       if (typeof event.stopPropagation === 'function') event.stopPropagation()
       if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation()
@@ -63,6 +76,31 @@ if (typeof window !== 'undefined') {
   window.addEventListener('error', suppressError, true)
   window.addEventListener('unhandledrejection', suppressError, true)
 
+  const originalOnerror = window.onerror
+  window.onerror = function (msg, url, line, col, error) {
+    if (
+      isExtensionError(msg) ||
+      isExtensionError(error) ||
+      String(url).includes('chrome-extension')
+    ) {
+      return true
+    }
+    if (originalOnerror) {
+      return originalOnerror.apply(this, arguments as any)
+    }
+  }
+
+  const originalOnunhandledrejection = window.onunhandledrejection
+  window.onunhandledrejection = function (event) {
+    if (isExtensionError(event)) {
+      if (event && typeof event.preventDefault === 'function') event.preventDefault()
+      return true
+    }
+    if (originalOnunhandledrejection) {
+      return originalOnunhandledrejection.apply(this, arguments as any)
+    }
+  }
+
   const originalConsoleError = console.error
   console.error = (...args) => {
     try {
@@ -70,7 +108,14 @@ if (typeof window !== 'undefined') {
         .map((a) => {
           if (typeof a === 'string') return a
           if (a instanceof Error) return a.message + ' ' + (a.stack || '')
-          return JSON.stringify(a)
+          if (a && typeof a === 'object') {
+            try {
+              return JSON.stringify(a)
+            } catch (e) {
+              return String(a)
+            }
+          }
+          return String(a)
         })
         .join(' ')
         .toLowerCase()
