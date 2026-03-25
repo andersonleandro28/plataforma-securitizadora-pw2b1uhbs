@@ -31,32 +31,60 @@ import { RoleGuard } from './components/auth/RoleGuard'
 
 // Ignore browser extension errors (e.g., MetaMask) that crash the preview
 if (typeof window !== 'undefined') {
-  const suppressError = (event: ErrorEvent | PromiseRejectionEvent) => {
+  const suppressError = (event: any) => {
     let errorMsg = ''
+    let stack = ''
+
     if (event instanceof ErrorEvent) {
       errorMsg = event.message || event.error?.message || ''
+      stack = event.error?.stack || ''
     } else if (event instanceof PromiseRejectionEvent) {
       errorMsg = event.reason?.message || event.reason || ''
+      stack = event.reason?.stack || ''
+    } else if (event && typeof event === 'object' && event.message) {
+      errorMsg = event.message
     }
 
+    const fullErrorStr = (String(errorMsg) + ' ' + String(stack)).toLowerCase()
+
     if (
-      typeof errorMsg === 'string' &&
-      (errorMsg.toLowerCase().includes('metamask') || errorMsg.includes('chrome-extension'))
+      fullErrorStr.includes('metamask') ||
+      fullErrorStr.includes('chrome-extension') ||
+      fullErrorStr.includes('inpage.js') ||
+      fullErrorStr.includes('ethereum')
     ) {
-      event.preventDefault()
-      event.stopPropagation()
+      if (typeof event.preventDefault === 'function') event.preventDefault()
+      if (typeof event.stopPropagation === 'function') event.stopPropagation()
+      if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation()
       return true
     }
   }
 
-  window.addEventListener('error', suppressError as EventListener, true)
-  window.addEventListener('unhandledrejection', suppressError as EventListener, true)
+  window.addEventListener('error', suppressError, true)
+  window.addEventListener('unhandledrejection', suppressError, true)
 
   const originalConsoleError = console.error
   console.error = (...args) => {
-    const msg = args.map((a) => (typeof a === 'string' ? a : a?.message || '')).join(' ')
-    if (msg.toLowerCase().includes('metamask') || msg.includes('chrome-extension')) {
-      return
+    try {
+      const msg = args
+        .map((a) => {
+          if (typeof a === 'string') return a
+          if (a instanceof Error) return a.message + ' ' + (a.stack || '')
+          return JSON.stringify(a)
+        })
+        .join(' ')
+        .toLowerCase()
+
+      if (
+        msg.includes('metamask') ||
+        msg.includes('chrome-extension') ||
+        msg.includes('inpage.js') ||
+        msg.includes('ethereum')
+      ) {
+        return
+      }
+    } catch (e) {
+      // ignore
     }
     originalConsoleError(...args)
   }
