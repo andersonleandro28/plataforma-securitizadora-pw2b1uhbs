@@ -31,19 +31,35 @@ import { RoleGuard } from './components/auth/RoleGuard'
 
 // Ignore browser extension errors (e.g., MetaMask) that crash the preview
 if (typeof window !== 'undefined') {
-  window.addEventListener('unhandledrejection', (event) => {
-    const errorMsg = event.reason?.message || event.reason
-    if (typeof errorMsg === 'string' && errorMsg.includes('MetaMask')) {
-      event.preventDefault()
+  const suppressError = (event: ErrorEvent | PromiseRejectionEvent) => {
+    let errorMsg = ''
+    if (event instanceof ErrorEvent) {
+      errorMsg = event.message || event.error?.message || ''
+    } else if (event instanceof PromiseRejectionEvent) {
+      errorMsg = event.reason?.message || event.reason || ''
     }
-  })
 
-  window.addEventListener('error', (event) => {
-    const errorMsg = event.message || event.error?.message
-    if (typeof errorMsg === 'string' && errorMsg.includes('MetaMask')) {
+    if (
+      typeof errorMsg === 'string' &&
+      (errorMsg.toLowerCase().includes('metamask') || errorMsg.includes('chrome-extension'))
+    ) {
       event.preventDefault()
+      event.stopPropagation()
+      return true
     }
-  })
+  }
+
+  window.addEventListener('error', suppressError as EventListener, true)
+  window.addEventListener('unhandledrejection', suppressError as EventListener, true)
+
+  const originalConsoleError = console.error
+  console.error = (...args) => {
+    const msg = args.map((a) => (typeof a === 'string' ? a : a?.message || '')).join(' ')
+    if (msg.toLowerCase().includes('metamask') || msg.includes('chrome-extension')) {
+      return
+    }
+    originalConsoleError(...args)
+  }
 }
 
 const App = () => (
