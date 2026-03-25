@@ -164,21 +164,23 @@ export default function InvestmentsReview() {
     }
   }
 
-  const handlePayRedemption = async (id: string) => {
+  const handlePayRedemption = async (r: any) => {
     if (
       !confirm(
-        'Confirmar o pagamento do resgate? O status será atualizado e o estoque de cotas devolvido.',
+        'Confirmar o pagamento do resgate? O status será atualizado e o estoque de cotas devolvido de forma atômica.',
       )
     )
       return
     setProcessingAction(true)
     try {
       const { error } = await supabase.rpc('process_redemption_payment', {
-        p_redemption_id: id,
+        p_redemption_id: r.id,
         p_admin_id: user?.id,
       })
       if (error) throw error
-      toast.success('Pagamento liquidado! Operação auditada com sucesso.')
+      toast.success(
+        `Resgate concluído: Estoque +${r.requested_quotas} cotas, Saldo investidor atualizado.`,
+      )
       fetchData()
     } catch (err: any) {
       toast.error('Erro: ' + err.message)
@@ -333,7 +335,7 @@ export default function InvestmentsReview() {
                   <History className="h-5 w-5" /> Resgates Pendentes
                 </CardTitle>
                 <CardDescription className="mt-1">
-                  Aprovação de retiradas antecipadas e liquidações.
+                  Aprovação de retiradas antecipadas e liquidações atômicas.
                 </CardDescription>
               </div>
               <div className="relative w-64">
@@ -356,19 +358,20 @@ export default function InvestmentsReview() {
                     <TableHead>Valor Líquido</TableHead>
                     <TableHead>Solicitado em</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Status Estoque</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8">
+                      <TableCell colSpan={8} className="text-center py-8">
                         <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                       </TableCell>
                     </TableRow>
                   ) : filteredRed.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                         Nenhum resgate solicitado.
                       </TableCell>
                     </TableRow>
@@ -400,6 +403,19 @@ export default function InvestmentsReview() {
                             >
                               Em Análise
                             </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {r.status === 'paid' ? (
+                            <span className="text-muted-foreground text-xs font-medium">
+                              Baixado
+                            </span>
+                          ) : r.status === 'approved' ? (
+                            <span className="text-amber-600 font-bold text-xs">Baixa pendente</span>
+                          ) : r.status === 'rejected' ? (
+                            <span className="text-muted-foreground text-xs">Cancelado</span>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">Aguardando</span>
                           )}
                         </TableCell>
                         <TableCell className="text-right space-x-1 whitespace-nowrap">
@@ -441,7 +457,7 @@ export default function InvestmentsReview() {
                               size="sm"
                               className="bg-primary/10 text-primary border-primary/30"
                               disabled={processingAction}
-                              onClick={() => handlePayRedemption(r.id)}
+                              onClick={() => handlePayRedemption(r)}
                             >
                               <DollarSign className="h-4 w-4 mr-1" /> Confirmar Pagamento
                             </Button>

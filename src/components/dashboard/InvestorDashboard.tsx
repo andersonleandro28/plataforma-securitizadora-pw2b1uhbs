@@ -68,6 +68,7 @@ export default function InvestorDashboard() {
     topSeries: 'Nenhuma',
     topIndexer: '-',
     chartData: [] as any[],
+    walletBalance: 0,
   })
 
   const fetchDashboardData = async () => {
@@ -77,25 +78,26 @@ export default function InvestorDashboard() {
     }
 
     try {
-      const { data: subs } = await supabase
-        .from('debenture_subscriptions')
-        .select('*, debenture_series(rate, indexer, maturity_date, debentures(issuer_name))')
-        .eq('document_number', profile.document_number)
+      const [subsRes, investmentsRes, redemptionsRes, profileRes] = await Promise.all([
+        supabase
+          .from('debenture_subscriptions')
+          .select('*, debenture_series(rate, indexer, maturity_date, debentures(issuer_name))')
+          .eq('document_number', profile.document_number),
+        supabase
+          .from('investments')
+          .select('*, investment_products(*)')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('investment_redemptions')
+          .select('*, investments(investment_products(title))')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false }),
+        supabase.from('profiles').select('wallet_balance').eq('id', user.id).single(),
+      ])
 
-      const { data: investmentsData } = await supabase
-        .from('investments')
-        .select('*, investment_products(*)')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-
-      const { data: redemptionsData } = await supabase
-        .from('investment_redemptions')
-        .select('*, investments(investment_products(title))')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-
-      setMyInvestments(investmentsData || [])
-      setMyRedemptions(redemptionsData || [])
+      setMyInvestments(investmentsRes.data || [])
+      setMyRedemptions(redemptionsRes.data || [])
 
       let totalInvested = 0
       let totalGrossYield = 0
@@ -107,7 +109,7 @@ export default function InvestorDashboard() {
       let topIndexer = '-'
       const today = new Date()
 
-      subs?.forEach((sub: any) => {
+      subsRes.data?.forEach((sub: any) => {
         const amount = Number(sub.total_amount)
         totalInvested += amount
         const rate = Number(sub.debenture_series?.rate || 0)
@@ -145,7 +147,7 @@ export default function InvestorDashboard() {
         const d = new Date()
         d.setMonth(d.getMonth() - i)
         let monthYield = 0
-        subs?.forEach((sub: any) => {
+        subsRes.data?.forEach((sub: any) => {
           const subDate = new Date(sub.subscription_date || sub.created_at)
           if (subDate <= d) {
             const days = Math.max(0, (d.getTime() - subDate.getTime()) / (1000 * 3600 * 24))
@@ -174,6 +176,7 @@ export default function InvestorDashboard() {
         topSeries,
         topIndexer,
         chartData,
+        walletBalance: profileRes.data?.wallet_balance || 0,
       })
     } catch (err) {
       console.error(err)
@@ -283,6 +286,8 @@ export default function InvestorDashboard() {
       </div>
     )
 
+  const activeInvestments = myInvestments.filter((i) => i.status !== 'resgatado')
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up pb-10">
       <div>
@@ -292,11 +297,23 @@ export default function InvestorDashboard() {
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Saldo Disponível (Caixa)</CardTitle>
+            <Wallet className="h-4 w-4 text-primary" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-primary">
+              {formatCurrency(metrics.walletBalance)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Livre para saque ou aporte</p>
+          </CardContent>
+        </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Patrimônio Investido</CardTitle>
-            <Wallet className="h-4 w-4 text-muted-foreground" />
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(metrics.totalInvested)}</div>
@@ -315,10 +332,8 @@ export default function InvestorDashboard() {
               +{formatCurrency(metrics.netYield)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              IR Retido (Est.):{' '}
-              <span className="text-destructive font-medium">
-                -{formatCurrency(metrics.estimatedIR)}
-              </span>
+              IR Retido:{' '}
+              <span className="text-destructive">-{formatCurrency(metrics.estimatedIR)}</span>
             </p>
           </CardContent>
         </Card>
@@ -331,7 +346,7 @@ export default function InvestorDashboard() {
             <div className="text-2xl font-bold">
               {metrics.nextAmortization > 0 ? formatCurrency(metrics.nextAmortization) : '-'}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground mt-1 truncate">
               {metrics.nextAmortizationDate
                 ? `Previsto p/ ${metrics.nextAmortizationDate}`
                 : 'Sem previsão'}
@@ -347,7 +362,7 @@ export default function InvestorDashboard() {
             <div className="text-lg font-bold text-primary truncate" title={metrics.topSeries}>
               {metrics.topSeries}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Ref: {metrics.topIndexer}</p>
+            <p className="text-xs text-muted-foreground mt-1 truncate">Ref: {metrics.topIndexer}</p>
           </CardContent>
         </Card>
       </div>
@@ -414,14 +429,14 @@ export default function InvestorDashboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {myInvestments.length === 0 ? (
+              {activeInvestments.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
-                    Nenhuma solicitação encontrada.
+                    Nenhuma solicitação ou investimento ativo.
                   </TableCell>
                 </TableRow>
               ) : (
-                myInvestments.map((inv) => (
+                activeInvestments.map((inv) => (
                   <TableRow key={inv.id}>
                     <TableCell className="font-medium">{inv.investment_products?.title}</TableCell>
                     <TableCell>
@@ -435,11 +450,7 @@ export default function InvestorDashboard() {
                       {inv.created_at ? format(new Date(inv.created_at), 'dd/MM/yyyy') : '-'}
                     </TableCell>
                     <TableCell>
-                      {inv.status === 'resgatado' ? (
-                        <Badge variant="outline" className="bg-muted text-muted-foreground">
-                          Finalizado
-                        </Badge>
-                      ) : inv.status === 'approved' ? (
+                      {inv.status === 'approved' ? (
                         <Badge className="bg-emerald-500">Aprovado</Badge>
                       ) : inv.status === 'awaiting_review' ? (
                         <Badge className="bg-amber-500">Em Conferência</Badge>
@@ -476,7 +487,7 @@ export default function InvestorDashboard() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <History className="h-5 w-5" /> Histórico de Resgates
+            <History className="h-5 w-5" /> Histórico de Resgates Concluídos
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -512,7 +523,7 @@ export default function InvestorDashboard() {
                     </TableCell>
                     <TableCell>
                       {red.status === 'paid' ? (
-                        <Badge className="bg-emerald-500">Liquidado</Badge>
+                        <Badge className="bg-emerald-500">Creditado em Caixa</Badge>
                       ) : red.status === 'approved' ? (
                         <Badge className="bg-primary">Aprovado (Processando)</Badge>
                       ) : red.status === 'rejected' ? (

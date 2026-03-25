@@ -48,6 +48,7 @@ export interface Profile {
   pj_rep_rg?: string
   pj_rep_role?: string
   pj_rep_is_procurator?: boolean
+  wallet_balance?: number
 }
 
 interface AuthContextType {
@@ -162,7 +163,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             if (p.is_investor || p.role === 'investor') roles.push('investor')
             if (p.is_borrower || p.role === 'borrower') roles.push('borrower')
 
-            // Fallback: If they are super admin, ensure they have at least admin role
             if (roles.length === 0 && isSuperAdmin) {
               roles.push('admin')
             }
@@ -175,18 +175,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             if (uniqueRoles.length === 1) {
               setActiveRole(uniqueRoles[0])
             } else if (uniqueRoles.length > 1) {
-              // Se há múltiplos papéis e o usuário já selecionou um válido, mantém
               if (currentActive && uniqueRoles.includes(currentActive)) {
                 setActiveRole(currentActive)
               } else {
-                // Caso contrário (primeiro login ou valor inválido), deixa nulo para forçar a escolha
                 setActiveRole(null)
               }
             } else {
               setActiveRole(null)
             }
           } else {
-            // Fallback for super admin without profile yet
             if (currentUser.email === 'andersonleandro28@gmail.com') {
               setAvailableRoles(['admin'])
               setActiveRole('admin')
