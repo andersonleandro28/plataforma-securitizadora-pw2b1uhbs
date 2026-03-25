@@ -19,13 +19,14 @@ import { AccessLogs } from '@/components/profile/AccessLogs'
 import { UserBankAccounts } from '@/components/profile/UserBankAccounts'
 
 export default function Profile() {
-  const { user, profile } = useAuth()
+  const { user, profile, signOut } = useAuth()
   const [fullName, setFullName] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
   const [loadingProfileUpdate, setLoadingProfileUpdate] = useState(false)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [loadingPassword, setLoadingPassword] = useState(false)
@@ -78,16 +79,44 @@ export default function Profile() {
 
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!currentPassword) return toast.error('A senha atual é obrigatória.')
     if (newPassword !== confirmPassword) return toast.error('As senhas não coincidem.')
+    if (newPassword.length < 6) return toast.error('A nova senha deve ter pelo menos 6 caracteres.')
+
     setLoadingPassword(true)
-    const { error } = await supabase.auth.updateUser({ password: newPassword })
-    if (error) toast.error(error.message)
-    else {
-      toast.success('Senha atualizada.')
+
+    try {
+      // 1. Verify current password
+      const { error: verifyError } = await supabase.auth.signInWithPassword({
+        email: user?.email || '',
+        password: currentPassword,
+      })
+
+      if (verifyError) {
+        toast.error('A senha atual está incorreta.')
+        setLoadingPassword(false)
+        return
+      }
+
+      // 2. Update to new password
+      const { error } = await supabase.auth.updateUser({ password: newPassword })
+
+      if (error) throw error
+
+      toast.success('Senha atualizada com sucesso. Por favor, faça login novamente.')
+      setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
+
+      // 3. Sign out user to force re-authentication (Security best practice)
+      setTimeout(() => {
+        signOut()
+      }, 2000)
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao atualizar a senha.')
+    } finally {
+      setLoadingPassword(false)
     }
-    setLoadingPassword(false)
   }
 
   const renderRoles = () => {
@@ -199,14 +228,25 @@ export default function Profile() {
               <CardTitle className="flex items-center gap-2">
                 <Lock className="h-5 w-5 text-accent" /> Credenciais
               </CardTitle>
-              <CardDescription>Atualize sua senha.</CardDescription>
+              <CardDescription>Atualize sua senha de acesso.</CardDescription>
             </CardHeader>
             <form onSubmit={handleUpdatePassword}>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
+                  <label className="text-sm font-medium">Senha Atual</label>
+                  <Input
+                    type="password"
+                    placeholder="Digite a senha atual"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
                   <label className="text-sm font-medium">Nova Senha</label>
                   <Input
                     type="password"
+                    placeholder="Digite a nova senha"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     required
@@ -216,6 +256,7 @@ export default function Profile() {
                   <label className="text-sm font-medium">Confirmar Nova Senha</label>
                   <Input
                     type="password"
+                    placeholder="Confirme a nova senha"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     required
@@ -227,7 +268,7 @@ export default function Profile() {
                   type="submit"
                   variant="secondary"
                   className="w-full"
-                  disabled={loadingPassword}
+                  disabled={loadingPassword || !currentPassword || !newPassword || !confirmPassword}
                 >
                   {loadingPassword && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Atualizar
                   Senha
