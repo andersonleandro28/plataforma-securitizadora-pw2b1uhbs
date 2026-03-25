@@ -44,51 +44,71 @@ Deno.serve(async (req: Request) => {
       .single()
     if (callerProfile?.role !== 'admin' && !callerProfile?.is_admin) {
       return new Response(
-        JSON.stringify({ error: 'Forbidden: Only administrators can invite users' }),
+        JSON.stringify({ error: 'Forbidden: Only administrators can create users' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
     }
 
-    const { email, role, fullName } = await req.json()
+    const body = await req.json()
+    const { email, role, document_number, ...profileData } = body
 
-    if (!email || !role) {
-      return new Response(JSON.stringify({ error: 'Bad Request: Email and role are required' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+    if (!email || !role || !document_number) {
+      return new Response(
+        JSON.stringify({ error: 'Bad Request: Email, role, and document_number are required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
     }
 
-    const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
+    // Generate temporary password based on numbers of the document or fallback
+    const password = document_number.replace(/\D/g, '') || 'Secreta@123'
+
+    const { data: userData, error: createError } = await adminClient.auth.admin.createUser({
       email,
-      {
-        data: { name: fullName },
-      },
-    )
+      password,
+      email_confirm: true,
+      user_metadata: { name: profileData.full_name || profileData.pj_company_name },
+    })
 
-    if (inviteError) throw inviteError
+    if (createError) throw createError
 
-    if (inviteData.user) {
-      const updateData: any = { role: role, full_name: fullName }
-      if (role === 'admin') updateData.is_admin = true
-      if (role === 'staff') updateData.is_staff = true
-      if (role === 'investor') updateData.is_investor = true
-      if (role === 'borrower') updateData.is_borrower = true
+    if (userData.user) {
+      // The handle_new_user trigger might have created an empty profile. We update it now.
+      const updateData: any = {
+        ...profileData,
+        role: role,
+        document_number: document_number,
+        is_admin: role === 'admin',
+        is_staff: role === 'staff',
+        is_investor: role === 'investor',
+        is_borrower: role === 'borrower',
+        requires_password_change: true,
+      }
 
       const { error: profileError } = await adminClient
         .from('profiles')
         .update(updateData)
-        .eq('id', inviteData.user.id)
+        .eq('id', userData.user.id)
 
       if (profileError) {
-        console.error('Error updating invited user profile:', profileError)
+        console.error('Error updating created user profile:', profileError)
       }
+
+      await adminClient.from('audit_logs').insert({
+        entity_type: 'profiles',
+        entity_id: userData.user.id,
+        action: 'admin_created_user',
+        details: { admin_id: caller.id, email },
+      })
     }
 
-    return new Response(JSON.stringify({ success: true, user: inviteData.user }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    return new Response(
+      JSON.stringify({ success: true, user: userData.user, tempPassword: password }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      },
+    )
   } catch (error) {
-    console.error('Edge function invite-user error:', error)
+    console.error('Edge function admin-create-user error:', error)
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Internal Server Error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },

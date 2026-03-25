@@ -2,7 +2,7 @@
   "_versions": {
     "serasa-integration": 5,
     "send-login-notification": 1,
-    "invite-user": 2,
+    "invite-user": 3,
     "public-signup": 1,
     "delete-user": 1,
     "extract-debenture-data": 9,
@@ -13,6 +13,7 @@
     "generate-aditivo": 7,
     "send-to-signature": 1,
     "signature-webhook": 1,
-    "submit-ccb": 4
+    "submit-ccb": 4,
+    "admin-create-user": 1
   }
 }

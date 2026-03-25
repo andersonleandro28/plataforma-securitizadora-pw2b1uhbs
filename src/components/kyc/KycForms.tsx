@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -8,6 +9,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Loader2 } from 'lucide-react'
 
 export const EntityTypeStep = ({ formData, setFormData }: any) => (
   <div className="space-y-4 animate-fade-in">
@@ -49,6 +51,13 @@ export const EntityTypeStep = ({ formData, setFormData }: any) => (
 
 export const PfFieldsStep = ({ formData, setFormData }: any) => (
   <div className="space-y-4 animate-fade-in">
+    <div className="space-y-2">
+      <Label>Nome Completo</Label>
+      <Input
+        value={formData.full_name}
+        onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+      />
+    </div>
     <div className="grid sm:grid-cols-2 gap-4">
       <div className="space-y-2">
         <Label>RG</Label>
@@ -211,62 +220,98 @@ export const PjRepStep = ({ formData, setFormData }: any) => (
   </div>
 )
 
-export const AddressStep = ({ formData, setFormData }: any) => (
-  <div className="space-y-4 animate-fade-in">
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-      <div className="space-y-2">
-        <Label>CEP</Label>
-        <Input
-          value={formData.address_zip}
-          onChange={(e) => setFormData({ ...formData, address_zip: e.target.value })}
-        />
+export const AddressStep = ({ formData, setFormData }: any) => {
+  const [loadingCep, setLoadingCep] = useState(false)
+
+  const handleCepBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
+    const cep = e.target.value.replace(/\D/g, '')
+    if (cep.length === 8) {
+      setLoadingCep(true)
+      try {
+        const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`)
+        const data = await res.json()
+        if (!data.erro) {
+          setFormData({
+            ...formData,
+            address_street: data.logradouro || formData.address_street,
+            address_neighborhood: data.bairro || formData.address_neighborhood,
+            address_city: data.localidade || formData.address_city,
+            address_state: data.uf || formData.address_state,
+          })
+        }
+      } catch (err) {
+        console.error('Erro ao buscar CEP', err)
+      } finally {
+        setLoadingCep(false)
+      }
+    }
+  }
+
+  return (
+    <div className="space-y-4 animate-fade-in">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="space-y-2 relative">
+          <Label>CEP</Label>
+          <div className="relative">
+            <Input
+              value={formData.address_zip}
+              onChange={(e) => setFormData({ ...formData, address_zip: e.target.value })}
+              onBlur={handleCepBlur}
+              placeholder="00000-000"
+            />
+            {loadingCep && (
+              <Loader2 className="w-4 h-4 absolute right-3 top-3 animate-spin text-muted-foreground" />
+            )}
+          </div>
+        </div>
+        <div className="space-y-2 sm:col-span-2">
+          <Label>Rua / Logradouro</Label>
+          <Input
+            value={formData.address_street}
+            onChange={(e) => setFormData({ ...formData, address_street: e.target.value })}
+          />
+        </div>
       </div>
-      <div className="space-y-2 sm:col-span-2">
-        <Label>Rua / Logradouro</Label>
-        <Input
-          value={formData.address_street}
-          onChange={(e) => setFormData({ ...formData, address_street: e.target.value })}
-        />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="space-y-2">
+          <Label>Número</Label>
+          <Input
+            value={formData.address_number}
+            onChange={(e) => setFormData({ ...formData, address_number: e.target.value })}
+          />
+        </div>
+        <div className="space-y-2 sm:col-span-2">
+          <Label>Complemento (Opcional)</Label>
+          <Input
+            value={formData.address_complement}
+            onChange={(e) => setFormData({ ...formData, address_complement: e.target.value })}
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="space-y-2">
+          <Label>Bairro</Label>
+          <Input
+            value={formData.address_neighborhood}
+            onChange={(e) => setFormData({ ...formData, address_neighborhood: e.target.value })}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Cidade</Label>
+          <Input
+            value={formData.address_city}
+            onChange={(e) => setFormData({ ...formData, address_city: e.target.value })}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Estado (UF)</Label>
+          <Input
+            value={formData.address_state}
+            onChange={(e) => setFormData({ ...formData, address_state: e.target.value })}
+            maxLength={2}
+          />
+        </div>
       </div>
     </div>
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-      <div className="space-y-2">
-        <Label>Número</Label>
-        <Input
-          value={formData.address_number}
-          onChange={(e) => setFormData({ ...formData, address_number: e.target.value })}
-        />
-      </div>
-      <div className="space-y-2 sm:col-span-2">
-        <Label>Complemento (Opcional)</Label>
-        <Input
-          value={formData.address_complement}
-          onChange={(e) => setFormData({ ...formData, address_complement: e.target.value })}
-        />
-      </div>
-    </div>
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-      <div className="space-y-2">
-        <Label>Bairro</Label>
-        <Input
-          value={formData.address_neighborhood}
-          onChange={(e) => setFormData({ ...formData, address_neighborhood: e.target.value })}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label>Cidade</Label>
-        <Input
-          value={formData.address_city}
-          onChange={(e) => setFormData({ ...formData, address_city: e.target.value })}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label>Estado (UF)</Label>
-        <Input
-          value={formData.address_state}
-          onChange={(e) => setFormData({ ...formData, address_state: e.target.value })}
-        />
-      </div>
-    </div>
-  </div>
-)
+  )
+}

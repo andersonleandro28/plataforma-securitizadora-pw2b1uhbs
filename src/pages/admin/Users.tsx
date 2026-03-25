@@ -10,17 +10,7 @@ import {
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-} from '@/components/ui/dialog'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,33 +23,37 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Shield, UserPlus, Mail, Loader2, Trash2, Settings2, Landmark } from 'lucide-react'
+  Shield,
+  UserPlus,
+  Mail,
+  Loader2,
+  Trash2,
+  Settings2,
+  Landmark,
+  Edit,
+  Download,
+} from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/use-auth'
 import { ManageRolesDialog } from '@/components/admin/ManageRolesDialog'
 import { UserBankAccountsAdminDialog } from '@/components/admin/UserBankAccountsAdminDialog'
+import { AdminUserFormDialog } from '@/components/admin/AdminUserFormDialog'
+import { getKycCompletion, exportCsv } from '@/lib/kyc-utils'
 
 export default function Users() {
   const { session } = useAuth()
   const [users, setUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
 
-  const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteName, setInviteName] = useState('')
-  const [inviteRole, setInviteRole] = useState('investor')
-  const [inviting, setInviting] = useState(false)
-  const [open, setOpen] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-
   const [manageRolesUser, setManageRolesUser] = useState<any>(null)
   const [manageBanksUser, setManageBanksUser] = useState<any>(null)
+
+  // Full CRUD Dialog State
+  const [formOpen, setFormOpen] = useState(false)
+  const [editingUser, setEditingUser] = useState<any>(null)
 
   const loadUsers = async () => {
     setLoading(true)
@@ -92,26 +86,6 @@ export default function Users() {
     }
   }
 
-  const handleInvite = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!session?.access_token) return toast.error('Sessão expirada')
-    setInviting(true)
-    const { data, error } = await supabase.functions.invoke('invite-user', {
-      body: { email: inviteEmail, fullName: inviteName, role: inviteRole },
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    })
-    if (error || data?.error) {
-      toast.error(data?.error || 'Erro ao convidar usuário.')
-    } else {
-      toast.success('Convite enviado com sucesso')
-      setOpen(false)
-      setInviteEmail('')
-      setInviteName('')
-      loadUsers()
-    }
-    setInviting(false)
-  }
-
   const handleDeleteUser = async (userId: string) => {
     if (!session?.access_token) return toast.error('Sessão expirada')
     setDeletingId(userId)
@@ -134,75 +108,51 @@ export default function Users() {
     })
   }
 
+  const handleExport = () => {
+    const exportData = users.map((u) => ({
+      ID: u.id,
+      Nome: u.full_name || u.pj_company_name || '',
+      Email: u.email,
+      Documento: u.document_number,
+      Tipo: u.entity_type?.toUpperCase(),
+      Papel: u.role,
+      Status_KYC: u.kyc_status,
+      Completude_KYC: `${getKycCompletion(u).percentage}%`,
+      Data_Cadastro: u.created_at ? new Date(u.created_at).toLocaleDateString('pt-BR') : '',
+    }))
+    exportCsv('usuarios_plataforma.csv', exportData)
+  }
+
+  const filteredUsers = users.filter(
+    (u) =>
+      u.full_name?.toLowerCase().includes(search.toLowerCase()) ||
+      u.email?.toLowerCase().includes(search.toLowerCase()) ||
+      u.document_number?.includes(search),
+  )
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Gestão de Usuários</h1>
           <p className="text-muted-foreground">
-            Administre perfis, níveis de acesso e convites da plataforma.
+            Administre perfis, cadastre clientes e valide dados de KYC.
           </p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <UserPlus className="h-4 w-4" /> Convidar Usuário
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <form onSubmit={handleInvite}>
-              <DialogHeader>
-                <DialogTitle>Convidar Novo Usuário</DialogTitle>
-                <DialogDescription>
-                  Enviaremos um link seguro para o usuário definir sua senha e acessar a plataforma.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>Nome Completo</Label>
-                  <Input
-                    required
-                    value={inviteName}
-                    onChange={(e) => setInviteName(e.target.value)}
-                    placeholder="João Silva"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>E-mail</Label>
-                  <Input
-                    type="email"
-                    required
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    placeholder="joao@exemplo.com"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Nível de Acesso Inicial</Label>
-                  <Select value={inviteRole} onValueChange={setInviteRole}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="investor">Investidor / Debenturista</SelectItem>
-                      <SelectItem value="borrower">Tomador de Crédito</SelectItem>
-                      <SelectItem value="staff">Equipe Interna (Staff)</SelectItem>
-                      <SelectItem value="admin">Administrador Geral</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button type="submit" disabled={inviting}>
-                  {inviting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Enviar Convite
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleExport} className="gap-2">
+            <Download className="h-4 w-4" /> Exportar
+          </Button>
+          <Button
+            className="gap-2"
+            onClick={() => {
+              setEditingUser(null)
+              setFormOpen(true)
+            }}
+          >
+            <UserPlus className="h-4 w-4" /> Novo Cadastro
+          </Button>
+        </div>
       </div>
 
       <ManageRolesDialog
@@ -219,21 +169,37 @@ export default function Users() {
         onOpenChange={(v: boolean) => !v && setManageBanksUser(null)}
       />
 
+      <AdminUserFormDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        user={editingUser}
+        onSaved={loadUsers}
+      />
+
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Shield className="h-5 w-5 text-primary" /> Usuários Cadastrados
-          </CardTitle>
-          <CardDescription>
-            Gerencie o papel e o acesso de cada participante do fundo.
-          </CardDescription>
+        <CardHeader className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Shield className="h-5 w-5 text-primary" /> Usuários Cadastrados
+            </CardTitle>
+            <CardDescription>
+              Gerencie o papel e os dados de cada participante da plataforma.
+            </CardDescription>
+          </div>
+          <Input
+            placeholder="Buscar por nome, email ou documento..."
+            className="max-w-xs"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Usuário</TableHead>
-                <TableHead>Papéis (Roles)</TableHead>
+                <TableHead>Documento</TableHead>
+                <TableHead>Status / KYC</TableHead>
                 <TableHead>Data de Entrada</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
@@ -241,114 +207,128 @@ export default function Users() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8">
+                  <TableCell colSpan={5} className="text-center py-8">
                     <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                   </TableCell>
                 </TableRow>
               ) : (
-                users.map((u) => (
-                  <TableRow
-                    key={u.id}
-                    className={deletingId === u.id ? 'opacity-50 pointer-events-none' : ''}
-                  >
-                    <TableCell className="font-medium">
-                      <div>{u.full_name || 'Usuário Pendente'}</div>
-                      <div className="flex items-center gap-2 text-muted-foreground text-xs font-normal mt-1">
-                        <Mail className="h-3 w-3" /> {u.email || '-'}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1.5 flex-wrap max-w-[250px]">
-                        {u.is_admin && (
-                          <Badge
-                            variant="secondary"
-                            className="text-xs bg-primary/10 text-primary hover:bg-primary/20"
+                filteredUsers.map((u) => {
+                  const comp = getKycCompletion(u)
+                  return (
+                    <TableRow
+                      key={u.id}
+                      className={deletingId === u.id ? 'opacity-50 pointer-events-none' : ''}
+                    >
+                      <TableCell className="font-medium">
+                        <div>{u.full_name || u.pj_company_name || 'Usuário Pendente'}</div>
+                        <div className="flex items-center gap-2 text-muted-foreground text-xs font-normal mt-1">
+                          <Mail className="h-3 w-3" /> {u.email || '-'}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm font-mono text-muted-foreground">
+                        {u.document_number || '-'}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1.5 items-start">
+                          <div className="flex gap-1.5 flex-wrap">
+                            {u.is_admin && (
+                              <Badge className="text-xs bg-primary/10 text-primary">Admin</Badge>
+                            )}
+                            {u.is_staff && (
+                              <Badge className="text-xs bg-secondary/10 text-secondary">
+                                Staff
+                              </Badge>
+                            )}
+                            {u.is_investor && (
+                              <Badge variant="outline" className="text-xs">
+                                Investidor
+                              </Badge>
+                            )}
+                            {u.is_borrower && (
+                              <Badge className="text-xs bg-emerald-600 text-white">Tomador</Badge>
+                            )}
+                          </div>
+                          {comp.percentage < 100 ? (
+                            <span className="text-[10px] font-medium text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded">
+                              KYC {comp.percentage}%
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-medium text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">
+                              KYC 100%
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {u.created_at ? new Date(u.created_at).toLocaleDateString('pt-BR') : '-'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Editar Cadastro"
+                            className="h-8 w-8 text-primary hover:bg-primary/10"
+                            onClick={() => {
+                              setEditingUser(u)
+                              setFormOpen(true)
+                            }}
                           >
-                            Admin
-                          </Badge>
-                        )}
-                        {u.is_staff && (
-                          <Badge
-                            variant="secondary"
-                            className="text-xs bg-secondary/10 text-secondary hover:bg-secondary/20"
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Contas Bancárias"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            onClick={() => setManageBanksUser(u)}
                           >
-                            Staff
-                          </Badge>
-                        )}
-                        {u.is_investor && (
-                          <Badge variant="outline" className="text-xs border-muted-foreground/30">
-                            Investidor
-                          </Badge>
-                        )}
-                        {u.is_borrower && (
-                          <Badge
-                            variant="default"
-                            className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                            <Landmark className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Gerenciar Papéis"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            onClick={() => setManageRolesUser(u)}
                           >
-                            Tomador
-                          </Badge>
-                        )}
-                        {!(u.is_admin || u.is_staff || u.is_investor || u.is_borrower) && (
-                          <span className="text-xs text-muted-foreground">
-                            Sem papéis definidos
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {u.created_at ? new Date(u.created_at).toLocaleDateString('pt-BR') : '-'}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 gap-1.5"
-                          onClick={() => setManageBanksUser(u)}
-                        >
-                          <Landmark className="h-3.5 w-3.5" /> Contas
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 gap-1.5"
-                          onClick={() => setManageRolesUser(u)}
-                        >
-                          <Settings2 className="h-3.5 w-3.5" /> Papéis
-                        </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                              disabled={session?.user?.id === u.id}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Excluir usuário?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Esta ação não pode ser desfeita e os dados serão removidos.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                              <AlertDialogAction
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                onClick={() => handleDeleteUser(u.id)}
+                            <Settings2 className="h-4 w-4" />
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Excluir Usuário"
+                                className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                disabled={session?.user?.id === u.id}
                               >
-                                Sim, excluir
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Excluir usuário?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Esta ação não pode ser desfeita e os dados serão removidos.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  onClick={() => handleDeleteUser(u.id)}
+                                >
+                                  Sim, excluir
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
               )}
             </TableBody>
           </Table>
