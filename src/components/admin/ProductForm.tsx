@@ -17,10 +17,11 @@ export function ProductForm({ data, onChange, seriesList }: any) {
 
   return (
     <Tabs defaultValue="geral" className="w-full">
-      <TabsList className="grid w-full grid-cols-4">
+      <TabsList className="flex flex-wrap w-full justify-start h-auto">
         <TabsTrigger value="geral">Geral</TabsTrigger>
         <TabsTrigger value="oferta">Oferta</TabsTrigger>
         <TabsTrigger value="prazos">Prazos</TabsTrigger>
+        <TabsTrigger value="resgate">Regras de Resgate</TabsTrigger>
         <TabsTrigger value="extra">Avançado</TabsTrigger>
       </TabsList>
 
@@ -181,6 +182,81 @@ export function ProductForm({ data, onChange, seriesList }: any) {
               value={data.ir_rules || ''}
               onChange={(e) => onChange('ir_rules', e.target.value)}
             />
+          </div>
+        </div>
+      </TabsContent>
+
+      <TabsContent value="resgate" className="space-y-4 py-4">
+        <div className="space-y-4 border rounded-lg p-5 bg-muted/10">
+          <div className="flex items-start space-x-3">
+            <Checkbox
+              id="allow_early"
+              checked={data.allow_early_redemption}
+              onCheckedChange={(c) => {
+                onChange('allow_early_redemption', c)
+                if (!c) {
+                  onChange('early_redemption_penalty_pct', 0)
+                  onChange('early_redemption_discount_pct', 0)
+                }
+              }}
+              className="mt-1"
+            />
+            <div className="space-y-1">
+              <label htmlFor="allow_early" className="text-sm font-semibold cursor-pointer">
+                Permitir Resgate Antecipado
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Se habilitado, os investidores poderão solicitar o resgate de cotas antes do
+                vencimento final do produto, sujeito a multas e descontos configurados abaixo.
+              </p>
+            </div>
+          </div>
+
+          {!data.allow_early_redemption ? (
+            <div className="bg-muted p-3 rounded-md border text-sm text-muted-foreground mt-4">
+              Configuração atual: O resgate será permitido <strong>apenas no vencimento</strong> da
+              série.
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4 pt-4 border-t mt-4">
+              <div className="space-y-1.5">
+                <Label>Multa sobre Principal (%)</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  placeholder="Ex: 5"
+                  value={data.early_redemption_penalty_pct || ''}
+                  onChange={(e) => onChange('early_redemption_penalty_pct', Number(e.target.value))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Desconto no Rendimento (%)</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  placeholder="Ex: 50"
+                  value={data.early_redemption_discount_pct || ''}
+                  onChange={(e) =>
+                    onChange('early_redemption_discount_pct', Number(e.target.value))
+                  }
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1.5 pt-4 border-t mt-4">
+            <Label>Prazo de Carência Mínimo (meses)</Label>
+            <Input
+              type="number"
+              className="w-full sm:w-1/2"
+              placeholder="Ex: 6"
+              value={data.min_grace_period_months || ''}
+              onChange={(e) => onChange('min_grace_period_months', Number(e.target.value))}
+            />
+            <p className="text-xs text-muted-foreground">
+              Tempo mínimo que o investimento precisa ficar bloqueado antes de qualquer solicitação
+              de resgate.
+            </p>
           </div>
         </div>
       </TabsContent>

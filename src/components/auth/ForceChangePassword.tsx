@@ -1,6 +1,4 @@
-import { useState, useEffect } from 'react'
-import { useAuth } from '@/hooks/use-auth'
-import { supabase } from '@/lib/supabase/client'
+import { useEffect, useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -8,79 +6,135 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { toast } from 'sonner'
-import { ShieldAlert, Loader2 } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Loader2, ShieldAlert } from 'lucide-react'
+import { useAuth } from '@/hooks/use-auth'
+import { supabase } from '@/lib/supabase/client'
 
 export function ForceChangePassword() {
-  const { profile, user } = useAuth()
+  const { user, profile } = useAuth()
   const [open, setOpen] = useState(false)
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => {
-    if (profile?.requires_password_change) {
+    // If user is authenticated and requires_password_change is true, force the modal open
+    if (user && profile?.requires_password_change) {
       setOpen(true)
     } else {
       setOpen(false)
     }
-  }, [profile])
+  }, [user, profile])
 
-  const handleSubmit = async () => {
-    if (password.length < 6) return toast.error('A senha deve ter pelo menos 6 caracteres.')
-    setLoading(true)
-    const { error } = await supabase.auth.updateUser({ password })
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
 
-    if (error) {
-      toast.error('Erro ao atualizar senha.')
-    } else {
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ requires_password_change: false })
-        .eq('id', user!.id)
-      if (!profileError) {
-        toast.success('Senha atualizada com sucesso!')
-        setOpen(false)
-        window.dispatchEvent(new Event('profile-updated'))
-      }
+    if (password.length < 6) {
+      setError('A senha deve ter pelo menos 6 caracteres.')
+      return
     }
-    setLoading(false)
+
+    if (password !== confirmPassword) {
+      setError('As senhas não coincidem.')
+      return
+    }
+
+    setLoading(true)
+
+    try {
+      // 1. Update password via Supabase Auth
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: password,
+      })
+
+      if (updateError) throw updateError
+
+      // 2. Clear the flag in the profiles table
+      if (profile) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({ requires_password_change: false })
+          .eq('id', profile.id)
+
+        if (profileError) throw profileError
+      }
+
+      setOpen(false)
+      // We manually dispatch an event to refresh the profile in use-auth
+      window.dispatchEvent(new CustomEvent('profile-updated'))
+    } catch (err: any) {
+      setError(err.message || 'Ocorreu um erro ao atualizar a senha.')
+    } finally {
+      setLoading(false)
+    }
   }
 
+  // Use a custom event to prevent closing by clicking outside or pressing Escape
   return (
-    <Dialog open={open} onOpenChange={() => {}}>
+    <Dialog
+      open={open}
+      onOpenChange={(val) => {
+        // Force it to remain open if still required
+        if (profile?.requires_password_change) setOpen(true)
+      }}
+    >
       <DialogContent
-        className="sm:max-w-[400px] [&>button]:hidden pointer-events-none"
-        onPointerDownOutside={(e) => e.preventDefault()}
+        className="sm:max-w-[425px]"
+        onInteractOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => e.preventDefault()}
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <ShieldAlert className="w-5 h-5 text-warning" />
-            Atualização de Segurança Obrigatória
+            <ShieldAlert className="h-5 w-5 text-warning" />
+            Atualização de Segurança
           </DialogTitle>
           <DialogDescription>
-            Como este é seu primeiro acesso com a senha padrão (gerada automaticamente pelo seu
-            CPF), você precisa definir uma nova senha segura para continuar utilizando a plataforma.
+            Por motivos de segurança, você precisa redefinir sua senha para continuar acessando a
+            plataforma.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-4 pointer-events-auto">
-          <Input
-            type="password"
-            placeholder="Digite sua nova senha"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-          <Button
-            className="w-full gap-2"
-            onClick={handleSubmit}
-            disabled={loading || password.length < 6}
-          >
-            {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-            Confirmar Nova Senha e Acessar
+
+        <form onSubmit={handleSubmit} className="space-y-4 py-4">
+          {error && (
+            <Alert variant="destructive" className="py-2">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="new-password">Nova Senha</Label>
+            <Input
+              id="new-password"
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Mínimo 6 caracteres"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="confirm-password">Confirmar Nova Senha</Label>
+            <Input
+              id="confirm-password"
+              type="password"
+              required
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+            />
+          </div>
+
+          <Button type="submit" className="w-full mt-4" disabled={loading}>
+            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Confirmar e Acessar
           </Button>
-        </div>
+        </form>
       </DialogContent>
     </Dialog>
   )
