@@ -189,12 +189,16 @@ if (typeof window !== 'undefined') {
 
   try {
     wrapPostMessage(window)
-  } catch (e) {}
+  } catch (e) {
+    // ignore postmessage wrap error
+  }
   try {
     if (window.parent && window.parent !== window) {
       wrapPostMessage(window.parent)
     }
-  } catch (e) {}
+  } catch (e) {
+    // ignore parent postmessage wrap error
+  }
 }
 
 const App = () => (
