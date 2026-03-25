@@ -154,7 +154,6 @@ export function AdminUserFormDialog({ open, onOpenChange, user, onSaved }: any) 
         // Create new user via Edge Function
         const { data, error } = await supabase.functions.invoke('admin-create-user', {
           body: formData,
-          headers: { Authorization: `Bearer ${session?.access_token}` },
         })
         if (error || data?.error) throw new Error(data?.error || 'Erro ao criar usuário')
         targetUserId = data.user.id

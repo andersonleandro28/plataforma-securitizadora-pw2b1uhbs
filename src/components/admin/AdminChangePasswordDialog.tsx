@@ -13,10 +13,8 @@ import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
-import { useAuth } from '@/hooks/use-auth'
 
 export function AdminChangePasswordDialog({ user, open, onOpenChange }: any) {
-  const { session } = useAuth()
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -26,7 +24,6 @@ export function AdminChangePasswordDialog({ user, open, onOpenChange }: any) {
     try {
       const { data, error } = await supabase.functions.invoke('admin-update-user', {
         body: { targetUserId: user.id, action: 'change_password', payload: { password } },
-        headers: { Authorization: `Bearer ${session?.access_token}` },
       })
 
       if (error || data?.error) throw new Error(data?.error || 'Erro ao redefinir senha')

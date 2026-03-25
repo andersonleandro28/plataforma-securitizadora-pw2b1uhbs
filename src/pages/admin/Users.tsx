@@ -102,12 +102,11 @@ export default function Users() {
   }
 
   const handleDeleteUser = async () => {
-    if (!deletingUser || !session?.access_token) return
+    if (!deletingUser) return
     setProcessingId(deletingUser.id)
     const promise = supabase.functions
       .invoke('delete-user', {
         body: { targetUserId: deletingUser.id },
-        headers: { Authorization: `Bearer ${session.access_token}` },
       })
       .then(({ data, error }) => {
         if (error) throw error
@@ -127,7 +126,7 @@ export default function Users() {
   }
 
   const handleToggleBlock = async () => {
-    if (!blockUser || !session?.access_token) return
+    if (!blockUser) return
     setProcessingId(blockUser.id)
     const isBlocking = !blockUser.is_blocked
 
@@ -138,7 +137,6 @@ export default function Users() {
           action: 'toggle_block',
           payload: { is_blocked: isBlocking },
         },
-        headers: { Authorization: `Bearer ${session.access_token}` },
       })
       .then(({ data, error }) => {
         if (error) throw error
