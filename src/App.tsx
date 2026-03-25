@@ -33,28 +33,36 @@ import { RoleGuard } from './components/auth/RoleGuard'
 if (typeof window !== 'undefined') {
   const isExtensionError = (err: any) => {
     try {
+      if (!err) return false
+
       let errorMsg = ''
       let stack = ''
 
-      if (err instanceof ErrorEvent) {
-        errorMsg = err.message || err.error?.message || ''
-        stack = err.error?.stack || ''
-      } else if (err instanceof PromiseRejectionEvent) {
-        errorMsg = err.reason?.message || err.reason || ''
-        stack = err.reason?.stack || ''
+      if (typeof err === 'string') {
+        errorMsg = err
       } else if (err instanceof Error) {
         errorMsg = err.message
         stack = err.stack || ''
-      } else if (typeof err === 'string') {
-        errorMsg = err
-      } else if (err && typeof err === 'object') {
+      } else if (err instanceof ErrorEvent) {
+        errorMsg = err.message || err.error?.message || ''
+        stack = err.error?.stack || ''
+      } else if (err instanceof PromiseRejectionEvent) {
+        errorMsg = err.reason?.message || (typeof err.reason === 'string' ? err.reason : '')
+        stack = err.reason?.stack || ''
+      } else if (typeof err === 'object') {
         errorMsg = err.message || err.error?.message || err.reason?.message || ''
         stack = err.stack || err.error?.stack || err.reason?.stack || ''
+        if (typeof err.error === 'string') {
+          errorMsg = errorMsg || err.error
+        }
       }
 
       let strData = ''
       try {
-        strData = typeof err === 'object' ? JSON.stringify(err) : ''
+        strData =
+          typeof err === 'object'
+            ? JSON.stringify(err, (k, v) => (typeof v === 'bigint' ? v.toString() : v))
+            : ''
       } catch (e) {
         // ignore circular reference errors
       }
@@ -121,7 +129,7 @@ if (typeof window !== 'undefined') {
           if (a instanceof Error) return a.message + ' ' + (a.stack || '')
           if (a && typeof a === 'object') {
             try {
-              return JSON.stringify(a)
+              return JSON.stringify(a, (k, v) => (typeof v === 'bigint' ? v.toString() : v))
             } catch (e) {
               return String(a)
             }
@@ -145,6 +153,48 @@ if (typeof window !== 'undefined') {
     }
     originalConsoleError(...args)
   }
+
+  // Intercept postMessage to prevent the preview platform from displaying the error overlay
+  const wrapPostMessage = (target: Window) => {
+    if (!target) return
+    try {
+      const orig = target.postMessage
+      target.postMessage = function (message: any, ...rest: any[]) {
+        try {
+          if (
+            message &&
+            (message.type === 'preview:error' || message.error || message.type === 'error')
+          ) {
+            const str = JSON.stringify(message, (k, v) =>
+              typeof v === 'bigint' ? v.toString() : v,
+            ).toLowerCase()
+            if (
+              str.includes('metamask') ||
+              str.includes('chrome-extension') ||
+              str.includes('inpage.js') ||
+              str.includes('nkbihfbeogaeaoehlefnkodbefgpgknn')
+            ) {
+              return // Drop the message entirely
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+        return orig.apply(this, [message, ...rest])
+      }
+    } catch (err) {
+      // ignore cross-origin errors
+    }
+  }
+
+  try {
+    wrapPostMessage(window)
+  } catch (e) {}
+  try {
+    if (window.parent && window.parent !== window) {
+      wrapPostMessage(window.parent)
+    }
+  } catch (e) {}
 }
 
 const App = () => (
