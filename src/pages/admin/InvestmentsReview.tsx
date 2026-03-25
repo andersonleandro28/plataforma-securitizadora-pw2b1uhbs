@@ -29,6 +29,7 @@ import {
   DollarSign,
   ArrowDownRight,
   History,
+  Filter,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
@@ -42,6 +43,7 @@ export default function InvestmentsReview() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [searchRedemptions, setSearchRedemptions] = useState('')
+  const [showHistory, setShowHistory] = useState(false)
 
   const [rejectId, setRejectId] = useState<string | null>(null)
   const [rejectReason, setRejectReason] = useState('')
@@ -53,16 +55,24 @@ export default function InvestmentsReview() {
 
   const fetchData = async () => {
     setLoading(true)
-    const [invRes, redRes] = await Promise.all([
-      supabase
-        .from('investments')
-        .select('*, profiles(full_name, email), investment_products(title)')
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('investment_redemptions')
-        .select('*, profiles(full_name, email), investments(quotas, investment_products(title))')
-        .order('created_at', { ascending: false }),
-    ])
+
+    let invQuery = supabase
+      .from('investments')
+      .select('*, profiles(full_name, email), investment_products(title)')
+      .order('created_at', { ascending: false })
+
+    let redQuery = supabase
+      .from('investment_redemptions')
+      .select('*, profiles(full_name, email), investments(quotas, investment_products(title))')
+      .order('created_at', { ascending: false })
+
+    // Hide completed/rejected records by default to keep the queue clean
+    if (!showHistory) {
+      invQuery = invQuery.in('status', ['awaiting_review', 'pending_transfer'])
+      redQuery = redQuery.in('status', ['pending', 'approved'])
+    }
+
+    const [invRes, redRes] = await Promise.all([invQuery, redQuery])
 
     if (invRes.data) setInvestments(invRes.data)
     if (redRes.data) setRedemptions(redRes.data)
@@ -71,12 +81,11 @@ export default function InvestmentsReview() {
 
   useEffect(() => {
     fetchData()
-  }, [])
+  }, [showHistory])
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0)
 
-  // --- INVESTMENTS LOGIC ---
   const handleApprove = async (id: string) => {
     try {
       const { error } = await supabase.rpc('approve_investment', { p_investment_id: id })
@@ -121,7 +130,6 @@ export default function InvestmentsReview() {
     }
   }
 
-  // --- REDEMPTIONS LOGIC ---
   const handleApproveRedemption = async (id: string) => {
     if (!confirm('Deseja aprovar esta solicitação de resgate?')) return
     setProcessingAction(true)
@@ -205,11 +213,22 @@ export default function InvestmentsReview() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Gestão de Investimentos</h1>
-        <p className="text-muted-foreground">
-          Aprove novos aportes e gerencie solicitações de resgates.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Gestão de Investimentos</h1>
+          <p className="text-muted-foreground">
+            Aprove novos aportes e gerencie solicitações de resgates.
+          </p>
+        </div>
+        <Button
+          variant={showHistory ? 'secondary' : 'outline'}
+          size="sm"
+          onClick={() => setShowHistory(!showHistory)}
+          className="w-full sm:w-auto"
+        >
+          <Filter className="h-4 w-4 mr-2" />
+          {showHistory ? 'Ocultar Finalizados' : 'Mostrar Histórico'}
+        </Button>
       </div>
 
       <Tabs defaultValue="aportes" className="w-full">
@@ -225,7 +244,7 @@ export default function InvestmentsReview() {
         <TabsContent value="aportes">
           <Card>
             <CardHeader className="flex flex-row justify-between items-center pb-4">
-              <CardTitle>Fila de Análise de Comprovantes</CardTitle>
+              <CardTitle>Fila de Análise</CardTitle>
               <div className="relative w-64">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -242,8 +261,8 @@ export default function InvestmentsReview() {
                   <TableRow>
                     <TableHead>Investidor</TableHead>
                     <TableHead>Produto</TableHead>
-                    <TableHead>Valor Declarado</TableHead>
-                    <TableHead>Data Solicitação</TableHead>
+                    <TableHead>Valor</TableHead>
+                    <TableHead>Data</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
@@ -258,7 +277,7 @@ export default function InvestmentsReview() {
                   ) : filteredInv.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                        Nenhuma solicitação de aporte.
+                        Nenhuma solicitação encontrada.
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -287,7 +306,7 @@ export default function InvestmentsReview() {
                           ) : inv.status === 'rejected' ? (
                             <Badge variant="destructive">Reprovado</Badge>
                           ) : (
-                            <Badge variant="outline">Aguardando Pagamento</Badge>
+                            <Badge variant="outline">Aguardando Pgto</Badge>
                           )}
                         </TableCell>
                         <TableCell className="text-right space-x-2 whitespace-nowrap">
@@ -296,7 +315,7 @@ export default function InvestmentsReview() {
                             size="sm"
                             onClick={() => handleViewProof(inv.id)}
                           >
-                            <Eye className="h-4 w-4 mr-1" /> Ver Comprovante
+                            <Eye className="h-4 w-4 mr-1" /> Comprovante
                           </Button>
                           {inv.status === 'awaiting_review' && (
                             <>
@@ -335,7 +354,7 @@ export default function InvestmentsReview() {
                   <History className="h-5 w-5" /> Resgates Pendentes
                 </CardTitle>
                 <CardDescription className="mt-1">
-                  Aprovação de retiradas antecipadas e liquidações atômicas.
+                  Aprovação de retiradas antecipadas e liquidações.
                 </CardDescription>
               </div>
               <div className="relative w-64">
@@ -354,25 +373,23 @@ export default function InvestmentsReview() {
                   <TableRow>
                     <TableHead>Investidor</TableHead>
                     <TableHead>Produto</TableHead>
-                    <TableHead>Qtd. Cotas</TableHead>
                     <TableHead>Valor Líquido</TableHead>
-                    <TableHead>Solicitado em</TableHead>
+                    <TableHead>Data</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Status Estoque</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8">
+                      <TableCell colSpan={6} className="text-center py-8">
                         <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                       </TableCell>
                     </TableRow>
                   ) : filteredRed.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                        Nenhum resgate solicitado.
+                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                        Nenhum resgate encontrado.
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -381,8 +398,12 @@ export default function InvestmentsReview() {
                         <TableCell className="font-medium">
                           {r.profiles?.full_name || r.profiles?.email}
                         </TableCell>
-                        <TableCell>{r.investments?.investment_products?.title}</TableCell>
-                        <TableCell>{r.requested_quotas}</TableCell>
+                        <TableCell>
+                          {r.investments?.investment_products?.title} <br />
+                          <span className="text-xs text-muted-foreground">
+                            {r.requested_quotas} cotas
+                          </span>
+                        </TableCell>
                         <TableCell className="font-mono text-emerald-600 font-medium">
                           {formatCurrency(r.net_value)}
                         </TableCell>
@@ -405,35 +426,20 @@ export default function InvestmentsReview() {
                             </Badge>
                           )}
                         </TableCell>
-                        <TableCell>
-                          {r.status === 'paid' ? (
-                            <span className="text-muted-foreground text-xs font-medium">
-                              Baixado
-                            </span>
-                          ) : r.status === 'approved' ? (
-                            <span className="text-amber-600 font-bold text-xs">Baixa pendente</span>
-                          ) : r.status === 'rejected' ? (
-                            <span className="text-muted-foreground text-xs">Cancelado</span>
-                          ) : (
-                            <span className="text-muted-foreground text-xs">Aguardando</span>
-                          )}
-                        </TableCell>
                         <TableCell className="text-right space-x-1 whitespace-nowrap">
                           <Button
                             variant="ghost"
                             size="icon"
-                            title="Ver Detalhes do Cálculo"
+                            title="Ver Detalhes"
                             onClick={() => setViewRedemption(r)}
                           >
                             <Eye className="h-4 w-4 text-muted-foreground hover:text-primary" />
                           </Button>
-
                           {r.status === 'pending' && (
                             <>
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                title="Aprovar Resgate"
                                 disabled={processingAction}
                                 onClick={() => handleApproveRedemption(r.id)}
                               >
@@ -442,7 +448,6 @@ export default function InvestmentsReview() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                title="Reprovar Solicitação"
                                 disabled={processingAction}
                                 onClick={() => setRejectRedemptionId(r.id)}
                               >
@@ -450,7 +455,6 @@ export default function InvestmentsReview() {
                               </Button>
                             </>
                           )}
-
                           {r.status === 'approved' && (
                             <Button
                               variant="outline"
@@ -459,7 +463,7 @@ export default function InvestmentsReview() {
                               disabled={processingAction}
                               onClick={() => handlePayRedemption(r)}
                             >
-                              <DollarSign className="h-4 w-4 mr-1" /> Confirmar Pagamento
+                              <DollarSign className="h-4 w-4 mr-1" /> Pagar
                             </Button>
                           )}
                         </TableCell>
@@ -473,7 +477,6 @@ export default function InvestmentsReview() {
         </TabsContent>
       </Tabs>
 
-      {/* Reject Aporte Modal */}
       <Dialog open={!!rejectId} onOpenChange={(v) => !v && setRejectId(null)}>
         <DialogContent>
           <DialogHeader>
@@ -498,7 +501,6 @@ export default function InvestmentsReview() {
         </DialogContent>
       </Dialog>
 
-      {/* Reject Resgate Modal */}
       <Dialog open={!!rejectRedemptionId} onOpenChange={(v) => !v && setRejectRedemptionId(null)}>
         <DialogContent>
           <DialogHeader>
@@ -531,7 +533,6 @@ export default function InvestmentsReview() {
         </DialogContent>
       </Dialog>
 
-      {/* View Resgate Details Modal */}
       <Dialog open={!!viewRedemption} onOpenChange={(v) => !v && setViewRedemption(null)}>
         <DialogContent className="sm:max-w-[450px]">
           <DialogHeader>
@@ -552,7 +553,6 @@ export default function InvestmentsReview() {
                   <strong>Cotas Solicitadas:</strong> {viewRedemption.requested_quotas}
                 </p>
               </div>
-
               <div className="space-y-2 pt-2">
                 <div className="flex justify-between text-sm text-muted-foreground">
                   <span>Valor Bruto Calculado</span>
