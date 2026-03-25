@@ -77,7 +77,8 @@ if (typeof window !== 'undefined') {
   window.addEventListener('unhandledrejection', suppressError, true)
 
   const originalOnerror = window.onerror
-  window.onerror = function (msg, url, line, col, error) {
+  window.onerror = function (...args: any[]) {
+    const [msg, url, , , error] = args
     if (
       isExtensionError(msg) ||
       isExtensionError(error) ||
@@ -86,18 +87,19 @@ if (typeof window !== 'undefined') {
       return true
     }
     if (originalOnerror) {
-      return originalOnerror.apply(this, arguments as any)
+      return originalOnerror.apply(this, args as any)
     }
   }
 
   const originalOnunhandledrejection = window.onunhandledrejection
-  window.onunhandledrejection = function (event) {
+  window.onunhandledrejection = function (...args: any[]) {
+    const [event] = args
     if (isExtensionError(event)) {
       if (event && typeof event.preventDefault === 'function') event.preventDefault()
       return true
     }
     if (originalOnunhandledrejection) {
-      return originalOnunhandledrejection.apply(this, arguments as any)
+      return originalOnunhandledrejection.apply(this, args as any)
     }
   }
 
