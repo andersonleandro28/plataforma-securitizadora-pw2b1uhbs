@@ -18,14 +18,11 @@ Deno.serve(async (req: Request) => {
 
     if (fetchErr || !op) throw new Error('Operação não encontrada para este envelope.')
 
-    const { error } = await supabase
-      .from('credit_operations')
-      .update({
-        signature_status: status,
-        // Advance the operation status if signed
-        status: status === 'assinado' ? 'aguardando_formalizacao' : op.status,
-      })
-      .eq('signature_envelope_id', envelope_id)
+    const { error } = await supabase.from('credit_operations').update({
+      signature_status: status,
+      // Advance the operation status if signed
+      status: status === 'assinado' ? 'aguardando_formalizacao' : op.status
+    }).eq('signature_envelope_id', envelope_id)
 
     if (error) throw error
 
@@ -33,16 +30,15 @@ Deno.serve(async (req: Request) => {
       entity_type: 'credit_operations',
       entity_id: op.id,
       action: 'status_assinatura_atualizado',
-      details: { envelope_id, new_status: status },
+      details: { envelope_id, new_status: status }
     })
 
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    return new Response(JSON.stringify({ success: true }), { 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     })
   } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    return new Response(JSON.stringify({ error: err.message }), { 
+      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     })
   }
 })
