@@ -4,7 +4,7 @@
     "send-login-notification": 1,
     "invite-user": 3,
     "public-signup": 1,
-    "delete-user": 1,
+    "delete-user": 2,
     "extract-debenture-data": 9,
     "batch-import-users": 2,
     "calculate-operation": 2,
@@ -14,6 +14,7 @@
     "send-to-signature": 1,
     "signature-webhook": 1,
     "submit-ccb": 4,
-    "admin-create-user": 1
+    "admin-create-user": 1,
+    "admin-update-user": 1
   }
 }

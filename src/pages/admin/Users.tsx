@@ -13,15 +13,20 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import {
   AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Shield,
   UserPlus,
@@ -32,6 +37,10 @@ import {
   Landmark,
   Edit,
   Download,
+  MoreHorizontal,
+  Key,
+  Ban,
+  Unlock,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
@@ -39,6 +48,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { ManageRolesDialog } from '@/components/admin/ManageRolesDialog'
 import { UserBankAccountsAdminDialog } from '@/components/admin/UserBankAccountsAdminDialog'
 import { AdminUserFormDialog } from '@/components/admin/AdminUserFormDialog'
+import { AdminChangePasswordDialog } from '@/components/admin/AdminChangePasswordDialog'
 import { getKycCompletion, exportCsv } from '@/lib/kyc-utils'
 
 export default function Users() {
@@ -47,11 +57,16 @@ export default function Users() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
 
-  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [processingId, setProcessingId] = useState<string | null>(null)
+
+  // Dialog States
   const [manageRolesUser, setManageRolesUser] = useState<any>(null)
   const [manageBanksUser, setManageBanksUser] = useState<any>(null)
+  const [passwordUser, setPasswordUser] = useState<any>(null)
+  const [deletingUser, setDeletingUser] = useState<any>(null)
+  const [blockUser, setBlockUser] = useState<any>(null)
 
-  // Full CRUD Dialog State
+  // Full CRUD Form Dialog State
   const [formOpen, setFormOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<any>(null)
 
@@ -86,25 +101,61 @@ export default function Users() {
     }
   }
 
-  const handleDeleteUser = async (userId: string) => {
-    if (!session?.access_token) return toast.error('Sessão expirada')
-    setDeletingId(userId)
+  const handleDeleteUser = async () => {
+    if (!deletingUser || !session?.access_token) return
+    setProcessingId(deletingUser.id)
     const promise = supabase.functions
       .invoke('delete-user', {
-        body: { targetUserId: userId },
+        body: { targetUserId: deletingUser.id },
         headers: { Authorization: `Bearer ${session.access_token}` },
       })
       .then(({ data, error }) => {
         if (error) throw error
         if (data?.error) throw new Error(data.error)
-        setUsers((prev) => prev.filter((u) => u.id !== userId))
+        setUsers((prev) => prev.filter((u) => u.id !== deletingUser.id))
       })
-      .finally(() => setDeletingId(null))
+      .finally(() => {
+        setProcessingId(null)
+        setDeletingUser(null)
+      })
 
     toast.promise(promise, {
       loading: 'Excluindo usuário...',
-      success: 'Usuário excluído.',
+      success: 'Usuário excluído permanentemente.',
       error: (err) => err.message || 'Erro ao excluir.',
+    })
+  }
+
+  const handleToggleBlock = async () => {
+    if (!blockUser || !session?.access_token) return
+    setProcessingId(blockUser.id)
+    const isBlocking = !blockUser.is_blocked
+
+    const promise = supabase.functions
+      .invoke('admin-update-user', {
+        body: {
+          targetUserId: blockUser.id,
+          action: 'toggle_block',
+          payload: { is_blocked: isBlocking },
+        },
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+      .then(({ data, error }) => {
+        if (error) throw error
+        if (data?.error) throw new Error(data.error)
+        setUsers((prev) =>
+          prev.map((u) => (u.id === blockUser.id ? { ...u, is_blocked: isBlocking } : u)),
+        )
+      })
+      .finally(() => {
+        setProcessingId(null)
+        setBlockUser(null)
+      })
+
+    toast.promise(promise, {
+      loading: isBlocking ? 'Bloqueando acesso...' : 'Restaurando acesso...',
+      success: isBlocking ? 'Usuário bloqueado com sucesso.' : 'Acesso do usuário restaurado.',
+      error: (err) => err.message || 'Erro ao alterar status.',
     })
   }
 
@@ -116,6 +167,7 @@ export default function Users() {
       Documento: u.document_number,
       Tipo: u.entity_type?.toUpperCase(),
       Papel: u.role,
+      Status_Acesso: u.is_blocked ? 'Bloqueado' : 'Ativo',
       Status_KYC: u.kyc_status,
       Completude_KYC: `${getKycCompletion(u).percentage}%`,
       Data_Cadastro: u.created_at ? new Date(u.created_at).toLocaleDateString('pt-BR') : '',
@@ -136,7 +188,7 @@ export default function Users() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Gestão de Usuários</h1>
           <p className="text-muted-foreground">
-            Administre perfis, cadastre clientes e valide dados de KYC.
+            Administre perfis, acessos de segurança e valide dados de KYC.
           </p>
         </div>
         <div className="flex gap-2">
@@ -176,18 +228,81 @@ export default function Users() {
         onSaved={loadUsers}
       />
 
+      <AdminChangePasswordDialog
+        user={passwordUser}
+        open={!!passwordUser}
+        onOpenChange={(v: boolean) => !v && setPasswordUser(null)}
+      />
+
+      <AlertDialog open={!!deletingUser} onOpenChange={(v) => !v && setDeletingUser(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir usuário permanentemente?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. Todos os dados, carteiras e documentos atrelados a
+              este usuário serão removidos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeletingUser(null)}
+              disabled={!!processingId}
+            >
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteUser} disabled={!!processingId}>
+              {processingId === deletingUser?.id && (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              )}
+              Sim, excluir usuário
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!blockUser} onOpenChange={(v) => !v && setBlockUser(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {blockUser?.is_blocked
+                ? 'Restaurar acesso do usuário?'
+                : 'Bloquear acesso do usuário?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {blockUser?.is_blocked
+                ? 'O usuário voltará a ter acesso imediato à plataforma com suas credenciais atuais.'
+                : 'O usuário será desconectado imediatamente e não poderá acessar a plataforma até ser desbloqueado.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button variant="outline" onClick={() => setBlockUser(null)} disabled={!!processingId}>
+              Cancelar
+            </Button>
+            <Button
+              variant={blockUser?.is_blocked ? 'default' : 'destructive'}
+              onClick={handleToggleBlock}
+              disabled={!!processingId}
+            >
+              {processingId === blockUser?.id && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {blockUser?.is_blocked ? 'Sim, desbloquear' : 'Sim, bloquear acesso'}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Card>
         <CardHeader className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
           <div>
             <CardTitle className="flex items-center gap-2 text-lg">
-              <Shield className="h-5 w-5 text-primary" /> Usuários Cadastrados
+              <Shield className="h-5 w-5 text-primary" /> Usuários da Plataforma
             </CardTitle>
             <CardDescription>
-              Gerencie o papel e os dados de cada participante da plataforma.
+              Acompanhe e controle o status e papéis de todos os participantes.
             </CardDescription>
           </div>
           <Input
-            placeholder="Buscar por nome, email ou documento..."
+            placeholder="Buscar nome, email ou documento..."
             className="max-w-xs"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -199,7 +314,7 @@ export default function Users() {
               <TableRow>
                 <TableHead>Usuário</TableHead>
                 <TableHead>Documento</TableHead>
-                <TableHead>Status / KYC</TableHead>
+                <TableHead>Status / Acesso</TableHead>
                 <TableHead>Data de Entrada</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
@@ -217,10 +332,20 @@ export default function Users() {
                   return (
                     <TableRow
                       key={u.id}
-                      className={deletingId === u.id ? 'opacity-50 pointer-events-none' : ''}
+                      className={
+                        processingId === u.id
+                          ? 'opacity-50 pointer-events-none transition-opacity'
+                          : ''
+                      }
                     >
                       <TableCell className="font-medium">
-                        <div>{u.full_name || u.pj_company_name || 'Usuário Pendente'}</div>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={u.is_blocked ? 'text-muted-foreground line-through' : ''}
+                          >
+                            {u.full_name || u.pj_company_name || 'Usuário Pendente'}
+                          </span>
+                        </div>
                         <div className="flex items-center gap-2 text-muted-foreground text-xs font-normal mt-1">
                           <Mail className="h-3 w-3" /> {u.email || '-'}
                         </div>
@@ -231,32 +356,45 @@ export default function Users() {
                       <TableCell>
                         <div className="flex flex-col gap-1.5 items-start">
                           <div className="flex gap-1.5 flex-wrap">
-                            {u.is_admin && (
-                              <Badge className="text-xs bg-primary/10 text-primary">Admin</Badge>
-                            )}
-                            {u.is_staff && (
-                              <Badge className="text-xs bg-secondary/10 text-secondary">
-                                Staff
+                            {u.is_blocked ? (
+                              <Badge variant="destructive" className="text-[10px] uppercase">
+                                Acesso Bloqueado
                               </Badge>
-                            )}
-                            {u.is_investor && (
-                              <Badge variant="outline" className="text-xs">
-                                Investidor
-                              </Badge>
-                            )}
-                            {u.is_borrower && (
-                              <Badge className="text-xs bg-emerald-600 text-white">Tomador</Badge>
+                            ) : (
+                              <>
+                                {u.is_admin && (
+                                  <Badge className="text-[10px] bg-primary/10 text-primary uppercase">
+                                    Admin
+                                  </Badge>
+                                )}
+                                {u.is_staff && (
+                                  <Badge className="text-[10px] bg-secondary/10 text-secondary uppercase">
+                                    Staff
+                                  </Badge>
+                                )}
+                                {u.is_investor && (
+                                  <Badge variant="outline" className="text-[10px] uppercase">
+                                    Investidor
+                                  </Badge>
+                                )}
+                                {u.is_borrower && (
+                                  <Badge className="text-[10px] bg-emerald-600 text-white uppercase">
+                                    Tomador
+                                  </Badge>
+                                )}
+                              </>
                             )}
                           </div>
-                          {comp.percentage < 100 ? (
-                            <span className="text-[10px] font-medium text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded">
-                              KYC {comp.percentage}%
-                            </span>
-                          ) : (
-                            <span className="text-[10px] font-medium text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">
-                              KYC 100%
-                            </span>
-                          )}
+                          {!u.is_blocked &&
+                            (comp.percentage < 100 ? (
+                              <span className="text-[10px] font-medium text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded">
+                                KYC {comp.percentage}%
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-medium text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">
+                                KYC 100%
+                              </span>
+                            ))}
                         </div>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
@@ -267,7 +405,7 @@ export default function Users() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            title="Editar Cadastro"
+                            title="Editar Dados Cadastrais"
                             className="h-8 w-8 text-primary hover:bg-primary/10"
                             onClick={() => {
                               setEditingUser(u)
@@ -285,45 +423,49 @@ export default function Users() {
                           >
                             <Landmark className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Gerenciar Papéis"
-                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                            onClick={() => setManageRolesUser(u)}
-                          >
-                            <Settings2 className="h-4 w-4" />
-                          </Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
+
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                title="Excluir Usuário"
-                                className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                title="Segurança e Mais"
+                                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-52">
+                              <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wider">
+                                Acesso e Segurança
+                              </DropdownMenuLabel>
+                              <DropdownMenuItem onClick={() => setManageRolesUser(u)}>
+                                <Settings2 className="mr-2 h-4 w-4" /> Papéis de Acesso
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setPasswordUser(u)}>
+                                <Key className="mr-2 h-4 w-4" /> Redefinir Senha
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => setBlockUser(u)}
                                 disabled={session?.user?.id === u.id}
                               >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Excluir usuário?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Esta ação não pode ser desfeita e os dados serão removidos.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                <AlertDialogAction
-                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                  onClick={() => handleDeleteUser(u.id)}
-                                >
-                                  Sim, excluir
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                                {u.is_blocked ? (
+                                  <Unlock className="mr-2 h-4 w-4 text-emerald-600" />
+                                ) : (
+                                  <Ban className="mr-2 h-4 w-4 text-amber-600" />
+                                )}
+                                {u.is_blocked ? 'Desbloquear Usuário' : 'Bloquear Usuário'}
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                                onClick={() => setDeletingUser(u)}
+                                disabled={session?.user?.id === u.id}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" /> Excluir Permanentemente
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </TableCell>
                     </TableRow>

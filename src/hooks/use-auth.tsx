@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase/client'
+import { toast } from 'sonner'
 
 export type AppRole = 'admin' | 'staff' | 'investor' | 'borrower'
 
@@ -14,6 +15,7 @@ export interface Profile {
   is_staff: boolean
   is_investor: boolean
   is_borrower: boolean
+  is_blocked?: boolean
   requires_password_change?: boolean
   kyc_status?: 'pending' | 'under_review' | 'approved' | 'rejected'
   entity_type?: 'pf' | 'pj'
@@ -137,6 +139,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         if (mounted) {
           const p = data ? (data as Profile) : null
+
+          if (p?.is_blocked) {
+            toast.error('Seu acesso à plataforma foi temporariamente suspenso.')
+            supabase.auth.signOut().catch(() => {})
+            setProfile(null)
+            setActiveRoleState(null)
+            setAvailableRoles([])
+            setProfileLoadedFor(null)
+            return
+          }
+
           setProfile(p)
 
           if (p) {
