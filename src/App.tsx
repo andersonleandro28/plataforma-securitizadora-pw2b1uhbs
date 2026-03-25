@@ -47,17 +47,25 @@ if (typeof window !== 'undefined') {
         stack = err.stack || ''
       } else if (typeof err === 'string') {
         errorMsg = err
-      } else if (err && typeof err === 'object' && err.message) {
-        errorMsg = err.message
-        stack = err.stack || ''
+      } else if (err && typeof err === 'object') {
+        errorMsg = err.message || err.error?.message || err.reason?.message || ''
+        stack = err.stack || err.error?.stack || err.reason?.stack || ''
       }
 
-      const fullStr = (String(errorMsg) + ' ' + String(stack)).toLowerCase()
+      let strData = ''
+      try {
+        strData = typeof err === 'object' ? JSON.stringify(err) : ''
+      } catch (e) {
+        // ignore circular reference errors
+      }
+
+      const fullStr = (String(errorMsg) + ' ' + String(stack) + ' ' + strData).toLowerCase()
       return (
         fullStr.includes('metamask') ||
         fullStr.includes('chrome-extension') ||
         fullStr.includes('inpage.js') ||
-        fullStr.includes('ethereum')
+        fullStr.includes('ethereum') ||
+        fullStr.includes('nkbihfbeogaeaoehlefnkodbefgpgknn')
       )
     } catch (e) {
       return false
@@ -82,7 +90,8 @@ if (typeof window !== 'undefined') {
     if (
       isExtensionError(msg) ||
       isExtensionError(error) ||
-      String(url).includes('chrome-extension')
+      String(url).includes('chrome-extension') ||
+      String(msg).toLowerCase().includes('metamask')
     ) {
       return true
     }
@@ -126,7 +135,8 @@ if (typeof window !== 'undefined') {
         msg.includes('metamask') ||
         msg.includes('chrome-extension') ||
         msg.includes('inpage.js') ||
-        msg.includes('ethereum')
+        msg.includes('ethereum') ||
+        msg.includes('nkbihfbeogaeaoehlefnkodbefgpgknn')
       ) {
         return
       }
