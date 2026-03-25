@@ -70,6 +70,7 @@ if (typeof window !== 'undefined') {
       const fullStr = (String(errorMsg) + ' ' + String(stack) + ' ' + strData).toLowerCase()
       return (
         fullStr.includes('metamask') ||
+        fullStr.includes('failed to connect') ||
         fullStr.includes('chrome-extension') ||
         fullStr.includes('inpage.js') ||
         fullStr.includes('ethereum') ||
@@ -99,7 +100,8 @@ if (typeof window !== 'undefined') {
       isExtensionError(msg) ||
       isExtensionError(error) ||
       String(url).includes('chrome-extension') ||
-      String(msg).toLowerCase().includes('metamask')
+      String(msg).toLowerCase().includes('metamask') ||
+      String(msg).toLowerCase().includes('failed to connect')
     ) {
       return true
     }
@@ -141,6 +143,7 @@ if (typeof window !== 'undefined') {
 
       if (
         msg.includes('metamask') ||
+        msg.includes('failed to connect') ||
         msg.includes('chrome-extension') ||
         msg.includes('inpage.js') ||
         msg.includes('ethereum') ||
@@ -170,6 +173,7 @@ if (typeof window !== 'undefined') {
             ).toLowerCase()
             if (
               str.includes('metamask') ||
+              str.includes('failed to connect') ||
               str.includes('chrome-extension') ||
               str.includes('inpage.js') ||
               str.includes('nkbihfbeogaeaoehlefnkodbefgpgknn')

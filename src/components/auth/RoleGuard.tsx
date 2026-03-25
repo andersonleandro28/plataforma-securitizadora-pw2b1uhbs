@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import { ReactNode, useEffect } from 'react'
 import { useAuth, AppRole } from '@/hooks/use-auth'
 import { Loader2, ShieldAlert } from 'lucide-react'
 
@@ -9,6 +9,66 @@ interface RoleGuardProps {
 
 export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
   const { user, profile, activeRole, loading } = useAuth()
+
+  // Intervenção cirúrgica para isolar erros de runtime da MetaMask (conforme histórico de suporte)
+  useEffect(() => {
+    // 1. Protocolo de Blindagem Externa / Segregação de Erros
+    const suppressMetaMaskErrors = (event: any) => {
+      try {
+        const err = event.reason || event.error || event
+        const errStr = String(err?.message || err || '').toLowerCase()
+        const stackStr = String(err?.stack || '').toLowerCase()
+
+        if (
+          errStr.includes('metamask') ||
+          stackStr.includes('nkbihfbeogaeaoehlefnkodbefgpgknn') ||
+          errStr.includes('failed to connect') ||
+          stackStr.includes('inpage.js') ||
+          errStr.includes('eth_requestaccounts')
+        ) {
+          event.preventDefault()
+          event.stopPropagation()
+          if (typeof event.stopImmediatePropagation === 'function') {
+            event.stopImmediatePropagation()
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    // Adiciona os listeners na fase de captura (true) para interceptar antes de crashar o React
+    window.addEventListener('unhandledrejection', suppressMetaMaskErrors, true)
+    window.addEventListener('error', suppressMetaMaskErrors, true)
+
+    // 2. Abordagem de "Safe-Wrapper" / "Force-Sync"
+    const initWeb3Safe = async () => {
+      try {
+        const eth = (window as any).ethereum
+        // Validação de Estado de Provedor (Pre-flight check)
+        if (eth && typeof eth.request === 'function') {
+          // Captura de forma silenciosa ("Silent Fallback") qualquer erro de inicialização.
+          // Dispara apenas um comando passivo para garantir a sincronia sem forçar pop-up.
+          await eth.request({ method: 'eth_chainId' }).catch(() => {
+            /* silent fallback */
+          })
+        }
+      } catch (e) {
+        // Erro completamente isolado
+      }
+    }
+
+    // Timeout adaptativo para lidar com a injeção atrasada da extensão (Race Condition)
+    const timer = setTimeout(() => {
+      initWeb3Safe()
+    }, 300)
+
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener('unhandledrejection', suppressMetaMaskErrors, true)
+      window.removeEventListener('error', suppressMetaMaskErrors, true)
+    }
+  }, [])
 
   // 1. PASSE LIVRE ABSOLUTO E IMEDIATO PARA SUPER ADMIN
   // Ignora completamente qualquer estado de "loading" ou banco de dados se o usuário já estiver identificado
