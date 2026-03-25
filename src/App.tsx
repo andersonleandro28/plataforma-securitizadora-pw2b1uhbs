@@ -29,6 +29,23 @@ import CcbDigital from './pages/borrower/CcbDigital'
 import { AuthGuard } from './components/auth/AuthGuard'
 import { RoleGuard } from './components/auth/RoleGuard'
 
+// Ignore browser extension errors (e.g., MetaMask) that crash the preview
+if (typeof window !== 'undefined') {
+  window.addEventListener('unhandledrejection', (event) => {
+    const errorMsg = event.reason?.message || event.reason
+    if (typeof errorMsg === 'string' && errorMsg.includes('MetaMask')) {
+      event.preventDefault()
+    }
+  })
+
+  window.addEventListener('error', (event) => {
+    const errorMsg = event.message || event.error?.message
+    if (typeof errorMsg === 'string' && errorMsg.includes('MetaMask')) {
+      event.preventDefault()
+    }
+  })
+}
+
 const App = () => (
   <BrowserRouter future={{ v7_startTransition: false, v7_relativeSplatPath: false }}>
     <AuthProvider>

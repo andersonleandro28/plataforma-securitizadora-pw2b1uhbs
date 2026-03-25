@@ -110,16 +110,14 @@ export function AdminUserFormDialog({ open, onOpenChange, user, onSaved }: any) 
     const fileName = `${targetUserId}/${type}_${Date.now()}.${ext}`
     const { error: uploadErr } = await supabase.storage.from('kyc-documents').upload(fileName, file)
     if (uploadErr) throw uploadErr
-    await supabase
-      .from('kyc_documents')
-      .insert({
-        user_id: targetUserId,
-        document_type: type,
-        file_path: fileName,
-        status: 'approved',
-        reviewed_by: session?.user?.id,
-        reviewed_at: new Date().toISOString(),
-      })
+    await supabase.from('kyc_documents').insert({
+      user_id: targetUserId,
+      document_type: type,
+      file_path: fileName,
+      status: 'approved',
+      reviewed_by: session?.user?.id,
+      reviewed_at: new Date().toISOString(),
+    })
   }
 
   const handleCheckSerasa = async () => {
