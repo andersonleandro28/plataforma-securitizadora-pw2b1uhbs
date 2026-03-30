@@ -1,8 +1,8 @@
 {
   "_versions": {
     "serasa-integration": 12,
-    "send-login-notification": 8,
-    "invite-user": 12,
+    "send-login-notification": 9,
+    "invite-user": 13,
     "public-signup": 8,
     "delete-user": 11,
     "extract-debenture-data": 16,
@@ -10,7 +10,7 @@
     "calculate-operation": 9,
     "send-operation-email": 9,
     "calculate-risk": 8,
-    "generate-aditivo": 14,
+    "generate-aditivo": 15,
     "send-to-signature": 8,
     "signature-webhook": 8,
     "submit-ccb": 11,
