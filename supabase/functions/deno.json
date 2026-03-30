@@ -8,7 +8,7 @@
     "extract-debenture-data": 16,
     "batch-import-users": 9,
     "calculate-operation": 9,
-    "send-operation-email": 8,
+    "send-operation-email": 9,
     "calculate-risk": 8,
     "generate-aditivo": 14,
     "send-to-signature": 8,

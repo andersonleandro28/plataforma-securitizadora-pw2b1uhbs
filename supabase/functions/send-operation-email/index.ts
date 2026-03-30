@@ -4,7 +4,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, x-supabase-client-platform, apikey, content-type',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, x-supabase-client-platform, apikey, content-type',
 }
 
 Deno.serve(async (req: Request) => {
@@ -17,15 +18,17 @@ Deno.serve(async (req: Request) => {
     const { record, old_record } = payload
 
     if (!record || !record.borrower_id || !record.status) {
-      return new Response(JSON.stringify({ error: 'Payload inválido' }), { 
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      return new Response(JSON.stringify({ error: 'Payload inválido' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
     // Only process if status changed
     if (old_record && old_record.status === record.status) {
-      return new Response(JSON.stringify({ message: 'Status não alterado, ignorando.' }), { 
-        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      return new Response(JSON.stringify({ message: 'Status não alterado, ignorando.' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
@@ -34,12 +37,16 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     // Fetch user details to get the email address
-    const { data: { user }, error } = await supabase.auth.admin.getUserById(record.borrower_id)
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.admin.getUserById(record.borrower_id)
 
     if (error || !user) {
       console.error('Erro ao buscar usuário:', error)
-      return new Response(JSON.stringify({ error: 'Usuário não encontrado' }), { 
-        status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      return new Response(JSON.stringify({ error: 'Usuário não encontrado' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
@@ -71,30 +78,61 @@ Deno.serve(async (req: Request) => {
         break
       default:
         // Ignore other intermediate statuses to avoid spam
-        return new Response(JSON.stringify({ message: 'Status não requer notificação.' }), { 
-          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        return new Response(JSON.stringify({ message: 'Status não requer notificação.' }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
     }
 
-    // Simulate sending an email notification
-    console.log('--- ENVIO DE E-MAIL AUTOMÁTICO ---')
-    console.log(`Para: ${userEmail}`)
-    console.log(`Assunto: ${subject}`)
-    console.log(`Mensagem: ${message}`)
-    console.log('----------------------------------')
+    const resendApiKey = Deno.env.get('RESEND_API_KEY')
 
-    // In a real scenario, you would integrate Resend, SendGrid, AWS SES, etc. here.
-    // Example: await fetch('https://api.resend.com/emails', { ... })
+    if (resendApiKey) {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${resendApiKey}`,
+        },
+        body: JSON.stringify({
+          from: 'Plataforma Securitizadora <contato@seaconnection.api.br>',
+          to: [userEmail],
+          subject: subject,
+          html: `
+            <div style="font-family: sans-serif; color: #333;">
+              <h2>Atualização de Operação</h2>
+              <p>${message}</p>
+              <br/>
+              <p>Atenciosamente,<br/>Equipe Plataforma Securitizadora</p>
+            </div>
+          `,
+        }),
+      })
 
-    return new Response(JSON.stringify({ success: true, message: 'Notificação enviada com sucesso.' }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+      if (!res.ok) {
+        console.error('Erro ao enviar email pelo Resend:', await res.text())
+      } else {
+        console.log(`Email de operação enviado com sucesso para ${userEmail}`)
+      }
+    } else {
+      // Simulate sending an email notification
+      console.log('--- ENVIO DE E-MAIL AUTOMÁTICO ---')
+      console.log(`Para: ${userEmail}`)
+      console.log(`Assunto: ${subject}`)
+      console.log(`Mensagem: ${message}`)
+      console.log('----------------------------------')
+    }
 
+    return new Response(
+      JSON.stringify({ success: true, message: 'Notificação enviada com sucesso.' }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      },
+    )
   } catch (error) {
     console.error('Erro interno:', error)
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Erro interno' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
   }
 })
