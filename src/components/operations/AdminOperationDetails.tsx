@@ -125,40 +125,44 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
 
   const handleDownload = async (path: string, fileName?: string) => {
     try {
-      // 1. Gera URL assinada temporária (15 mins = 900s) forçando o Content-Disposition
-      const { data, error } = await supabase.storage
-        .from('operation-docs')
-        .createSignedUrl(path, 900, {
-          download: fileName || 'aditivo.pdf',
-        })
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
 
-      if (error || !data?.signedUrl) {
-        throw new Error('Erro ao gerar link seguro para o documento.')
+      // Utiliza a Edge Function de proxy para evitar bloqueios de AdBlock/Chrome (ERR_BLOCKED_BY_CLIENT)
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/serve-pdf`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ bucket: 'operation-docs', filePath: path }),
+      })
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || 'Erro ao acessar documento proxy.')
       }
 
-      // 2. Inicia o download via link temporário para evitar bloqueio do navegador
+      // Processa o blob e cria um download local nativo
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+
       const link = document.createElement('a')
-      link.href = data.signedUrl
-      link.setAttribute('download', fileName || 'aditivo.pdf')
+      link.href = url
+      link.setAttribute('download', fileName || 'documento.pdf')
       link.style.display = 'none'
       document.body.appendChild(link)
       link.click()
-      document.body.removeChild(link)
+
+      // Limpeza de cache de memória local
+      setTimeout(() => {
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(url)
+      }, 1000)
     } catch (err: any) {
       console.error('Download error:', err)
-      const errorMsg = err.message?.toLowerCase() || ''
-      // 3. Tratamento amigável para falhas de rede / AdBlock
-      if (
-        errorMsg.includes('failed to fetch') ||
-        errorMsg.includes('blocked_by_client') ||
-        errorMsg.includes('networkerror')
-      ) {
-        toast.error(
-          'Detectamos um bloqueio no seu navegador. Por favor, desative extensões de AdBlock ou tente usar uma aba anônima.',
-        )
-      } else {
-        toast.error(err.message || 'Erro ao acessar documento.')
-      }
+      toast.error(err.message || 'Erro ao baixar documento. Tente novamente.')
     }
   }
 
