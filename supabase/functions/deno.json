@@ -1,20 +1,20 @@
 {
   "_versions": {
-    "serasa-integration": 5,
-    "send-login-notification": 1,
-    "invite-user": 5,
-    "public-signup": 1,
-    "delete-user": 4,
-    "extract-debenture-data": 9,
-    "batch-import-users": 2,
-    "calculate-operation": 2,
-    "send-operation-email": 1,
-    "calculate-risk": 1,
-    "generate-aditivo": 7,
-    "send-to-signature": 1,
-    "signature-webhook": 1,
-    "submit-ccb": 4,
-    "admin-create-user": 3,
-    "admin-update-user": 3
+    "serasa-integration": 12,
+    "send-login-notification": 8,
+    "invite-user": 12,
+    "public-signup": 8,
+    "delete-user": 11,
+    "extract-debenture-data": 16,
+    "batch-import-users": 9,
+    "calculate-operation": 9,
+    "send-operation-email": 8,
+    "calculate-risk": 8,
+    "generate-aditivo": 14,
+    "send-to-signature": 8,
+    "signature-webhook": 8,
+    "submit-ccb": 11,
+    "admin-create-user": 10,
+    "admin-update-user": 10
   }
 }
