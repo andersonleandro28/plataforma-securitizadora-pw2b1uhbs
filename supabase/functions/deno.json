@@ -15,6 +15,7 @@
     "signature-webhook": 8,
     "submit-ccb": 11,
     "admin-create-user": 10,
-    "admin-update-user": 10
+    "admin-update-user": 10,
+    "serve-pdf": 1
   }
 }
