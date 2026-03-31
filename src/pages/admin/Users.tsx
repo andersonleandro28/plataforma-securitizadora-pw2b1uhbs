@@ -56,6 +56,7 @@ export default function Users() {
   const [users, setUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [entityFilter, setEntityFilter] = useState('all')
 
   const [processingId, setProcessingId] = useState<string | null>(null)
 
@@ -175,9 +176,11 @@ export default function Users() {
 
   const filteredUsers = users.filter(
     (u) =>
-      u.full_name?.toLowerCase().includes(search.toLowerCase()) ||
-      u.email?.toLowerCase().includes(search.toLowerCase()) ||
-      u.document_number?.includes(search),
+      (entityFilter === 'all' || u.entity_type === entityFilter) &&
+      (u.full_name?.toLowerCase().includes(search.toLowerCase()) ||
+        u.pj_company_name?.toLowerCase().includes(search.toLowerCase()) ||
+        u.email?.toLowerCase().includes(search.toLowerCase()) ||
+        u.document_number?.includes(search)),
   )
 
   return (
@@ -299,13 +302,24 @@ export default function Users() {
               Acompanhe e controle o status e papéis de todos os participantes.
             </CardDescription>
           </div>
-          <Input
-            placeholder="Buscar nome, email ou documento..."
-            className="max-w-xs"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </CardHeader>
+          <div className="flex flex-col sm:flex-row items-center gap-2 max-w-md w-full">
+            <select
+              className="flex h-10 w-full sm:w-[140px] items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              value={entityFilter}
+              onChange={(e) => setEntityFilter(e.target.value)}
+            >
+              <option value="all">Todos (PF/PJ)</option>
+              <option value="pf">Pessoa Física</option>
+              <option value="pj">Pessoa Jurídica</option>
+            </select>
+            <Input
+              placeholder="Buscar nome, email ou documento..."
+              className="flex-1"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+        </CardHeader>{' '}
         <CardContent>
           <Table>
             <TableHeader>

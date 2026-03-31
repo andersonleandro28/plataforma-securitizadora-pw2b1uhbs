@@ -61,6 +61,7 @@ export function AdminUserFormDialog({ open, onOpenChange, user, onSaved }: any) 
     pf_occupation: '',
     pj_company_name: '',
     pj_trade_name: '',
+    pj_state_registration: '',
     pj_tax_regime: '',
     pj_annual_revenue: '',
     pj_cnae: '',
@@ -81,7 +82,9 @@ export function AdminUserFormDialog({ open, onOpenChange, user, onSaved }: any) 
   }
 
   const [formData, setFormData] = useState(defaultFormData)
-  const [docs, setDocs] = useState<{ id_doc?: File; proof_address?: File }>({})
+  const [docs, setDocs] = useState<{ id_doc?: File; proof_address?: File; contrato_social?: File }>(
+    {},
+  )
 
   useEffect(() => {
     if (open) {
@@ -190,6 +193,8 @@ export function AdminUserFormDialog({ open, onOpenChange, user, onSaved }: any) 
       // Upload docs if any
       if (docs.id_doc) await uploadDoc(docs.id_doc, 'id_document', targetUserId)
       if (docs.proof_address) await uploadDoc(docs.proof_address, 'proof_address', targetUserId)
+      if (docs.contrato_social)
+        await uploadDoc(docs.contrato_social, 'social_contract', targetUserId)
 
       if (serasaData) {
         await supabase.from('serasa_consultations').insert({
@@ -353,7 +358,6 @@ export function AdminUserFormDialog({ open, onOpenChange, user, onSaved }: any) 
                   </div>
                 )}
               </div>
-
               <div className="bg-muted/20 p-4 rounded-lg border space-y-4">
                 <h4 className="font-medium text-sm">Upload Manual de Documentos (Opcional)</h4>
                 <div className="grid sm:grid-cols-2 gap-4">
@@ -379,8 +383,23 @@ export function AdminUserFormDialog({ open, onOpenChange, user, onSaved }: any) 
                       />
                     </div>
                   </div>
+                  {isPj && (
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label className="text-xs">Contrato Social / Estatuto (PJ)</Label>
+                      <div className="border border-dashed rounded-md p-3 flex flex-col items-center justify-center bg-background hover:bg-muted/40 transition-colors">
+                        <UploadCloud className="w-5 h-5 text-muted-foreground mb-1" />
+                        <Input
+                          type="file"
+                          className="text-xs file:text-xs h-8"
+                          onChange={(e) =>
+                            setDocs({ ...docs, contrato_social: e.target.files?.[0] })
+                          }
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
+              </div>{' '}
             </div>
           </TabsContent>
         </Tabs>

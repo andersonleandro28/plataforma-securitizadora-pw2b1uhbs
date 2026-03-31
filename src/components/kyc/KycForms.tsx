@@ -130,6 +130,13 @@ export const PjFieldsStep = ({ formData, setFormData }: any) => (
         />
       </div>
       <div className="space-y-2">
+        <Label>Inscrição Estadual (Opcional)</Label>
+        <Input
+          value={formData.pj_state_registration || ''}
+          onChange={(e) => setFormData({ ...formData, pj_state_registration: e.target.value })}
+        />
+      </div>
+      <div className="space-y-2">
         <Label>CNAE Principal</Label>
         <Input
           value={formData.pj_cnae}
