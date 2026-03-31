@@ -74,7 +74,9 @@ export default function SignUp() {
             address_state: data.uf || prev.address_state,
           }))
         }
-      } catch (err) {}
+      } catch (err) {
+        console.error('Erro ao buscar CEP', err)
+      }
     }
   }
 
