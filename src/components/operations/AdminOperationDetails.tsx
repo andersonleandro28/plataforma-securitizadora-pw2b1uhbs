@@ -233,9 +233,9 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
           documentUrl: versions[0]?.file_path || 'dummy',
           type: 'operation',
           id: opId,
+          callbackUrl: window.location.origin,
         },
-      })
-      if (error || data?.error) throw error || new Error(data?.error)
+      })      if (error || data?.error) throw error || new Error(data?.error)
       toast.success('Enviado para assinatura no DocuSign!')
       fetchData()
       if (onRefresh) onRefresh()

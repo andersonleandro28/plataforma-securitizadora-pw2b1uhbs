@@ -45,6 +45,7 @@ export function DossierDialog({
             documentUrl: pdfData.url,
             type: 'kyc',
             id: profile.id,
+            callbackUrl: window.location.origin,
           },
         },
       )

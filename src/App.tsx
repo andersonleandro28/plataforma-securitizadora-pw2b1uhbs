@@ -28,6 +28,7 @@ import KycOnboarding from './pages/KycOnboarding'
 import CcbDigital from './pages/borrower/CcbDigital'
 import { AuthGuard } from './components/auth/AuthGuard'
 import { RoleGuard } from './components/auth/RoleGuard'
+import { PendingSignatures } from './components/docusign/PendingSignatures'
 
 // Ignore browser extension errors (e.g., MetaMask) that crash the preview
 if (typeof window !== 'undefined') {
@@ -212,6 +213,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <ForceChangePassword />
+        <PendingSignatures />
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<SignUp />} />
