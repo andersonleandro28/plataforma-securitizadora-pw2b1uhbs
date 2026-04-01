@@ -98,6 +98,15 @@ export default function AdminCcbRequests() {
     if (paths.address) items.push({ label: 'Comprovante de Residência', path: paths.address })
     if (paths.bank_extract) items.push({ label: 'Extrato Bancário', path: paths.bank_extract })
     if (paths.ir_document) items.push({ label: 'Declaração IR', path: paths.ir_document })
+    if (paths.vehicle_doc)
+      items.push({ label: 'Documento do Veículo (CRLV)', path: paths.vehicle_doc })
+
+    if (paths.guarantorDocs && Array.isArray(paths.guarantorDocs)) {
+      paths.guarantorDocs.forEach((b: string, i: number) =>
+        items.push({ label: `Documento Avalista ${i + 1}`, path: b }),
+      )
+    }
+
     if (paths.borderos && Array.isArray(paths.borderos)) {
       paths.borderos.forEach((b: string, i: number) =>
         items.push({ label: `Borderô / NF ${i + 1}`, path: b }),
@@ -400,27 +409,60 @@ export default function AdminCcbRequests() {
       </Tabs>
 
       <Dialog open={!!docsModal} onOpenChange={(v) => !v && setDocsModal(null)}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Documentos da Solicitação</DialogTitle>
+            <DialogTitle>Detalhes e Documentos da Solicitação</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-4 max-h-[60vh] overflow-y-auto">
-            {docsModal &&
-              renderDocs(docsModal).map((doc, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between p-3 border rounded-md bg-muted/30"
-                >
-                  <span className="text-sm font-medium">{doc.label}</span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => downloadFile(doc.path, doc.label)}
+          <div className="space-y-6 py-4 max-h-[70vh] overflow-y-auto pr-4">
+            <div className="grid grid-cols-2 gap-4 text-sm bg-muted/30 p-4 rounded-md border">
+              <div>
+                <span className="font-semibold text-muted-foreground block mb-1">
+                  Tipo de Crédito
+                </span>
+                {docsModal?.operation_data?.creditType || 'Não informado'}
+              </div>
+              <div>
+                <span className="font-semibold text-muted-foreground block mb-1">
+                  Garantia Principal
+                </span>
+                {docsModal?.guarantees_data?.guaranteeType?.toUpperCase() || 'Não informado'}
+              </div>
+              <div>
+                <span className="font-semibold text-muted-foreground block mb-1">
+                  Cônjuge (Se casado)
+                </span>
+                {docsModal?.borrower_data?.maritalStatus === 'casado'
+                  ? 'Informado no Espelho PDF'
+                  : 'N/A'}
+              </div>
+              <div>
+                <span className="font-semibold text-muted-foreground block mb-1">Avalista</span>
+                {docsModal?.operation_data?.creditType?.toUpperCase().includes('AVAL') ||
+                docsModal?.guarantees_data?.guaranteeType === 'avalista'
+                  ? 'Informado no Espelho PDF'
+                  : 'N/A'}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h4 className="font-semibold text-sm">Arquivos Anexados</h4>
+              {docsModal &&
+                renderDocs(docsModal).map((doc, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between p-3 border rounded-md bg-muted/10 hover:bg-muted/30 transition-colors"
                   >
-                    <Download className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
+                    <span className="text-sm font-medium">{doc.label}</span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => downloadFile(doc.path, doc.label)}
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+            </div>
           </div>
         </DialogContent>
       </Dialog>

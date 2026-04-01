@@ -57,20 +57,45 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
     bankExtract?: File
     irDoc?: File
     borderos: File[]
-  }>({ borderos: [] })
+    vehicleDoc?: File
+    guarantorDocs: File[]
+  }>({ borderos: [], guarantorDocs: [] })
 
   const [opData, setOpData] = useState<any>({
     requestedValue: '10000',
     termMonths: '12',
     purpose: '',
+    creditType: '',
     proposedRate: '',
     simulation: {},
   })
 
   const [guarData, setGuarData] = useState({
+    guaranteeType: '',
     receivableType: 'duplicatas',
     sacados: [] as { name: string; document: string; value: string }[],
   })
+
+  const [spouseData, setSpouseData] = useState({
+    name: '',
+    document: '',
+    dob: '',
+    phone: '',
+  })
+
+  const [guarantorData, setGuarantorData] = useState({
+    name: '',
+    document: '',
+    income: '',
+    address: '',
+    phone: '',
+    relationship: '',
+  })
+
+  const isVehicle =
+    opData.creditType?.toUpperCase().includes('VEICULO') || guarData.guaranteeType === 'veiculo'
+  const isAval =
+    opData.creditType?.toUpperCase().includes('AVAL') || guarData.guaranteeType === 'avalista'
 
   const [simData, setSimData] = useState({
     installment_value: 0,
@@ -133,12 +158,17 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
   }
 
   const handleNext = () => {
-    if (step === 1 && (!kycData.name || !kycData.document))
-      return toast.error('Preencha os campos obrigatórios (Nome e Documento).')
+    if (step === 1) {
+      if (!kycData.name || !kycData.document)
+        return toast.error('Preencha os campos obrigatórios (Nome e Documento).')
+      if (kycData.maritalStatus === 'casado' && (!spouseData.name || !spouseData.document)) {
+        return toast.error('Preencha os dados obrigatórios do cônjuge.')
+      }
+    }
     if (step === 2 && (!docsFiles.idDoc || !docsFiles.proofAddress || !docsFiles.bankExtract))
       return toast.error('Anexe Identidade, Comprovante de Residência e Extrato Bancário.')
-    if (step === 3 && (!opData.requestedValue || !opData.termMonths))
-      return toast.error('Preencha o valor e o prazo.')
+    if (step === 3 && (!opData.requestedValue || !opData.termMonths || !opData.creditType))
+      return toast.error('Preencha o valor, prazo e o tipo de crédito.')
     setStep((s) => Math.min(s + 1, 4))
   }
   const handlePrev = () => setStep((s) => Math.max(s - 1, 1))
@@ -158,6 +188,18 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
 
   const handleSubmit = async () => {
     if (!user) return
+    if (isVehicle && !docsFiles.vehicleDoc) {
+      toast.error('O documento do veículo é obrigatório para esta modalidade.')
+      return setStep(4)
+    }
+    if (
+      isAval &&
+      (!guarantorData.name || !guarantorData.document || docsFiles.guarantorDocs.length === 0)
+    ) {
+      toast.error('Preencha os dados e anexe os documentos do avalista.')
+      return setStep(4)
+    }
+
     setLoading(true)
     try {
       const docsPaths: any = {}
@@ -173,6 +215,8 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
       if (docsFiles.bankExtract) await upload(docsFiles.bankExtract, 'bank_extract')
       if (docsFiles.irDoc) await upload(docsFiles.irDoc, 'ir_document')
 
+      if (docsFiles.vehicleDoc) await upload(docsFiles.vehicleDoc, 'vehicle_doc')
+
       docsPaths.borderos = []
       for (let i = 0; i < docsFiles.borderos.length; i++) {
         const file = docsFiles.borderos[i]
@@ -181,8 +225,23 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
         docsPaths.borderos.push(path)
       }
 
+      docsPaths.guarantorDocs = []
+      for (let i = 0; i < docsFiles.guarantorDocs.length; i++) {
+        const file = docsFiles.guarantorDocs[i]
+        const path = `${user.id}/${Date.now()}_guarantor_${i}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
+        await supabase.storage.from('ccb-docs').upload(path, file)
+        docsPaths.guarantorDocs.push(path)
+      }
+
       const { data, error } = await supabase.functions.invoke('submit-ccb', {
-        body: { borrowerData: kycData, operationData: opData, guaranteesData: guarData, docsPaths },
+        body: {
+          borrowerData: kycData,
+          operationData: opData,
+          guaranteesData: guarData,
+          docsPaths,
+          spouseData: kycData.maritalStatus === 'casado' ? spouseData : null,
+          guarantorData: isAval ? guarantorData : null,
+        },
       })
 
       if (error || data?.error) throw new Error(data?.error || error?.message)
@@ -311,6 +370,43 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                 />
               </div>
             </div>
+
+            {kycData.maritalStatus === 'casado' && (
+              <div className="md:col-span-3 space-y-4 pt-4 border-t border-dashed mt-4">
+                <h4 className="font-semibold text-sm">Dados do Cônjuge *</h4>
+                <div className="grid md:grid-cols-4 gap-4">
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Nome do Cônjuge</Label>
+                    <Input
+                      value={spouseData.name}
+                      onChange={(e) => setSpouseData({ ...spouseData, name: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>CPF</Label>
+                    <Input
+                      value={spouseData.document}
+                      onChange={(e) => setSpouseData({ ...spouseData, document: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Data Nasc.</Label>
+                    <Input
+                      type="date"
+                      value={spouseData.dob}
+                      onChange={(e) => setSpouseData({ ...spouseData, dob: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Telefone</Label>
+                    <Input
+                      value={spouseData.phone}
+                      onChange={(e) => setSpouseData({ ...spouseData, phone: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -364,6 +460,32 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
 
             <div className="grid md:grid-cols-2 gap-10 bg-background border p-6 rounded-xl shadow-sm">
               <div className="space-y-8">
+                <div className="space-y-2">
+                  <Label>Tipo de Crédito BDIGITAL *</Label>
+                  <Select
+                    value={opData.creditType}
+                    onValueChange={(v) => setOpData({ ...opData, creditType: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Credito Certo Bdigital - Garantia Real - VEICULOS">
+                        Credito Certo Bdigital - Garantia Real - VEICULOS
+                      </SelectItem>
+                      <SelectItem value="CREDITO CERTO BDIGITAL - CAPITAL DE GIRO - MENSAL - AVAL CCB ATUALIZADA">
+                        CREDITO CERTO BDIGITAL - CAPITAL DE GIRO - AVAL
+                      </SelectItem>
+                      <SelectItem value="Credito Certo bdigital - Pessoa Física - pagamento mensal - aval">
+                        Credito Certo Bdigital - PF - Aval
+                      </SelectItem>
+                      <SelectItem value="Credito Pessoal - Garantia - Veiculo">
+                        Credito Pessoal - Garantia - Veiculo
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <Label className="text-base">Valor Solicitado (R$)</Label>
@@ -467,24 +589,138 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
           <div className="space-y-6 animate-in fade-in slide-in-from-left-4">
             <h3 className="font-semibold text-lg border-b pb-2">4. Garantias e Lastro</h3>
             <div className="space-y-4">
-              <div className="space-y-2 max-w-sm">
-                <Label>Tipo de Recebível</Label>
-                <Select
-                  value={guarData.receivableType}
-                  onValueChange={(v) => setGuarData({ ...guarData, receivableType: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="duplicatas">Duplicatas</SelectItem>
-                    <SelectItem value="cheques">Cheques</SelectItem>
-                    <SelectItem value="contratos">Contratos</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Garantia Principal *</Label>
+                  <Select
+                    value={guarData.guaranteeType}
+                    onValueChange={(v) => setGuarData({ ...guarData, guaranteeType: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="veiculo">Veículo</SelectItem>
+                      <SelectItem value="imovel">Imóvel</SelectItem>
+                      <SelectItem value="avalista">Avalista</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Recebível Vinculado (Opcional)</Label>
+                  <Select
+                    value={guarData.receivableType}
+                    onValueChange={(v) => setGuarData({ ...guarData, receivableType: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="duplicatas">Duplicatas</SelectItem>
+                      <SelectItem value="cheques">Cheques</SelectItem>
+                      <SelectItem value="contratos">Contratos</SelectItem>
+                      <SelectItem value="boletos">Boletos</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
-              <div className="space-y-2 pt-2">
+              {isVehicle && (
+                <div className="space-y-2 p-4 bg-muted/20 border rounded-md">
+                  <Label className="flex items-center gap-2">
+                    Documento do Veículo (CRLV/DUT) *
+                  </Label>
+                  <Input
+                    type="file"
+                    accept="image/*,.pdf"
+                    onChange={(e) =>
+                      setDocsFiles({ ...docsFiles, vehicleDoc: e.target.files?.[0] })
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Obrigatório para modalidades com garantia de veículo (Máx 5MB).
+                  </p>
+                </div>
+              )}
+
+              {isAval && (
+                <div className="space-y-4 p-4 bg-muted/20 border rounded-md">
+                  <h4 className="font-semibold text-sm border-b pb-2">Dados do Avalista *</h4>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Nome Completo</Label>
+                      <Input
+                        value={guarantorData.name}
+                        onChange={(e) =>
+                          setGuarantorData({ ...guarantorData, name: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>CPF</Label>
+                      <Input
+                        value={guarantorData.document}
+                        onChange={(e) =>
+                          setGuarantorData({ ...guarantorData, document: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Renda (R$)</Label>
+                      <Input
+                        type="number"
+                        value={guarantorData.income}
+                        onChange={(e) =>
+                          setGuarantorData({ ...guarantorData, income: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Telefone</Label>
+                      <Input
+                        value={guarantorData.phone}
+                        onChange={(e) =>
+                          setGuarantorData({ ...guarantorData, phone: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Endereço Completo</Label>
+                      <Input
+                        value={guarantorData.address}
+                        onChange={(e) =>
+                          setGuarantorData({ ...guarantorData, address: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Relação (ex: Sócio, Parente)</Label>
+                      <Input
+                        value={guarantorData.relationship}
+                        onChange={(e) =>
+                          setGuarantorData({ ...guarantorData, relationship: e.target.value })
+                        }
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2 pt-2 border-t">
+                    <Label>Documentos do Avalista (RG/CPF/Comprovantes) *</Label>
+                    <FileUpload
+                      files={docsFiles.guarantorDocs}
+                      setFiles={(files: any) =>
+                        setDocsFiles({
+                          ...docsFiles,
+                          guarantorDocs:
+                            typeof files === 'function' ? files(docsFiles.guarantorDocs) : files,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2 pt-4 border-t">
                 <Label>Borderôs / Notas Fiscais</Label>
                 <FileUpload
                   files={docsFiles.borderos}
