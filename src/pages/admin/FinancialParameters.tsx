@@ -50,7 +50,7 @@ export default function FinancialParameters() {
     interest_rate_monthly: 2.5,
     interest_rate_annual: 34.49,
     iof_rate: 0.38,
-    irrf_rate: 1.5,
+    fixed_emission_cost: 0,
     multiplier_factor: 1.0,
     max_term_months: 36,
   }
@@ -158,7 +158,7 @@ export default function FinancialParameters() {
         interest_rate_monthly: Number(ccbConfig.interest_rate_monthly),
         interest_rate_annual: Number(ccbConfig.interest_rate_annual),
         iof_rate: Number(ccbConfig.iof_rate),
-        irrf_rate: Number(ccbConfig.irrf_rate),
+        fixed_emission_cost: Number(ccbConfig.fixed_emission_cost),
         multiplier_factor: Number(ccbConfig.multiplier_factor),
         max_term_months: Number(ccbConfig.max_term_months),
         updated_at: new Date().toISOString(),
@@ -454,12 +454,14 @@ export default function FinancialParameters() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>IRRF Base (%)</Label>
+                  <Label>Custo Fixo de Emissão CCB (R$)</Label>
                   <Input
                     type="number"
                     step="0.01"
-                    value={ccbConfig.irrf_rate}
-                    onChange={(e) => setCcbConfig({ ...ccbConfig, irrf_rate: e.target.value })}
+                    value={ccbConfig.fixed_emission_cost}
+                    onChange={(e) =>
+                      setCcbConfig({ ...ccbConfig, fixed_emission_cost: e.target.value })
+                    }
                   />
                 </div>
                 <div className="space-y-2">

@@ -80,9 +80,13 @@ export default function AdminCcbRequests() {
     fetchData()
   }, [])
 
-  const downloadFile = async (path: string, fileName: string = 'documento.pdf') => {
+  const downloadFile = async (
+    path: string,
+    fileName: string = 'documento.pdf',
+    bucket: string = 'ccb-docs',
+  ) => {
     try {
-      const { data, error } = await supabase.storage.from('ccb-docs').createSignedUrl(path, 60)
+      const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 60)
       if (error) throw error
       if (data) window.open(data.signedUrl, '_blank')
     } catch (e) {
@@ -93,27 +97,62 @@ export default function AdminCcbRequests() {
   const renderDocs = (req: any) => {
     const paths = req.docs_paths || {}
     const items = []
-    if (req.pdf_file_path) items.push({ label: 'PDF Espelho CCB', path: req.pdf_file_path })
-    if (paths.identity) items.push({ label: 'Documento de Identidade', path: paths.identity })
-    if (paths.address) items.push({ label: 'Comprovante de Residência', path: paths.address })
-    if (paths.bank_extract) items.push({ label: 'Extrato Bancário', path: paths.bank_extract })
-    if (paths.ir_document) items.push({ label: 'Declaração IR', path: paths.ir_document })
+    if (req.pdf_file_path)
+      items.push({ label: 'PDF Espelho CCB', path: req.pdf_file_path, bucket: 'ccb-docs' })
+    if (paths.identity)
+      items.push({ label: 'Documento de Identidade', path: paths.identity, bucket: 'ccb-docs' })
+    if (paths.address)
+      items.push({ label: 'Comprovante de Residência', path: paths.address, bucket: 'ccb-docs' })
+    if (paths.bank_extract)
+      items.push({ label: 'Extrato Bancário', path: paths.bank_extract, bucket: 'ccb-docs' })
+    if (paths.ir_document)
+      items.push({ label: 'Declaração IR', path: paths.ir_document, bucket: 'ccb-docs' })
     if (paths.vehicle_doc)
-      items.push({ label: 'Documento do Veículo (CRLV)', path: paths.vehicle_doc })
+      items.push({
+        label: 'Documento do Veículo (CRLV)',
+        path: paths.vehicle_doc,
+        bucket: 'ccb-docs',
+      })
 
-    if (paths.guarantorDocs && Array.isArray(paths.guarantorDocs)) {
-      paths.guarantorDocs.forEach((b: string, i: number) =>
-        items.push({ label: `Documento Avalista ${i + 1}`, path: b }),
-      )
-    }
+    if (paths.spouse_rg)
+      items.push({ label: 'RG/CPF Cônjuge', path: paths.spouse_rg, bucket: 'ccb_conjuges_docs' })
+    if (paths.spouse_address)
+      items.push({
+        label: 'Residência Cônjuge',
+        path: paths.spouse_address,
+        bucket: 'ccb_conjuges_docs',
+      })
+
+    if (paths.guarantor_rg)
+      items.push({
+        label: 'RG/CPF Avalista',
+        path: paths.guarantor_rg,
+        bucket: 'ccb_avalistas_docs',
+      })
+    if (paths.guarantor_income)
+      items.push({
+        label: 'Renda Avalista',
+        path: paths.guarantor_income,
+        bucket: 'ccb_avalistas_docs',
+      })
+    if (paths.guarantor_address)
+      items.push({
+        label: 'Residência Avalista',
+        path: paths.guarantor_address,
+        bucket: 'ccb_avalistas_docs',
+      })
 
     if (paths.borderos && Array.isArray(paths.borderos)) {
       paths.borderos.forEach((b: string, i: number) =>
-        items.push({ label: `Borderô / NF ${i + 1}`, path: b }),
+        items.push({ label: `Borderô / NF ${i + 1}`, path: b, bucket: 'ccb-docs' }),
       )
     }
     if (req.bdigital_response_file)
-      items.push({ label: 'Retorno Parceiro BDIGITAL', path: req.bdigital_response_file })
+      items.push({
+        label: 'Retorno Parceiro BDIGITAL',
+        path: req.bdigital_response_file,
+        bucket: 'ccb-docs',
+      })
     return items
   }
 
@@ -456,7 +495,7 @@ export default function AdminCcbRequests() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => downloadFile(doc.path, doc.label)}
+                      onClick={() => downloadFile(doc.path, doc.label, doc.bucket)}
                     >
                       <Download className="h-4 w-4" />
                     </Button>

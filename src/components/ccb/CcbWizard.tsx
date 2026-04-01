@@ -58,8 +58,20 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
     irDoc?: File
     borderos: File[]
     vehicleDoc?: File
-    guarantorDocs: File[]
-  }>({ borderos: [], guarantorDocs: [] })
+    spouseRg?: File
+    spouseAddress?: File
+    guarantorRg?: File
+    guarantorIncome?: File
+    guarantorAddress?: File
+  }>({ borderos: [] })
+
+  const handleFile = (key: string, file?: File) => {
+    if (file && file.size > 5 * 1024 * 1024) {
+      toast.error('O arquivo deve ter no máximo 5MB.')
+      return
+    }
+    setDocsFiles((prev) => ({ ...prev, [key]: file }))
+  }
 
   const [opData, setOpData] = useState<any>({
     requestedValue: '10000',
@@ -100,7 +112,7 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
   const [simData, setSimData] = useState({
     installment_value: 0,
     total_iof: 0,
-    total_irrf: 0,
+    fixed_cost: 0,
     total_to_pay: 0,
     cet: 0,
   })
@@ -117,23 +129,29 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
       }
 
       const iof = pv * (ccbConfig.iof_rate / 100)
-      const irrf = pv * (ccbConfig.irrf_rate / 100)
+      const fixedCost = ccbConfig.fixed_emission_cost || 0
       const multiplier = ccbConfig.multiplier_factor || 1
 
-      const finalPmt = (pmt + iof / n + irrf / n) * multiplier
+      const finalPmt = (pmt + iof / n + fixedCost / n) * multiplier
       const totalToPay = finalPmt * n
       const cet = (totalToPay / pv - 1) * 100
 
       setSimData({
         installment_value: finalPmt,
         total_iof: iof,
-        total_irrf: irrf,
+        fixed_cost: fixedCost,
         total_to_pay: totalToPay,
         cet,
       })
       setOpData((prev: any) => ({
         ...prev,
-        simulation: { installment_value: finalPmt, total_to_pay: totalToPay, cet, rate_used: rate },
+        simulation: {
+          installment_value: finalPmt,
+          total_to_pay: totalToPay,
+          cet,
+          rate_used: rate,
+          fixed_cost: fixedCost,
+        },
       }))
     }
   }, [opData.requestedValue, opData.termMonths, ccbConfig])
@@ -165,8 +183,14 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
         return toast.error('Preencha os dados obrigatórios do cônjuge.')
       }
     }
-    if (step === 2 && (!docsFiles.idDoc || !docsFiles.proofAddress || !docsFiles.bankExtract))
-      return toast.error('Anexe Identidade, Comprovante de Residência e Extrato Bancário.')
+    if (step === 2) {
+      if (!docsFiles.idDoc || !docsFiles.proofAddress || !docsFiles.bankExtract) {
+        return toast.error('Anexe Identidade, Comprovante de Residência e Extrato Bancário.')
+      }
+      if (kycData.maritalStatus === 'casado' && (!docsFiles.spouseRg || !docsFiles.spouseAddress)) {
+        return toast.error('Anexe os documentos obrigatórios do cônjuge (RG/CPF e Residência).')
+      }
+    }
     if (step === 3 && (!opData.requestedValue || !opData.termMonths || !opData.creditType))
       return toast.error('Preencha o valor, prazo e o tipo de crédito.')
     setStep((s) => Math.min(s + 1, 4))
@@ -194,18 +218,24 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
     }
     if (
       isAval &&
-      (!guarantorData.name || !guarantorData.document || docsFiles.guarantorDocs.length === 0)
+      (!guarantorData.name ||
+        !guarantorData.document ||
+        !docsFiles.guarantorRg ||
+        !docsFiles.guarantorIncome ||
+        !docsFiles.guarantorAddress)
     ) {
-      toast.error('Preencha os dados e anexe os documentos do avalista.')
+      toast.error(
+        'Preencha os dados e anexe TODOS os documentos obrigatórios do avalista (RG, Renda, Residência).',
+      )
       return setStep(4)
     }
 
     setLoading(true)
     try {
       const docsPaths: any = {}
-      const upload = async (file: File, key: string) => {
+      const upload = async (file: File, key: string, bucket: string = 'ccb-docs') => {
         const path = `${user.id}/${Date.now()}_${key}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
-        const { error } = await supabase.storage.from('ccb-docs').upload(path, file)
+        const { error } = await supabase.storage.from(bucket).upload(path, file)
         if (error) throw error
         docsPaths[key] = path
       }
@@ -214,8 +244,18 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
       if (docsFiles.proofAddress) await upload(docsFiles.proofAddress, 'address')
       if (docsFiles.bankExtract) await upload(docsFiles.bankExtract, 'bank_extract')
       if (docsFiles.irDoc) await upload(docsFiles.irDoc, 'ir_document')
-
       if (docsFiles.vehicleDoc) await upload(docsFiles.vehicleDoc, 'vehicle_doc')
+
+      if (docsFiles.spouseRg) await upload(docsFiles.spouseRg, 'spouse_rg', 'ccb_conjuges_docs')
+      if (docsFiles.spouseAddress)
+        await upload(docsFiles.spouseAddress, 'spouse_address', 'ccb_conjuges_docs')
+
+      if (docsFiles.guarantorRg)
+        await upload(docsFiles.guarantorRg, 'guarantor_rg', 'ccb_avalistas_docs')
+      if (docsFiles.guarantorIncome)
+        await upload(docsFiles.guarantorIncome, 'guarantor_income', 'ccb_avalistas_docs')
+      if (docsFiles.guarantorAddress)
+        await upload(docsFiles.guarantorAddress, 'guarantor_address', 'ccb_avalistas_docs')
 
       docsPaths.borderos = []
       for (let i = 0; i < docsFiles.borderos.length; i++) {
@@ -223,14 +263,6 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
         const path = `${user.id}/${Date.now()}_bordero_${i}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
         await supabase.storage.from('ccb-docs').upload(path, file)
         docsPaths.borderos.push(path)
-      }
-
-      docsPaths.guarantorDocs = []
-      for (let i = 0; i < docsFiles.guarantorDocs.length; i++) {
-        const file = docsFiles.guarantorDocs[i]
-        const path = `${user.id}/${Date.now()}_guarantor_${i}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
-        await supabase.storage.from('ccb-docs').upload(path, file)
-        docsPaths.guarantorDocs.push(path)
       }
 
       const { data, error } = await supabase.functions.invoke('submit-ccb', {
@@ -419,7 +451,7 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                 <Input
                   type="file"
                   accept="image/*,.pdf"
-                  onChange={(e) => setDocsFiles({ ...docsFiles, idDoc: e.target.files?.[0] })}
+                  onChange={(e) => handleFile('idDoc', e.target.files?.[0])}
                 />
               </div>
               <div className="space-y-2">
@@ -427,9 +459,7 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                 <Input
                   type="file"
                   accept="image/*,.pdf"
-                  onChange={(e) =>
-                    setDocsFiles({ ...docsFiles, proofAddress: e.target.files?.[0] })
-                  }
+                  onChange={(e) => handleFile('proofAddress', e.target.files?.[0])}
                 />
               </div>
               <div className="space-y-2">
@@ -437,7 +467,7 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                 <Input
                   type="file"
                   accept="image/*,.pdf"
-                  onChange={(e) => setDocsFiles({ ...docsFiles, bankExtract: e.target.files?.[0] })}
+                  onChange={(e) => handleFile('bankExtract', e.target.files?.[0])}
                 />
               </div>
               <div className="space-y-2">
@@ -445,10 +475,34 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                 <Input
                   type="file"
                   accept="image/*,.pdf"
-                  onChange={(e) => setDocsFiles({ ...docsFiles, irDoc: e.target.files?.[0] })}
+                  onChange={(e) => handleFile('irDoc', e.target.files?.[0])}
                 />
               </div>
             </div>
+
+            {kycData.maritalStatus === 'casado' && (
+              <div className="mt-6 pt-4 border-t border-dashed">
+                <h4 className="font-semibold text-sm mb-4">Documentos do Cônjuge *</h4>
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label>RG/CPF Cônjuge (Mín 5MB)</Label>
+                    <Input
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={(e) => handleFile('spouseRg', e.target.files?.[0])}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Comprovante de Residência Cônjuge</Label>
+                    <Input
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={(e) => handleFile('spouseAddress', e.target.files?.[0])}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -563,11 +617,11 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                   </div>
                   <div className="flex justify-between border-b pb-2">
                     <span className="text-sm text-muted-foreground">
-                      Impostos Inclusos (IOF+IRRF)
+                      Custos Inclusos (IOF + Emissão)
                     </span>
                     <span className="font-semibold text-amber-600">
                       R${' '}
-                      {(simData.total_iof + simData.total_irrf).toLocaleString('pt-BR', {
+                      {(simData.total_iof + simData.fixed_cost).toLocaleString('pt-BR', {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}
@@ -634,9 +688,7 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                   <Input
                     type="file"
                     accept="image/*,.pdf"
-                    onChange={(e) =>
-                      setDocsFiles({ ...docsFiles, vehicleDoc: e.target.files?.[0] })
-                    }
+                    onChange={(e) => handleFile('vehicleDoc', e.target.files?.[0])}
                   />
                   <p className="text-xs text-muted-foreground">
                     Obrigatório para modalidades com garantia de veículo (Máx 5MB).
@@ -704,18 +756,36 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                       />
                     </div>
                   </div>
-                  <div className="space-y-2 pt-2 border-t">
-                    <Label>Documentos do Avalista (RG/CPF/Comprovantes) *</Label>
-                    <FileUpload
-                      files={docsFiles.guarantorDocs}
-                      setFiles={(files: any) =>
-                        setDocsFiles({
-                          ...docsFiles,
-                          guarantorDocs:
-                            typeof files === 'function' ? files(docsFiles.guarantorDocs) : files,
-                        })
-                      }
-                    />
+                  <div className="space-y-4 pt-4 border-t">
+                    <h5 className="font-semibold text-xs text-muted-foreground">
+                      Documentos do Avalista *
+                    </h5>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-xs">RG/CPF Avalista</Label>
+                        <Input
+                          type="file"
+                          accept="image/*,.pdf"
+                          onChange={(e) => handleFile('guarantorRg', e.target.files?.[0])}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs">Comprovante de Renda</Label>
+                        <Input
+                          type="file"
+                          accept="image/*,.pdf"
+                          onChange={(e) => handleFile('guarantorIncome', e.target.files?.[0])}
+                        />
+                      </div>
+                      <div className="space-y-2 md:col-span-2">
+                        <Label className="text-xs">Comprovante de Residência</Label>
+                        <Input
+                          type="file"
+                          accept="image/*,.pdf"
+                          onChange={(e) => handleFile('guarantorAddress', e.target.files?.[0])}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
