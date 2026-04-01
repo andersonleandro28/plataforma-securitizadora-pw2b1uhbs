@@ -11,11 +11,14 @@
     "send-operation-email": 9,
     "calculate-risk": 8,
     "generate-aditivo": 15,
-    "send-to-signature": 8,
-    "signature-webhook": 8,
+    "send-to-signature": 9,
+    "signature-webhook": 9,
     "submit-ccb": 11,
     "admin-create-user": 10,
     "admin-update-user": 10,
-    "serve-pdf": 1
+    "serve-pdf": 1,
+    "generate-kyc-pdf": 1,
+    "docusign-envelope": 1,
+    "docusign-callback": 1
   }
 }
