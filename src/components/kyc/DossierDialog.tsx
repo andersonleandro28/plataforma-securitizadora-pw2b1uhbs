@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -7,7 +8,9 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Eye, FileText, CheckCircle, AlertTriangle } from 'lucide-react'
+import { Eye, FileText, CheckCircle, AlertTriangle, FileSignature, Loader2 } from 'lucide-react'
+import { supabase } from '@/lib/supabase/client'
+import { toast } from 'sonner'
 
 export function DossierDialog({
   open,
@@ -18,9 +21,43 @@ export function DossierDialog({
   onUpdateStatus,
   onViewDoc,
 }: any) {
+  const [loadingDocusign, setLoadingDocusign] = useState(false)
+
   if (!profile) return null
 
   const isPj = profile.entity_type === 'pj'
+
+  const handleDocuSign = async () => {
+    try {
+      setLoadingDocusign(true)
+      const { data: pdfData, error: pdfError } = await supabase.functions.invoke(
+        'generate-kyc-pdf',
+        { body: { userId: profile.id } },
+      )
+      if (pdfError) throw pdfError
+
+      const { data: dsData, error: dsError } = await supabase.functions.invoke(
+        'docusign-envelope',
+        {
+          body: {
+            signerEmail: profile.email,
+            signerName: profile.full_name || profile.pj_company_name,
+            documentUrl: pdfData.url,
+            type: 'kyc',
+            id: profile.id,
+          },
+        },
+      )
+      if (dsError) throw dsError
+
+      toast.success('Enviado para o DocuSign com sucesso!')
+      onOpenChange(false)
+    } catch (e: any) {
+      toast.error('Erro ao enviar DocuSign: ' + e.message)
+    } finally {
+      setLoadingDocusign(false)
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -270,6 +307,21 @@ export function DossierDialog({
             >
               Reprovar / Pedir Ajustes
             </Button>
+            {profile.kyc_status === 'approved' && profile.kyc_signature_status !== 'assinado' && (
+              <Button
+                variant="outline"
+                className="flex-1 border-blue-600 text-blue-600 hover:bg-blue-50"
+                onClick={handleDocuSign}
+                disabled={loadingDocusign}
+              >
+                {loadingDocusign ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <FileSignature className="w-4 h-4 mr-2" />
+                )}
+                Enviar DocuSign
+              </Button>
+            )}
           </div>
         </div>
       </DialogContent>

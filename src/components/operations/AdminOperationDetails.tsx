@@ -226,15 +226,21 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
   const handleSendToSignature = async () => {
     setActionLoading(true)
     try {
-      const { data, error } = await supabase.functions.invoke('send-to-signature', {
-        body: { operationId: opId },
+      const { data, error } = await supabase.functions.invoke('docusign-envelope', {
+        body: {
+          signerEmail: op.profiles?.email,
+          signerName: op.profiles?.full_name || op.profiles?.pj_company_name,
+          documentUrl: versions[0]?.file_path || 'dummy',
+          type: 'operation',
+          id: opId,
+        },
       })
       if (error || data?.error) throw error || new Error(data?.error)
-      toast.success('Documento enviado para assinatura digital!')
+      toast.success('Enviado para assinatura no DocuSign!')
       fetchData()
       if (onRefresh) onRefresh()
     } catch (err: any) {
-      toast.error('Erro ao enviar para assinatura.')
+      toast.error('Erro ao enviar para DocuSign.')
     } finally {
       setActionLoading(false)
     }
@@ -320,9 +326,7 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                         disabled={actionLoading || op.signature_status === 'enviado'}
                       >
                         <Send className="w-4 h-4 mr-2" />
-                        {op.signature_status === 'enviado'
-                          ? 'Aguardando Assinatura'
-                          : 'Enviar para Assinatura'}
+                        {op.signature_status === 'enviado' ? 'DocuSign Enviado' : 'Enviar DocuSign'}
                       </Button>
                     )}
                   </>

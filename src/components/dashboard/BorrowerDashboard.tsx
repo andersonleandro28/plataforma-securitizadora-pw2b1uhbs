@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import { BorrowerNewOperation } from './BorrowerNewOperation'
 import { BorrowerOperationsList } from './BorrowerOperationsList'
 import { BorrowerVault } from './BorrowerVault'
@@ -15,13 +17,43 @@ import {
   CheckCircle2,
   AlertCircle,
   Banknote,
+  FileSignature,
 } from 'lucide-react'
 
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
 
+const PendingSignatureBanner = ({
+  type,
+  url,
+  onSign,
+}: {
+  type: string
+  url: string
+  onSign: () => void
+}) => (
+  <Alert className="bg-blue-50 border-blue-200 mb-6">
+    <AlertCircle className="h-5 w-5 text-blue-600" />
+    <AlertTitle className="text-blue-800 font-bold">Assinatura Pendente (DocuSign)</AlertTitle>
+    <AlertDescription className="text-blue-700 flex flex-col sm:flex-row sm:items-center justify-between mt-2 gap-4">
+      <span>
+        Você possui um documento de <strong>{type}</strong> aguardando sua assinatura eletrônica via
+        DocuSign.
+      </span>
+      <Button
+        size="sm"
+        onClick={onSign}
+        className="bg-blue-600 hover:bg-blue-700 text-white whitespace-nowrap"
+      >
+        <FileSignature className="w-4 h-4 mr-2" /> Assinar Agora
+      </Button>
+    </AlertDescription>
+  </Alert>
+)
+
 export default function BorrowerDashboard() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
+  const [pendingSignatures, setPendingSignatures] = useState<any[]>([])
   const [stats, setStats] = useState({
     totalAnticipated: 0,
     inAnalysis: 0,
@@ -80,6 +112,15 @@ export default function BorrowerDashboard() {
 
     if (latest) setLatestOp(latest)
 
+    // Fetch pending signatures
+    const { data: pendingOps } = await supabase
+      .from('credit_operations')
+      .select('id, signature_url')
+      .eq('borrower_id', user.id)
+      .eq('signature_status', 'enviado')
+
+    if (pendingOps) setPendingSignatures(pendingOps)
+
     setLoading(false)
   }
 
@@ -98,6 +139,23 @@ export default function BorrowerDashboard() {
 
   return (
     <div className="space-y-8 animate-fade-in-up pb-10 max-w-7xl mx-auto">
+      {(profile as any)?.kyc_signature_status === 'enviado' &&
+        (profile as any)?.kyc_signature_url && (
+          <PendingSignatureBanner
+            type="KYC (Compliance)"
+            url={(profile as any).kyc_signature_url}
+            onSign={() => window.open((profile as any).kyc_signature_url, '_blank')}
+          />
+        )}
+      {pendingSignatures.map((op) => (
+        <PendingSignatureBanner
+          key={op.id}
+          type={`Aditivo de Cessão #${op.id.split('-')[0].toUpperCase()}`}
+          url={op.signature_url}
+          onSign={() => window.open(op.signature_url, '_blank')}
+        />
+      ))}
+
       {/* 1. Dashboard de Boas-Vindas (Overview) */}
       <div className="space-y-6">
         <div>

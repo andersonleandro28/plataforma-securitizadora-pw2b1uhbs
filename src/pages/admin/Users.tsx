@@ -407,6 +407,16 @@ export default function Users() {
                                 KYC 100%
                               </span>
                             ))}
+                          {u.kyc_signature_status === 'enviado' && (
+                            <span className="text-[10px] font-medium text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded flex items-center gap-1 mt-1">
+                              DocuSign Pendente
+                            </span>
+                          )}
+                          {u.kyc_signature_status === 'assinado' && (
+                            <span className="text-[10px] font-medium text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded flex items-center gap-1 mt-1">
+                              DocuSign Assinado
+                            </span>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">

@@ -11,6 +11,7 @@ import {
   ArrowRight,
   ArrowDownToLine,
   History,
+  FileSignature,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
@@ -45,6 +46,34 @@ import { toast } from 'sonner'
 const chartConfig = {
   rendimento: { label: 'Rendimento Líquido (R$)', color: 'hsl(var(--primary))' },
 }
+
+const PendingSignatureBanner = ({
+  type,
+  url,
+  onSign,
+}: {
+  type: string
+  url: string
+  onSign: () => void
+}) => (
+  <Alert className="bg-blue-50 border-blue-200 mb-6">
+    <AlertCircle className="h-5 w-5 text-blue-600" />
+    <AlertTitle className="text-blue-800 font-bold">Assinatura Pendente (DocuSign)</AlertTitle>
+    <AlertDescription className="text-blue-700 flex flex-col sm:flex-row sm:items-center justify-between mt-2 gap-4">
+      <span>
+        Você possui um documento de <strong>{type}</strong> aguardando sua assinatura eletrônica via
+        DocuSign.
+      </span>
+      <Button
+        size="sm"
+        onClick={onSign}
+        className="bg-blue-600 hover:bg-blue-700 text-white whitespace-nowrap"
+      >
+        <FileSignature className="w-4 h-4 mr-2" /> Assinar Agora
+      </Button>
+    </AlertDescription>
+  </Alert>
+)
 
 export default function InvestorDashboard() {
   const { profile, user } = useAuth()
@@ -290,6 +319,15 @@ export default function InvestorDashboard() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up pb-10">
+      {(profile as any)?.kyc_signature_status === 'enviado' &&
+        (profile as any)?.kyc_signature_url && (
+          <PendingSignatureBanner
+            type="KYC (Compliance)"
+            url={(profile as any).kyc_signature_url}
+            onSign={() => window.open((profile as any).kyc_signature_url, '_blank')}
+          />
+        )}
+
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Painel do Investidor</h1>
         <p className="text-muted-foreground">
