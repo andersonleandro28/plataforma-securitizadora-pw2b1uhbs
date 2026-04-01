@@ -297,7 +297,7 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                 </Button>
 
                 {/* Formalização Digital */}
-                {op.status === 'aprovado' && (
+                {(op.status === 'aprovado' || op.status === 'aguardando_formalizacao') && (
                   <>
                     <Button
                       size="sm"
