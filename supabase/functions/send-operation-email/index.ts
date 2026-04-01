@@ -4,7 +4,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, x-supabase-client-platform, apikey, content-type',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, x-supabase-client-platform, apikey, content-type',
 }
 
 Deno.serve(async (req: Request) => {
@@ -17,15 +18,17 @@ Deno.serve(async (req: Request) => {
     const { record, old_record } = payload
 
     if (!record || !record.borrower_id || !record.status) {
-      return new Response(JSON.stringify({ error: 'Payload inválido' }), { 
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      return new Response(JSON.stringify({ error: 'Payload inválido' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
     // Only process if status changed
     if (old_record && old_record.status === record.status) {
-      return new Response(JSON.stringify({ message: 'Status não alterado, ignorando.' }), { 
-        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      return new Response(JSON.stringify({ message: 'Status não alterado, ignorando.' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
@@ -34,12 +37,16 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     // Fetch user details to get the email address
-    const { data: { user }, error } = await supabase.auth.admin.getUserById(record.borrower_id)
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.admin.getUserById(record.borrower_id)
 
     if (error || !user) {
       console.error('Erro ao buscar usuário:', error)
-      return new Response(JSON.stringify({ error: 'Usuário não encontrado' }), { 
-        status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      return new Response(JSON.stringify({ error: 'Usuário não encontrado' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
@@ -61,6 +68,10 @@ Deno.serve(async (req: Request) => {
         subject = `Aprovado: Operação #${opId}`
         message = `Parabéns! Sua operação #${opId} foi aprovada em nosso comitê de crédito e seguiu para o processo de formalização e assinatura.`
         break
+      case 'aguardando_liquidacao':
+        subject = `Aguardando Liquidação: Operação #${opId}`
+        message = `Os dados bancários e/ou QR Code PIX foram incluídos no aditivo da operação #${opId}. A mesma encontra-se pronta para liquidação.`
+        break
       case 'pago':
         subject = `Liquidação Efetuada: Operação #${opId}`
         message = `Tudo certo! O valor líquido referente à operação #${opId} foi liberado e transferido para a sua conta bancária cadastrada.`
@@ -71,8 +82,9 @@ Deno.serve(async (req: Request) => {
         break
       default:
         // Ignore other intermediate statuses to avoid spam
-        return new Response(JSON.stringify({ message: 'Status não requer notificação.' }), { 
-          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        return new Response(JSON.stringify({ message: 'Status não requer notificação.' }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
     }
 
@@ -83,7 +95,7 @@ Deno.serve(async (req: Request) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${resendApiKey}`
+          Authorization: `Bearer ${resendApiKey}`,
         },
         body: JSON.stringify({
           from: 'Plataforma Securitizadora <contato@seaconnection.api.br>',
@@ -96,8 +108,8 @@ Deno.serve(async (req: Request) => {
               <br/>
               <p>Atenciosamente,<br/>Equipe Plataforma Securitizadora</p>
             </div>
-          `
-        })
+          `,
+        }),
       })
 
       if (!res.ok) {
@@ -114,15 +126,17 @@ Deno.serve(async (req: Request) => {
       console.log('----------------------------------')
     }
 
-    return new Response(JSON.stringify({ success: true, message: 'Notificação enviada com sucesso.' }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-
+    return new Response(
+      JSON.stringify({ success: true, message: 'Notificação enviada com sucesso.' }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      },
+    )
   } catch (error) {
     console.error('Erro interno:', error)
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Erro interno' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
   }
 })

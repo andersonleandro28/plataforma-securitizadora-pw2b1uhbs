@@ -50,6 +50,7 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
   const [calc, setCalc] = useState<any>(null)
   const [history, setHistory] = useState<any[]>([])
   const [versions, setVersions] = useState<any[]>([])
+  const [bankAccount, setBankAccount] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const [generatingDoc, setGeneratingDoc] = useState(false)
@@ -73,7 +74,7 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
     if (operation) {
       setOp(operation)
       setStatusInput(operation.status)
-      const [docsRes, calcRes, histRes, verRes] = await Promise.all([
+      const [docsRes, calcRes, histRes, verRes, bankRes] = await Promise.all([
         supabase
           .from('operation_documents')
           .select('*')
@@ -90,9 +91,16 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
           .select('*') // Manual join below to avoid HTTP 400 schema cache error
           .eq('operation_id', opId)
           .order('version_number', { ascending: false }),
+        supabase
+          .from('user_bank_accounts')
+          .select('*')
+          .eq('user_id', operation.borrower_id)
+          .eq('is_active', true)
+          .limit(1),
       ])
 
       setDocs(docsRes.data || [])
+      setBankAccount(bankRes.data?.[0] || null)
       setCalc(calcRes.data || null)
       setHistory(histRes.data || [])
 
@@ -352,6 +360,7 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                       <SelectItem value="aprovado">Aprovado</SelectItem>
                       <SelectItem value="reprovado">Reprovado</SelectItem>
                       <SelectItem value="aguardando_formalizacao">Formalizando</SelectItem>
+                      <SelectItem value="aguardando_liquidacao">Aguardando Liquidação</SelectItem>
                       <SelectItem value="pago">Pago</SelectItem>
                       <SelectItem value="liquidado">Liquidado</SelectItem>
                       <SelectItem value="cancelado">Cancelado</SelectItem>
@@ -399,6 +408,45 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                   </CardContent>
                 </Card>
               </div>
+
+              {/* Informações Bancárias */}
+              <Card className="shadow-none border-primary/20">
+                <CardHeader className="p-4 pb-2 bg-primary/5">
+                  <CardTitle className="text-sm flex gap-2 items-center">
+                    <CheckCircle2 className="w-4 h-4 text-primary" /> Dados Bancários (Liquidação)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 text-sm">
+                  {bankAccount ? (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-muted-foreground text-xs">Instituição</p>
+                        <p className="font-medium">{bankAccount.bank_name}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs">Agência / Conta</p>
+                        <p className="font-medium">
+                          {bankAccount.branch || '-'} / {bankAccount.account_number}
+                        </p>
+                      </div>
+                      <div className="col-span-2">
+                        <p className="text-muted-foreground text-xs">Chave PIX</p>
+                        <p className="font-medium font-mono">
+                          {bankAccount.pix_key || 'Não cadastrada'}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-amber-600 bg-amber-50 p-3 rounded text-xs flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <p>
+                        Nenhuma conta bancária ativa encontrada para o tomador. O aditivo será
+                        gerado com espaço para preenchimento manual.
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
 
               {/* Risk Dossier */}
               <RiskDossier
