@@ -9,19 +9,17 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { filePath, bucket = 'operation-docs' } = await req.json()
-
+    
     if (!filePath) {
-      return new Response(JSON.stringify({ error: 'filePath é obrigatório' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+       return new Response(JSON.stringify({ error: 'filePath é obrigatório' }), { 
+         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+       })
     }
 
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       })
     }
 
@@ -31,20 +29,16 @@ Deno.serve(async (req: Request) => {
 
     // 1. Valida a autenticação do usuário para manter o sistema seguro
     const authClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
+      global: { headers: { Authorization: authHeader } }
     })
-    const {
-      data: { user },
-      error: authErr,
-    } = await authClient.auth.getUser()
-
+    const { data: { user }, error: authErr } = await authClient.auth.getUser()
+    
     if (authErr || !user) {
-      return new Response(JSON.stringify({ error: 'Sessão inválida ou expirada' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      return new Response(JSON.stringify({ error: 'Sessão inválida ou expirada' }), { 
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       })
     }
-
+    
     // 2. Instancia o cliente com Service Role para buscar o arquivo diretamente via Admin
     // Isso ignora políticas restritivas do bucket CDN e evita bloqueios (ERR_BLOCKED_BY_CLIENT)
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
@@ -58,20 +52,20 @@ Deno.serve(async (req: Request) => {
 
     // 4. Retorna o Blob com os headers limpos, ignorando o roteamento padrão do CDN
     const fileName = filePath.split('/').pop() || 'documento.pdf'
-
+    
     return new Response(file, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'application/pdf',
         'Content-Disposition': `inline; filename="${fileName}"`,
-        'Cache-Control': 'public, max-age=3600',
-      },
+        'Cache-Control': 'public, max-age=3600'
+      }
     })
   } catch (err: any) {
     console.error('Edge Function serve-pdf error:', err)
     return new Response(JSON.stringify({ error: err.message }), {
       status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   }
 })
