@@ -15,36 +15,30 @@ Deno.serve(async (req: Request) => {
     const docusignUrl = `https://demo.docusign.net/Signing/start_session?envelopeId=${envelopeId}`
 
     if (type === 'kyc') {
-      await supabase
-        .from('profiles')
-        .update({
-          kyc_signature_envelope_id: envelopeId,
-          kyc_signature_status: 'enviado',
-          kyc_signature_url: docusignUrl,
-        })
-        .eq('id', id)
-
+      await supabase.from('profiles').update({
+        kyc_signature_envelope_id: envelopeId,
+        kyc_signature_status: 'enviado',
+        kyc_signature_url: docusignUrl
+      }).eq('id', id)
+      
       await supabase.from('audit_logs').insert({
         entity_type: 'profiles',
         entity_id: id,
         action: 'docusign_kyc_sent',
-        details: { envelopeId, signerEmail, documentUrl },
+        details: { envelopeId, signerEmail, documentUrl }
       })
     } else if (type === 'operation') {
-      await supabase
-        .from('credit_operations')
-        .update({
-          signature_envelope_id: envelopeId,
-          signature_status: 'enviado',
-          signature_url: docusignUrl,
-        })
-        .eq('id', id)
-
+      await supabase.from('credit_operations').update({
+        signature_envelope_id: envelopeId,
+        signature_status: 'enviado',
+        signature_url: docusignUrl
+      }).eq('id', id)
+      
       await supabase.from('audit_logs').insert({
         entity_type: 'credit_operations',
         entity_id: id,
         action: 'docusign_operation_sent',
-        details: { envelopeId, signerEmail, documentUrl },
+        details: { envelopeId, signerEmail, documentUrl }
       })
     }
 
@@ -55,15 +49,12 @@ Deno.serve(async (req: Request) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${resendApiKey}`,
+          'Authorization': `Bearer ${resendApiKey}`
         },
         body: JSON.stringify({
           from: 'Plataforma Securitizadora <contato@seaconnection.api.br>',
           to: [signerEmail],
-          subject:
-            type === 'kyc'
-              ? 'Assine seu KYC (DocuSign)'
-              : 'Assine seu Aditivo de Cessão (DocuSign)',
+          subject: type === 'kyc' ? 'Assine seu KYC (DocuSign)' : 'Assine seu Aditivo de Cessão (DocuSign)',
           html: `
             <div style="font-family: sans-serif; color: #333;">
               <h2>Assinatura Eletrônica Pendente</h2>
@@ -73,18 +64,17 @@ Deno.serve(async (req: Request) => {
               <br/>
               <p>Atenciosamente,<br/>Equipe Plataforma Securitizadora</p>
             </div>
-          `,
-        }),
+          `
+        })
       })
     }
 
-    return new Response(JSON.stringify({ success: true, envelopeId, url: docusignUrl }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    return new Response(JSON.stringify({ success: true, envelopeId, url: docusignUrl }), { 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     })
   } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    return new Response(JSON.stringify({ error: err.message }), { 
+      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     })
   }
 })
