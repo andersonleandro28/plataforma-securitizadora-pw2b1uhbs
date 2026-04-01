@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { BorrowerNewOperation } from './BorrowerNewOperation'
 import { BorrowerOperationsList } from './BorrowerOperationsList'
 import { BorrowerVault } from './BorrowerVault'
+import { BorrowerLiquidations } from './BorrowerLiquidations'
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase/client'
 import {
@@ -277,12 +278,15 @@ export default function BorrowerDashboard() {
       </div>
 
       <Tabs defaultValue="new" className="w-full">
-        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 h-auto">
+        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-4 h-auto">
           <TabsTrigger value="new" className="py-3">
             Nova Solicitação
           </TabsTrigger>
           <TabsTrigger value="history" className="py-3">
             Minhas Antecipações
+          </TabsTrigger>
+          <TabsTrigger value="liquidations" className="py-3">
+            Liquidações Pendentes
           </TabsTrigger>
           <TabsTrigger value="vault" className="py-3">
             Central de Documentos
@@ -295,6 +299,10 @@ export default function BorrowerDashboard() {
 
         <TabsContent value="history" className="mt-6">
           <BorrowerOperationsList />
+        </TabsContent>
+
+        <TabsContent value="liquidations" className="mt-6">
+          <BorrowerLiquidations />
         </TabsContent>
 
         <TabsContent value="vault" className="mt-6">
