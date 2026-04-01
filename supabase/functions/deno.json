@@ -18,7 +18,7 @@
     "admin-update-user": 16,
     "serve-pdf": 7,
     "generate-kyc-pdf": 7,
-    "docusign-envelope": 8,
+    "docusign-envelope": 9,
     "docusign-callback": 7
   }
 }
