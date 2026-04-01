@@ -13,7 +13,7 @@
     "generate-aditivo": 23,
     "send-to-signature": 15,
     "signature-webhook": 15,
-    "submit-ccb": 18,
+    "submit-ccb": 19,
     "admin-create-user": 16,
     "admin-update-user": 16,
     "serve-pdf": 7,
