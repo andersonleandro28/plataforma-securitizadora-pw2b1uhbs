@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Slider } from '@/components/ui/slider'
 import {
   Select,
   SelectContent,
@@ -14,15 +15,25 @@ import {
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { Loader2, CheckCircle2, ChevronRight, Plus, Trash2 } from 'lucide-react'
+import { Loader2, CheckCircle2, ChevronRight, Plus, Trash2, Calculator } from 'lucide-react'
 import { FileUpload } from '@/components/operations/FileUpload'
 
 export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
   const { user, profile } = useAuth()
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
+  const [ccbConfig, setCcbConfig] = useState<any>(null)
 
-  // Step 1 State
+  useEffect(() => {
+    supabase
+      .from('config_ccb')
+      .select('*')
+      .single()
+      .then(({ data }) => {
+        if (data) setCcbConfig(data)
+      })
+  }, [])
+
   const [kycData, setKycData] = useState({
     name: profile?.full_name || '',
     document: profile?.document_number || '',
@@ -40,7 +51,6 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
     email: profile?.email || user?.email || '',
   })
 
-  // Step 2 State (Files)
   const [docsFiles, setDocsFiles] = useState<{
     idDoc?: File
     proofAddress?: File
@@ -49,26 +59,66 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
     borderos: File[]
   }>({ borderos: [] })
 
-  // Step 3 State
-  const [opData, setOpData] = useState({
-    requestedValue: '',
+  const [opData, setOpData] = useState<any>({
+    requestedValue: '10000',
     termMonths: '12',
     purpose: '',
     proposedRate: '',
+    simulation: {},
   })
 
-  // Step 4 State
   const [guarData, setGuarData] = useState({
     receivableType: 'duplicatas',
     sacados: [] as { name: string; document: string; value: string }[],
   })
+
+  const [simData, setSimData] = useState({
+    installment_value: 0,
+    total_iof: 0,
+    total_irrf: 0,
+    total_to_pay: 0,
+    cet: 0,
+  })
+
+  useEffect(() => {
+    if (ccbConfig && opData.requestedValue && opData.termMonths) {
+      const pv = Number(opData.requestedValue)
+      const n = Number(opData.termMonths)
+      const rate = ccbConfig.interest_rate_monthly / 100
+
+      let pmt = pv / n
+      if (rate > 0) {
+        pmt = (pv * rate * Math.pow(1 + rate, n)) / (Math.pow(1 + rate, n) - 1)
+      }
+
+      const iof = pv * (ccbConfig.iof_rate / 100)
+      const irrf = pv * (ccbConfig.irrf_rate / 100)
+      const multiplier = ccbConfig.multiplier_factor || 1
+
+      const finalPmt = (pmt + iof / n + irrf / n) * multiplier
+      const totalToPay = finalPmt * n
+      const cet = (totalToPay / pv - 1) * 100
+
+      setSimData({
+        installment_value: finalPmt,
+        total_iof: iof,
+        total_irrf: irrf,
+        total_to_pay: totalToPay,
+        cet,
+      })
+      setOpData((prev: any) => ({
+        ...prev,
+        simulation: { installment_value: finalPmt, total_to_pay: totalToPay, cet, rate_used: rate },
+      }))
+    }
+  }, [opData.requestedValue, opData.termMonths, ccbConfig])
 
   const fetchCep = async () => {
     if (kycData.zip.length === 8 || kycData.zip.length === 9) {
       try {
         const res = await fetch(`https://viacep.com.br/ws/${kycData.zip.replace('-', '')}/json/`)
         const data = await res.json()
-        if (!data.erro) {
+        if (!data.erro)
           setKycData((prev) => ({
             ...prev,
             street: data.logradouro,
@@ -76,7 +126,6 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
             city: data.localidade,
             state: data.uf,
           }))
-        }
       } catch (e) {
         console.error('Error fetching CEP:', e)
       }
@@ -84,27 +133,14 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
   }
 
   const handleNext = () => {
-    if (step === 1) {
-      if (!kycData.name || !kycData.document) {
-        toast.error('Preencha os campos obrigatórios (Nome e Documento).')
-        return
-      }
-    }
-    if (step === 2) {
-      if (!docsFiles.idDoc || !docsFiles.proofAddress || !docsFiles.bankExtract) {
-        toast.error('Por favor, anexe a Identidade, Comprovante de Residência e Extrato Bancário.')
-        return
-      }
-    }
-    if (step === 3) {
-      if (!opData.requestedValue || !opData.termMonths) {
-        toast.error('Preencha o valor solicitado e o prazo.')
-        return
-      }
-    }
+    if (step === 1 && (!kycData.name || !kycData.document))
+      return toast.error('Preencha os campos obrigatórios (Nome e Documento).')
+    if (step === 2 && (!docsFiles.idDoc || !docsFiles.proofAddress || !docsFiles.bankExtract))
+      return toast.error('Anexe Identidade, Comprovante de Residência e Extrato Bancário.')
+    if (step === 3 && (!opData.requestedValue || !opData.termMonths))
+      return toast.error('Preencha o valor e o prazo.')
     setStep((s) => Math.min(s + 1, 4))
   }
-
   const handlePrev = () => setStep((s) => Math.max(s - 1, 1))
 
   const addSacado = () =>
@@ -117,9 +153,8 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
     updated[index] = { ...updated[index], [field]: value }
     setGuarData((prev) => ({ ...prev, sacados: updated }))
   }
-  const removeSacado = (index: number) => {
+  const removeSacado = (index: number) =>
     setGuarData((prev) => ({ ...prev, sacados: prev.sacados.filter((_, i) => i !== index) }))
-  }
 
   const handleSubmit = async () => {
     if (!user) return
@@ -167,7 +202,7 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
         <div>
           <h2 className="text-xl font-bold text-foreground">Formulário de Emissão BDIGITAL</h2>
           <p className="text-sm text-muted-foreground">
-            Preencha os dados abaixo para gerar sua CCB pré-aprovada.
+            Preencha os dados abaixo para gerar sua simulação e CCB pré-aprovada.
           </p>
         </div>
         <div className="w-full md:w-1/3">
@@ -322,54 +357,107 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
         )}
 
         {step === 3 && (
-          <div className="space-y-4 animate-in fade-in slide-in-from-left-4">
-            <h3 className="font-semibold text-lg border-b pb-2">3. Dados da Operação</h3>
-            <div className="grid md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label>Valor Solicitado (R$) *</Label>
-                <Input
-                  type="number"
-                  min="5000"
-                  placeholder="Min. R$ 5.000"
-                  value={opData.requestedValue}
-                  onChange={(e) => setOpData({ ...opData, requestedValue: e.target.value })}
-                />
+          <div className="space-y-6 animate-in fade-in slide-in-from-left-4">
+            <h3 className="font-semibold text-lg border-b pb-2 flex items-center gap-2">
+              <Calculator className="h-5 w-5 text-[#00C2E0]" /> 3. Simulação e Dados da Operação
+            </h3>
+
+            <div className="grid md:grid-cols-2 gap-10 bg-background border p-6 rounded-xl shadow-sm">
+              <div className="space-y-8">
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <Label className="text-base">Valor Solicitado (R$)</Label>
+                    <span className="font-bold text-xl text-[#00C2E0]">
+                      R$ {Number(opData.requestedValue || 5000).toLocaleString('pt-BR')}
+                    </span>
+                  </div>
+                  <Slider
+                    min={5000}
+                    max={500000}
+                    step={1000}
+                    value={[Number(opData.requestedValue) || 5000]}
+                    onValueChange={(v) => setOpData({ ...opData, requestedValue: v[0].toString() })}
+                    className="py-4"
+                  />
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <Label className="text-base">Prazo (Meses)</Label>
+                    <span className="font-bold text-xl text-[#00C2E0]">{opData.termMonths}x</span>
+                  </div>
+                  <Slider
+                    min={3}
+                    max={ccbConfig?.max_term_months || 36}
+                    step={1}
+                    value={[Number(opData.termMonths) || 12]}
+                    onValueChange={(v) => setOpData({ ...opData, termMonths: v[0].toString() })}
+                    className="py-4"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Finalidade</Label>
+                  <Select
+                    value={opData.purpose}
+                    onValueChange={(v) => setOpData({ ...opData, purpose: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="capital_giro">Capital de Giro</SelectItem>
+                      <SelectItem value="estoque">Estoque</SelectItem>
+                      <SelectItem value="expansao">Expansão</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Prazo (Meses) *</Label>
-                <Input
-                  type="number"
-                  min="3"
-                  max="36"
-                  placeholder="3 a 36"
-                  value={opData.termMonths}
-                  onChange={(e) => setOpData({ ...opData, termMonths: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Finalidade</Label>
-                <Select
-                  value={opData.purpose}
-                  onValueChange={(v) => setOpData({ ...opData, purpose: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="capital_giro">Capital de Giro</SelectItem>
-                    <SelectItem value="estoque">Estoque</SelectItem>
-                    <SelectItem value="expansao">Expansão</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Taxa Proposta (% a.m.) - Opcional</Label>
-                <Input
-                  type="number"
-                  step="0.1"
-                  value={opData.proposedRate}
-                  onChange={(e) => setOpData({ ...opData, proposedRate: e.target.value })}
-                />
+
+              <div className="bg-muted/30 p-6 rounded-xl border border-[#00C2E0]/20 flex flex-col justify-center">
+                <h4 className="font-semibold mb-6 flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500" /> Resumo da Simulação
+                </h4>
+                <div className="space-y-4">
+                  <div className="flex justify-between border-b pb-2">
+                    <span className="text-sm text-muted-foreground">Valor da Parcela Mensal</span>
+                    <span className="font-bold text-lg text-primary">
+                      R${' '}
+                      {simData.installment_value.toLocaleString('pt-BR', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-b pb-2">
+                    <span className="text-sm text-muted-foreground">Total Geral a Pagar</span>
+                    <span className="font-semibold">
+                      R${' '}
+                      {simData.total_to_pay.toLocaleString('pt-BR', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-b pb-2">
+                    <span className="text-sm text-muted-foreground">
+                      Impostos Inclusos (IOF+IRRF)
+                    </span>
+                    <span className="font-semibold text-amber-600">
+                      R${' '}
+                      {(simData.total_iof + simData.total_irrf).toLocaleString('pt-BR', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                  <div className="flex justify-between pb-2">
+                    <span className="text-sm text-muted-foreground">Custo Efetivo Total (CET)</span>
+                    <span className="font-semibold text-[#00C2E0]">
+                      {simData.cet.toFixed(2)}% no período
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -485,8 +573,8 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
               <Loader2 className="h-4 w-4 animate-spin mr-2" />
             ) : (
               <CheckCircle2 className="h-4 w-4 mr-2" />
-            )}
-            Gerar e Enviar CCB
+            )}{' '}
+            Encaminhar Simulação e Emitir CCB
           </Button>
         )}
       </CardFooter>
