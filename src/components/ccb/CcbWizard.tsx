@@ -160,7 +160,9 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
             city: data.localidade,
             state: data.uf,
           }))
-      } catch (e) {}
+      } catch (e) {
+        console.error('Erro ao buscar CEP:', e)
+      }
     }
   }
 
