@@ -71,9 +71,12 @@ export default function KycOnboarding() {
   })
 
   const [docs, setDocs] = useState<{
-    id_doc?: File
+    id_front?: File
+    id_back?: File
+    selfie?: File
     proof_address?: File
     power_of_attorney?: File
+    marriage_cert?: File
   }>({})
 
   const isReview = profile?.kyc_status === 'under_review' || profile?.kyc_status === 'approved'
@@ -94,8 +97,8 @@ export default function KycOnboarding() {
             </CardTitle>
             <CardDescription className="text-base mt-2">
               {profile?.kyc_status === 'approved'
-                ? 'Seu cadastro está completo e verificado em nossa plataforma.'
-                : 'Nossa equipe de compliance está validando suas informações e documentos.'}
+                ? 'Seu cadastro está completo e verificado.'
+                : 'Nossa equipe está validando suas informações.'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -125,16 +128,23 @@ export default function KycOnboarding() {
   const handleSubmit = async () => {
     if (!user) return
     if (!formData.lgpd_accepted) return toast.error('É necessário aceitar os termos da LGPD.')
-    if (!docs.id_doc) return toast.error('O Documento de Identificação é obrigatório.')
-    if (isPj && formData.pj_rep_is_procurator && !docs.power_of_attorney) {
-      return toast.error('A Procuração do Administrador é obrigatória.')
-    }
+    if (!docs.id_front || !docs.selfie || !docs.proof_address)
+      return toast.error(
+        'Identidade (frente), Selfie e Comprovante de Residência são obrigatórios.',
+      )
+    if (isPj && formData.pj_rep_is_procurator && !docs.power_of_attorney)
+      return toast.error('Procuração obrigatória.')
+    if (formData.pf_marital_status?.toLowerCase() === 'casado' && !docs.marriage_cert)
+      return toast.error('Certidão de casamento obrigatória.')
 
     setLoading(true)
     try {
-      if (docs.id_doc) await uploadDoc(docs.id_doc, 'id_document')
+      if (docs.id_front) await uploadDoc(docs.id_front, 'id_front')
+      if (docs.id_back) await uploadDoc(docs.id_back, 'id_back')
+      if (docs.selfie) await uploadDoc(docs.selfie, 'selfie')
       if (docs.proof_address) await uploadDoc(docs.proof_address, 'proof_address')
       if (docs.power_of_attorney) await uploadDoc(docs.power_of_attorney, 'power_of_attorney')
+      if (docs.marriage_cert) await uploadDoc(docs.marriage_cert, 'marriage_cert')
 
       const { error } = await supabase
         .from('profiles')
@@ -166,7 +176,6 @@ export default function KycOnboarding() {
           Forneça os dados necessários para liberar seu acesso às operações.
         </p>
       </div>
-
       <div className="flex flex-wrap items-center gap-2 mb-6 text-sm font-medium text-muted-foreground">
         <span className={step >= 1 ? 'text-primary' : ''}>1. Básico</span>
         <ChevronRight className="w-3 h-3" />
@@ -194,57 +203,70 @@ export default function KycOnboarding() {
           {((step === 3 && !isPj) || (step === 4 && isPj)) && (
             <AddressStep formData={formData} setFormData={setFormData} />
           )}
-
           {step === maxSteps && (
             <div className="space-y-6 animate-fade-in">
-              <div className="space-y-4">
-                <Label>Documento de Identificação (RG/CNH ou Contrato Social) *</Label>
-                <div className="border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center bg-muted/20 hover:bg-muted/40 transition-colors">
-                  <UploadCloud className="w-8 h-8 text-muted-foreground mb-2" />
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Doc. de Identificação (Frente) *</Label>
                   <Input
                     type="file"
-                    className="max-w-xs"
-                    onChange={(e) => setDocs({ ...docs, id_doc: e.target.files?.[0] })}
+                    onChange={(e) => setDocs({ ...docs, id_front: e.target.files?.[0] })}
                     accept=".pdf,image/*"
                   />
                 </div>
-              </div>
-              {isPj && formData.pj_rep_is_procurator && (
-                <div className="space-y-4 animate-fade-in">
-                  <Label>Procuração do Administrador *</Label>
-                  <div className="border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center bg-muted/20 hover:bg-muted/40 transition-colors">
-                    <FileText className="w-8 h-8 text-muted-foreground mb-2" />
-                    <Input
-                      type="file"
-                      className="max-w-xs"
-                      onChange={(e) => setDocs({ ...docs, power_of_attorney: e.target.files?.[0] })}
-                      accept=".pdf,image/*"
-                    />
-                  </div>
-                </div>
-              )}
-              <div className="space-y-4">
-                <Label>Comprovante de Endereço (Últimos 90 dias)</Label>
-                <div className="border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center bg-muted/20 hover:bg-muted/40 transition-colors">
-                  <FileText className="w-8 h-8 text-muted-foreground mb-2" />
+                <div className="space-y-2">
+                  <Label>Doc. de Identificação (Verso)</Label>
                   <Input
                     type="file"
-                    className="max-w-xs"
+                    onChange={(e) => setDocs({ ...docs, id_back: e.target.files?.[0] })}
+                    accept=".pdf,image/*"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Selfie com Documento *</Label>
+                  <Input
+                    type="file"
+                    onChange={(e) => setDocs({ ...docs, selfie: e.target.files?.[0] })}
+                    accept=".pdf,image/*"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Comprovante de Endereço *</Label>
+                  <Input
+                    type="file"
                     onChange={(e) => setDocs({ ...docs, proof_address: e.target.files?.[0] })}
                     accept=".pdf,image/*"
                   />
                 </div>
               </div>
-              <div className="bg-muted/50 p-5 rounded-lg space-y-4 border">
+              {formData.pf_marital_status?.toLowerCase() === 'casado' && (
+                <div className="space-y-2">
+                  <Label>Certidão de Casamento *</Label>
+                  <Input
+                    type="file"
+                    onChange={(e) => setDocs({ ...docs, marriage_cert: e.target.files?.[0] })}
+                    accept=".pdf,image/*"
+                  />
+                </div>
+              )}
+              {isPj && formData.pj_rep_is_procurator && (
+                <div className="space-y-2">
+                  <Label>Procuração do Administrador *</Label>
+                  <Input
+                    type="file"
+                    onChange={(e) => setDocs({ ...docs, power_of_attorney: e.target.files?.[0] })}
+                    accept=".pdf,image/*"
+                  />
+                </div>
+              )}
+              <div className="bg-muted/50 p-5 rounded-lg space-y-4 border mt-4">
                 <div className="flex items-center space-x-3">
                   <Checkbox
                     id="pep"
                     checked={formData.is_pep}
                     onCheckedChange={(c: boolean) => setFormData({ ...formData, is_pep: c })}
                   />
-                  <Label htmlFor="pep" className="text-sm font-normal leading-snug">
-                    Declaro que me enquadro como Pessoa Exposta Politicamente (PEP).
-                  </Label>
+                  <Label htmlFor="pep">Sou Pessoa Exposta Politicamente (PEP).</Label>
                 </div>
                 <div className="flex items-center space-x-3">
                   <Checkbox
@@ -252,7 +274,7 @@ export default function KycOnboarding() {
                     checked={formData.lgpd_accepted}
                     onCheckedChange={(c: boolean) => setFormData({ ...formData, lgpd_accepted: c })}
                   />
-                  <Label htmlFor="lgpd" className="text-sm font-normal leading-snug">
+                  <Label htmlFor="lgpd">
                     Li e concordo com os Termos de Uso e Política de Privacidade. *
                   </Label>
                 </div>
@@ -267,7 +289,7 @@ export default function KycOnboarding() {
           {step < maxSteps ? (
             <Button onClick={handleNext}>Próxima Etapa</Button>
           ) : (
-            <Button onClick={handleSubmit} disabled={loading} className="min-w-[140px]">
+            <Button onClick={handleSubmit} disabled={loading}>
               {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} Enviar
             </Button>
           )}

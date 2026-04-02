@@ -51,27 +51,28 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
     email: profile?.email || user?.email || '',
   })
 
-  const [docsFiles, setDocsFiles] = useState<{
-    idDoc?: File
-    proofAddress?: File
-    bankExtract?: File
-    irDoc?: File
-    borderos: File[]
-    vehicleDoc?: File
-    spouseRg?: File
-    spouseAddress?: File
-    guarantorRg?: File
-    guarantorIncome?: File
-    guarantorAddress?: File
-  }>({ borderos: [] })
+  const [spouseData, setSpouseData] = useState({
+    name: '',
+    document: '',
+    dob: '',
+    phone: '',
+    email: '',
+    zip: '',
+    street: '',
+    number: '',
+    neighborhood: '',
+    city: '',
+    state: '',
+  })
 
-  const handleFile = (key: string, file?: File) => {
-    if (file && file.size > 5 * 1024 * 1024) {
-      toast.error('O arquivo deve ter no máximo 5MB.')
-      return
-    }
-    setDocsFiles((prev) => ({ ...prev, [key]: file }))
-  }
+  const [bankData, setBankData] = useState({
+    bank: '',
+    branch: '',
+    account: '',
+    owner_name: '',
+    owner_document: '',
+    pix_key: '',
+  })
 
   const [opData, setOpData] = useState<any>({
     requestedValue: '10000',
@@ -88,61 +89,51 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
     sacados: [] as { name: string; document: string; value: string }[],
   })
 
-  const [spouseData, setSpouseData] = useState({
+  const [guarantorData, setGuarantorData] = useState({
     name: '',
     document: '',
     dob: '',
     phone: '',
-  })
-
-  const [guarantorData, setGuarantorData] = useState({
-    name: '',
-    document: '',
+    email: '',
+    zip: '',
+    street: '',
+    number: '',
+    neighborhood: '',
+    city: '',
+    state: '',
     income: '',
-    address: '',
-    phone: '',
     relationship: '',
   })
+
+  const [docsFiles, setDocsFiles] = useState<any>({ bankExtracts: [], additionalDocs: [] })
+
+  const handleFile = (key: string, file?: File) => {
+    if (file && file.size > 5 * 1024 * 1024) return toast.error('O arquivo deve ter no máximo 5MB.')
+    setDocsFiles((prev: any) => ({ ...prev, [key]: file }))
+  }
 
   const isVehicle =
     opData.creditType?.toUpperCase().includes('VEICULO') || guarData.guaranteeType === 'veiculo'
   const isAval =
     opData.creditType?.toUpperCase().includes('AVAL') || guarData.guaranteeType === 'avalista'
 
-  const [simData, setSimData] = useState({
-    installment_value: 0,
-    total_iof: 0,
-    fixed_cost: 0,
-    total_to_pay: 0,
-    cet: 0,
-  })
+  const [simData, setSimData] = useState({ installment_value: 0, total_to_pay: 0, cet: 0 })
 
   useEffect(() => {
     if (ccbConfig && opData.requestedValue && opData.termMonths) {
       const pv = Number(opData.requestedValue)
       const n = Number(opData.termMonths)
       const rate = ccbConfig.interest_rate_monthly / 100
-
       let pmt = pv / n
-      if (rate > 0) {
-        pmt = (pv * rate * Math.pow(1 + rate, n)) / (Math.pow(1 + rate, n) - 1)
-      }
-
+      if (rate > 0) pmt = (pv * rate * Math.pow(1 + rate, n)) / (Math.pow(1 + rate, n) - 1)
       const iof = pv * (ccbConfig.iof_rate / 100)
       const fixedCost = ccbConfig.fixed_emission_cost || 0
       const multiplier = ccbConfig.multiplier_factor || 1
-
       const finalPmt = (pmt + iof / n + fixedCost / n) * multiplier
       const totalToPay = finalPmt * n
       const cet = (totalToPay / pv - 1) * 100
 
-      setSimData({
-        installment_value: finalPmt,
-        total_iof: iof,
-        fixed_cost: fixedCost,
-        total_to_pay: totalToPay,
-        cet,
-      })
+      setSimData({ installment_value: finalPmt, total_to_pay: totalToPay, cet })
       setOpData((prev: any) => ({
         ...prev,
         simulation: {
@@ -156,22 +147,20 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
     }
   }, [opData.requestedValue, opData.termMonths, ccbConfig])
 
-  const fetchCep = async () => {
-    if (kycData.zip.length === 8 || kycData.zip.length === 9) {
+  const fetchCep = async (zip: string, setFn: any) => {
+    if (zip.length === 8 || zip.length === 9) {
       try {
-        const res = await fetch(`https://viacep.com.br/ws/${kycData.zip.replace('-', '')}/json/`)
+        const res = await fetch(`https://viacep.com.br/ws/${zip.replace('-', '')}/json/`)
         const data = await res.json()
         if (!data.erro)
-          setKycData((prev) => ({
+          setFn((prev: any) => ({
             ...prev,
             street: data.logradouro,
             neighborhood: data.bairro,
             city: data.localidade,
             state: data.uf,
           }))
-      } catch (e) {
-        console.error('Error fetching CEP:', e)
-      }
+      } catch (e) {}
     }
   }
 
@@ -179,20 +168,27 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
     if (step === 1) {
       if (!kycData.name || !kycData.document)
         return toast.error('Preencha os campos obrigatórios (Nome e Documento).')
-      if (kycData.maritalStatus === 'casado' && (!spouseData.name || !spouseData.document)) {
+      if (kycData.maritalStatus === 'casado' && (!spouseData.name || !spouseData.document))
         return toast.error('Preencha os dados obrigatórios do cônjuge.')
-      }
     }
     if (step === 2) {
-      if (!docsFiles.idDoc || !docsFiles.proofAddress || !docsFiles.bankExtract) {
-        return toast.error('Anexe Identidade, Comprovante de Residência e Extrato Bancário.')
-      }
-      if (kycData.maritalStatus === 'casado' && (!docsFiles.spouseRg || !docsFiles.spouseAddress)) {
-        return toast.error('Anexe os documentos obrigatórios do cônjuge (RG/CPF e Residência).')
-      }
+      if (!docsFiles.idFront || !docsFiles.idBack || !docsFiles.selfie || !docsFiles.proofAddress)
+        return toast.error('Anexe Frente/Verso da Identidade, Selfie e Comprovante de Residência.')
+      if (
+        kycData.maritalStatus === 'casado' &&
+        (!docsFiles.spouseIdFront ||
+          !docsFiles.spouseSelfie ||
+          !docsFiles.spouseAddress ||
+          !docsFiles.marriageCert)
+      )
+        return toast.error('Anexe os documentos obrigatórios do cônjuge e a Certidão de Casamento.')
     }
-    if (step === 3 && (!opData.requestedValue || !opData.termMonths || !opData.creditType))
-      return toast.error('Preencha o valor, prazo e o tipo de crédito.')
+    if (step === 3) {
+      if (!opData.requestedValue || !opData.termMonths || !opData.creditType)
+        return toast.error('Preencha o valor, prazo e o tipo de crédito.')
+      if (!bankData.bank || !bankData.account) return toast.error('Preencha os dados bancários.')
+      if (docsFiles.bankExtracts.length === 0) return toast.error('Anexe os extratos bancários.')
+    }
     setStep((s) => Math.min(s + 1, 4))
   }
   const handlePrev = () => setStep((s) => Math.max(s - 1, 1))
@@ -207,28 +203,19 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
     updated[index] = { ...updated[index], [field]: value }
     setGuarData((prev) => ({ ...prev, sacados: updated }))
   }
-  const removeSacado = (index: number) =>
-    setGuarData((prev) => ({ ...prev, sacados: prev.sacados.filter((_, i) => i !== index) }))
 
   const handleSubmit = async () => {
     if (!user) return
-    if (isVehicle && !docsFiles.vehicleDoc) {
-      toast.error('O documento do veículo é obrigatório para esta modalidade.')
-      return setStep(4)
-    }
+    if (isVehicle && !docsFiles.vehicleDoc)
+      return toast.error('Documento do veículo é obrigatório.')
     if (
       isAval &&
       (!guarantorData.name ||
-        !guarantorData.document ||
-        !docsFiles.guarantorRg ||
+        !docsFiles.guarantorIdFront ||
         !docsFiles.guarantorIncome ||
         !docsFiles.guarantorAddress)
-    ) {
-      toast.error(
-        'Preencha os dados e anexe TODOS os documentos obrigatórios do avalista (RG, Renda, Residência).',
-      )
-      return setStep(4)
-    }
+    )
+      return toast.error('Preencha os dados e anexe TODOS os documentos obrigatórios do avalista.')
 
     setLoading(true)
     try {
@@ -240,42 +227,58 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
         docsPaths[key] = path
       }
 
-      if (docsFiles.idDoc) await upload(docsFiles.idDoc, 'identity')
-      if (docsFiles.proofAddress) await upload(docsFiles.proofAddress, 'address')
-      if (docsFiles.bankExtract) await upload(docsFiles.bankExtract, 'bank_extract')
-      if (docsFiles.irDoc) await upload(docsFiles.irDoc, 'ir_document')
-      if (docsFiles.vehicleDoc) await upload(docsFiles.vehicleDoc, 'vehicle_doc')
-
-      if (docsFiles.spouseRg) await upload(docsFiles.spouseRg, 'spouse_rg', 'ccb_conjuges_docs')
-      if (docsFiles.spouseAddress)
-        await upload(docsFiles.spouseAddress, 'spouse_address', 'ccb_conjuges_docs')
-
-      if (docsFiles.guarantorRg)
-        await upload(docsFiles.guarantorRg, 'guarantor_rg', 'ccb_avalistas_docs')
-      if (docsFiles.guarantorIncome)
-        await upload(docsFiles.guarantorIncome, 'guarantor_income', 'ccb_avalistas_docs')
-      if (docsFiles.guarantorAddress)
-        await upload(docsFiles.guarantorAddress, 'guarantor_address', 'ccb_avalistas_docs')
-
-      docsPaths.borderos = []
-      for (let i = 0; i < docsFiles.borderos.length; i++) {
-        const file = docsFiles.borderos[i]
-        const path = `${user.id}/${Date.now()}_bordero_${i}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
-        await supabase.storage.from('ccb-docs').upload(path, file)
-        docsPaths.borderos.push(path)
+      const fileMap: any = {
+        id_front: docsFiles.idFront,
+        id_back: docsFiles.idBack,
+        selfie: docsFiles.selfie,
+        proof_address: docsFiles.proofAddress,
+        vehicle_doc: docsFiles.vehicleDoc,
       }
+      for (const [k, f] of Object.entries(fileMap)) if (f) await upload(f as File, k)
+
+      const spouseMap: any = {
+        marriage_cert: docsFiles.marriageCert,
+        spouse_id_front: docsFiles.spouseIdFront,
+        spouse_id_back: docsFiles.spouseIdBack,
+        spouse_selfie: docsFiles.spouseSelfie,
+        spouse_address: docsFiles.spouseAddress,
+      }
+      for (const [k, f] of Object.entries(spouseMap))
+        if (f) await upload(f as File, k, 'ccb_conjuges_docs')
+
+      const guarMap: any = {
+        guarantor_id_front: docsFiles.guarantorIdFront,
+        guarantor_id_back: docsFiles.guarantorIdBack,
+        guarantor_selfie: docsFiles.guarantorSelfie,
+        guarantor_address: docsFiles.guarantorAddress,
+        guarantor_income: docsFiles.guarantorIncome,
+      }
+      for (const [k, f] of Object.entries(guarMap))
+        if (f) await upload(f as File, k, 'ccb_avalistas_docs')
+
+      const uploadArray = async (files: File[], key: string) => {
+        docsPaths[key] = []
+        for (let i = 0; i < files.length; i++) {
+          const path = `${user.id}/${Date.now()}_${key}_${i}_${files[i].name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
+          await supabase.storage.from('ccb-docs').upload(path, files[i])
+          docsPaths[key].push(path)
+        }
+      }
+
+      await uploadArray(docsFiles.bankExtracts, 'bankExtracts')
+      await uploadArray(docsFiles.additionalDocs, 'additionalDocs')
 
       const { data, error } = await supabase.functions.invoke('submit-ccb', {
         body: {
           borrowerData: kycData,
+          spouseData: kycData.maritalStatus === 'casado' ? spouseData : null,
           operationData: opData,
           guaranteesData: guarData,
-          docsPaths,
-          spouseData: kycData.maritalStatus === 'casado' ? spouseData : null,
           guarantorData: isAval ? guarantorData : null,
+          bankData,
+          docsPaths,
         },
       })
-
       if (error || data?.error) throw new Error(data?.error || error?.message)
 
       toast.success('Solicitação CCB enviada com sucesso!')
@@ -324,7 +327,7 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Data de Nascimento</Label>
+                <Label>Data Nasc.</Label>
                 <Input
                   type="date"
                   value={kycData.dob}
@@ -355,7 +358,7 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Renda Mensal (R$)</Label>
+                <Label>Renda Mensal</Label>
                 <Input
                   type="number"
                   value={kycData.income}
@@ -368,12 +371,12 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                 <Label>CEP</Label>
                 <Input
                   value={kycData.zip}
-                  onBlur={fetchCep}
+                  onBlur={() => fetchCep(kycData.zip, setKycData)}
                   onChange={(e) => setKycData({ ...kycData, zip: e.target.value })}
                 />
               </div>
               <div className="space-y-2 md:col-span-2">
-                <Label>Rua/Avenida</Label>
+                <Label>Rua</Label>
                 <Input
                   value={kycData.street}
                   onChange={(e) => setKycData({ ...kycData, street: e.target.value })}
@@ -396,7 +399,7 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
               <div className="space-y-2">
                 <Label>Cidade/UF</Label>
                 <Input
-                  value={`${kycData.city} ${kycData.state ? '- ' + kycData.state : ''}`}
+                  value={`${kycData.city} - ${kycData.state}`}
                   disabled
                   className="bg-muted/50"
                 />
@@ -406,9 +409,9 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
             {kycData.maritalStatus === 'casado' && (
               <div className="md:col-span-3 space-y-4 pt-4 border-t border-dashed mt-4">
                 <h4 className="font-semibold text-sm">Dados do Cônjuge *</h4>
-                <div className="grid md:grid-cols-4 gap-4">
-                  <div className="space-y-2 md:col-span-2">
-                    <Label>Nome do Cônjuge</Label>
+                <div className="grid md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label>Nome Completo</Label>
                     <Input
                       value={spouseData.name}
                       onChange={(e) => setSpouseData({ ...spouseData, name: e.target.value })}
@@ -429,11 +432,59 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                       onChange={(e) => setSpouseData({ ...spouseData, dob: e.target.value })}
                     />
                   </div>
-                  <div className="space-y-2 md:col-span-2">
+                  <div className="space-y-2">
+                    <Label>E-mail</Label>
+                    <Input
+                      value={spouseData.email}
+                      onChange={(e) => setSpouseData({ ...spouseData, email: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
                     <Label>Telefone</Label>
                     <Input
                       value={spouseData.phone}
                       onChange={(e) => setSpouseData({ ...spouseData, phone: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="grid md:grid-cols-3 gap-4 pt-2">
+                  <div className="space-y-2">
+                    <Label>CEP</Label>
+                    <Input
+                      value={spouseData.zip}
+                      onBlur={() => fetchCep(spouseData.zip, setSpouseData)}
+                      onChange={(e) => setSpouseData({ ...spouseData, zip: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Rua</Label>
+                    <Input
+                      value={spouseData.street}
+                      onChange={(e) => setSpouseData({ ...spouseData, street: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Número</Label>
+                    <Input
+                      value={spouseData.number}
+                      onChange={(e) => setSpouseData({ ...spouseData, number: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Bairro</Label>
+                    <Input
+                      value={spouseData.neighborhood}
+                      onChange={(e) =>
+                        setSpouseData({ ...spouseData, neighborhood: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Cidade/UF</Label>
+                    <Input
+                      value={`${spouseData.city} - ${spouseData.state}`}
+                      disabled
+                      className="bg-muted/50"
                     />
                   </div>
                 </div>
@@ -444,14 +495,30 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
 
         {step === 2 && (
           <div className="space-y-6 animate-in fade-in slide-in-from-left-4">
-            <h3 className="font-semibold text-lg border-b pb-2">2. Envio de Documentos</h3>
-            <div className="grid md:grid-cols-2 gap-6">
+            <h3 className="font-semibold text-lg border-b pb-2">2. Upload de Documentos</h3>
+            <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Identidade (RG/CNH) *</Label>
+                <Label>Identidade (Frente) *</Label>
                 <Input
                   type="file"
                   accept="image/*,.pdf"
-                  onChange={(e) => handleFile('idDoc', e.target.files?.[0])}
+                  onChange={(e) => handleFile('idFront', e.target.files?.[0])}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Identidade (Verso) *</Label>
+                <Input
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={(e) => handleFile('idBack', e.target.files?.[0])}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Selfie com Documento *</Label>
+                <Input
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={(e) => handleFile('selfie', e.target.files?.[0])}
                 />
               </div>
               <div className="space-y-2">
@@ -462,38 +529,46 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                   onChange={(e) => handleFile('proofAddress', e.target.files?.[0])}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Extrato Bancário (últimos 30 dias) *</Label>
-                <Input
-                  type="file"
-                  accept="image/*,.pdf"
-                  onChange={(e) => handleFile('bankExtract', e.target.files?.[0])}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Declaração IR (Opcional)</Label>
-                <Input
-                  type="file"
-                  accept="image/*,.pdf"
-                  onChange={(e) => handleFile('irDoc', e.target.files?.[0])}
-                />
-              </div>
             </div>
 
             {kycData.maritalStatus === 'casado' && (
               <div className="mt-6 pt-4 border-t border-dashed">
                 <h4 className="font-semibold text-sm mb-4">Documentos do Cônjuge *</h4>
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label>RG/CPF Cônjuge (Mín 5MB)</Label>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Certidão de Casamento *</Label>
                     <Input
                       type="file"
                       accept="image/*,.pdf"
-                      onChange={(e) => handleFile('spouseRg', e.target.files?.[0])}
+                      onChange={(e) => handleFile('marriageCert', e.target.files?.[0])}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Comprovante de Residência Cônjuge</Label>
+                    <Label>RG/CPF Cônjuge (Frente) *</Label>
+                    <Input
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={(e) => handleFile('spouseIdFront', e.target.files?.[0])}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>RG/CPF Cônjuge (Verso)</Label>
+                    <Input
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={(e) => handleFile('spouseIdBack', e.target.files?.[0])}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Selfie Cônjuge *</Label>
+                    <Input
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={(e) => handleFile('spouseSelfie', e.target.files?.[0])}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Comprovante Residência Cônjuge *</Label>
                     <Input
                       type="file"
                       accept="image/*,.pdf"
@@ -509,11 +584,10 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
         {step === 3 && (
           <div className="space-y-6 animate-in fade-in slide-in-from-left-4">
             <h3 className="font-semibold text-lg border-b pb-2 flex items-center gap-2">
-              <Calculator className="h-5 w-5 text-[#00C2E0]" /> 3. Simulação e Dados da Operação
+              <Calculator className="h-5 w-5 text-[#00C2E0]" /> 3. Simulação e Pagamento
             </h3>
-
-            <div className="grid md:grid-cols-2 gap-10 bg-background border p-6 rounded-xl shadow-sm">
-              <div className="space-y-8">
+            <div className="grid md:grid-cols-2 gap-6 bg-background border p-4 rounded-xl shadow-sm">
+              <div className="space-y-6">
                 <div className="space-y-2">
                   <Label>Tipo de Crédito BDIGITAL *</Label>
                   <Select
@@ -521,28 +595,27 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                     onValueChange={(v) => setOpData({ ...opData, creditType: v })}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Selecione o tipo" />
+                      <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Credito Certo Bdigital - Garantia Real - VEICULOS">
-                        Credito Certo Bdigital - Garantia Real - VEICULOS
+                        Garantia Real - VEICULOS
                       </SelectItem>
                       <SelectItem value="CREDITO CERTO BDIGITAL - CAPITAL DE GIRO - MENSAL - AVAL CCB ATUALIZADA">
-                        CREDITO CERTO BDIGITAL - CAPITAL DE GIRO - AVAL
+                        Capital de Giro - AVAL
                       </SelectItem>
                       <SelectItem value="Credito Certo bdigital - Pessoa Física - pagamento mensal - aval">
-                        Credito Certo Bdigital - PF - Aval
+                        PF - Aval
                       </SelectItem>
                       <SelectItem value="Credito Pessoal - Garantia - Veiculo">
-                        Credito Pessoal - Garantia - Veiculo
+                        Pessoal - Veiculo
                       </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
-                    <Label className="text-base">Valor Solicitado (R$)</Label>
+                    <Label className="text-base">Valor Solicitado</Label>
                     <span className="font-bold text-xl text-[#00C2E0]">
                       R$ {Number(opData.requestedValue || 5000).toLocaleString('pt-BR')}
                     </span>
@@ -553,13 +626,12 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                     step={1000}
                     value={[Number(opData.requestedValue) || 5000]}
                     onValueChange={(v) => setOpData({ ...opData, requestedValue: v[0].toString() })}
-                    className="py-4"
+                    className="py-2"
                   />
                 </div>
-
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
-                    <Label className="text-base">Prazo (Meses)</Label>
+                    <Label className="text-base">Prazo</Label>
                     <span className="font-bold text-xl text-[#00C2E0]">{opData.termMonths}x</span>
                   </div>
                   <Slider
@@ -568,36 +640,18 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                     step={1}
                     value={[Number(opData.termMonths) || 12]}
                     onValueChange={(v) => setOpData({ ...opData, termMonths: v[0].toString() })}
-                    className="py-4"
+                    className="py-2"
                   />
                 </div>
-
-                <div className="space-y-2">
-                  <Label>Finalidade</Label>
-                  <Select
-                    value={opData.purpose}
-                    onValueChange={(v) => setOpData({ ...opData, purpose: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="capital_giro">Capital de Giro</SelectItem>
-                      <SelectItem value="estoque">Estoque</SelectItem>
-                      <SelectItem value="expansao">Expansão</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
               </div>
-
               <div className="bg-muted/30 p-6 rounded-xl border border-[#00C2E0]/20 flex flex-col justify-center">
-                <h4 className="font-semibold mb-6 flex items-center gap-2">
+                <h4 className="font-semibold mb-4 flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-emerald-500" /> Resumo da Simulação
                 </h4>
-                <div className="space-y-4">
+                <div className="space-y-3">
                   <div className="flex justify-between border-b pb-2">
-                    <span className="text-sm text-muted-foreground">Valor da Parcela Mensal</span>
-                    <span className="font-bold text-lg text-primary">
+                    <span className="text-sm">Valor Parcela</span>
+                    <span className="font-bold text-primary">
                       R${' '}
                       {simData.installment_value.toLocaleString('pt-BR', {
                         minimumFractionDigits: 2,
@@ -606,7 +660,7 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                     </span>
                   </div>
                   <div className="flex justify-between border-b pb-2">
-                    <span className="text-sm text-muted-foreground">Total Geral a Pagar</span>
+                    <span className="text-sm">Total a Pagar</span>
                     <span className="font-semibold">
                       R${' '}
                       {simData.total_to_pay.toLocaleString('pt-BR', {
@@ -615,25 +669,59 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                       })}
                     </span>
                   </div>
-                  <div className="flex justify-between border-b pb-2">
-                    <span className="text-sm text-muted-foreground">
-                      Custos Inclusos (IOF + Emissão)
-                    </span>
-                    <span className="font-semibold text-amber-600">
-                      R${' '}
-                      {(simData.total_iof + simData.fixed_cost).toLocaleString('pt-BR', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </span>
-                  </div>
                   <div className="flex justify-between pb-2">
-                    <span className="text-sm text-muted-foreground">Custo Efetivo Total (CET)</span>
-                    <span className="font-semibold text-[#00C2E0]">
-                      {simData.cet.toFixed(2)}% no período
-                    </span>
+                    <span className="text-sm">CET</span>
+                    <span className="font-semibold text-[#00C2E0]">{simData.cet.toFixed(2)}%</span>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 pt-4 border-t">
+              <h4 className="font-semibold text-sm">Dados Bancários para Recebimento</h4>
+              <div className="grid md:grid-cols-3 gap-4">
+                <Input
+                  placeholder="Banco"
+                  value={bankData.bank}
+                  onChange={(e) => setBankData({ ...bankData, bank: e.target.value })}
+                />
+                <Input
+                  placeholder="Agência"
+                  value={bankData.branch}
+                  onChange={(e) => setBankData({ ...bankData, branch: e.target.value })}
+                />
+                <Input
+                  placeholder="Conta"
+                  value={bankData.account}
+                  onChange={(e) => setBankData({ ...bankData, account: e.target.value })}
+                />
+                <Input
+                  placeholder="Titular"
+                  value={bankData.owner_name}
+                  onChange={(e) => setBankData({ ...bankData, owner_name: e.target.value })}
+                />
+                <Input
+                  placeholder="CPF/CNPJ Titular"
+                  value={bankData.owner_document}
+                  onChange={(e) => setBankData({ ...bankData, owner_document: e.target.value })}
+                />
+                <Input
+                  placeholder="Chave PIX (Opcional)"
+                  value={bankData.pix_key}
+                  onChange={(e) => setBankData({ ...bankData, pix_key: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>3 Últimos Extratos Bancários (Múltiplos arquivos) *</Label>
+                <FileUpload
+                  files={docsFiles.bankExtracts}
+                  setFiles={(f) =>
+                    setDocsFiles({
+                      ...docsFiles,
+                      bankExtracts: typeof f === 'function' ? f(docsFiles.bankExtracts) : f,
+                    })
+                  }
+                />
               </div>
             </div>
           </div>
@@ -641,7 +729,7 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
 
         {step === 4 && (
           <div className="space-y-6 animate-in fade-in slide-in-from-left-4">
-            <h3 className="font-semibold text-lg border-b pb-2">4. Garantias e Lastro</h3>
+            <h3 className="font-semibold text-lg border-b pb-2">4. Garantias e Complementos</h3>
             <div className="space-y-4">
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -660,48 +748,25 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                     </SelectContent>
                   </Select>
                 </div>
-
-                <div className="space-y-2">
-                  <Label>Recebível Vinculado (Opcional)</Label>
-                  <Select
-                    value={guarData.receivableType}
-                    onValueChange={(v) => setGuarData({ ...guarData, receivableType: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="duplicatas">Duplicatas</SelectItem>
-                      <SelectItem value="cheques">Cheques</SelectItem>
-                      <SelectItem value="contratos">Contratos</SelectItem>
-                      <SelectItem value="boletos">Boletos</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
               </div>
 
               {isVehicle && (
                 <div className="space-y-2 p-4 bg-muted/20 border rounded-md">
-                  <Label className="flex items-center gap-2">
-                    Documento do Veículo (CRLV/DUT) *
-                  </Label>
+                  <Label>Documento do Veículo (CRLV/DUT) *</Label>
                   <Input
                     type="file"
                     accept="image/*,.pdf"
                     onChange={(e) => handleFile('vehicleDoc', e.target.files?.[0])}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Obrigatório para modalidades com garantia de veículo (Máx 5MB).
-                  </p>
                 </div>
               )}
 
               {isAval && (
                 <div className="space-y-4 p-4 bg-muted/20 border rounded-md">
                   <h4 className="font-semibold text-sm border-b pb-2">Dados do Avalista *</h4>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Nome Completo</Label>
+                  <div className="grid md:grid-cols-3 gap-4">
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Nome</Label>
                       <Input
                         value={guarantorData.name}
                         onChange={(e) =>
@@ -719,6 +784,16 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                       />
                     </div>
                     <div className="space-y-2">
+                      <Label>Data Nasc.</Label>
+                      <Input
+                        type="date"
+                        value={guarantorData.dob}
+                        onChange={(e) =>
+                          setGuarantorData({ ...guarantorData, dob: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
                       <Label>Renda (R$)</Label>
                       <Input
                         type="number"
@@ -729,25 +804,7 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Telefone</Label>
-                      <Input
-                        value={guarantorData.phone}
-                        onChange={(e) =>
-                          setGuarantorData({ ...guarantorData, phone: e.target.value })
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2 md:col-span-2">
-                      <Label>Endereço Completo</Label>
-                      <Input
-                        value={guarantorData.address}
-                        onChange={(e) =>
-                          setGuarantorData({ ...guarantorData, address: e.target.value })
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2 md:col-span-2">
-                      <Label>Relação (ex: Sócio, Parente)</Label>
+                      <Label>Relação</Label>
                       <Input
                         value={guarantorData.relationship}
                         onChange={(e) =>
@@ -756,106 +813,109 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                       />
                     </div>
                   </div>
-                  <div className="space-y-4 pt-4 border-t">
-                    <h5 className="font-semibold text-xs text-muted-foreground">
-                      Documentos do Avalista *
-                    </h5>
-                    <div className="grid md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label className="text-xs">RG/CPF Avalista</Label>
-                        <Input
-                          type="file"
-                          accept="image/*,.pdf"
-                          onChange={(e) => handleFile('guarantorRg', e.target.files?.[0])}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-xs">Comprovante de Renda</Label>
-                        <Input
-                          type="file"
-                          accept="image/*,.pdf"
-                          onChange={(e) => handleFile('guarantorIncome', e.target.files?.[0])}
-                        />
-                      </div>
-                      <div className="space-y-2 md:col-span-2">
-                        <Label className="text-xs">Comprovante de Residência</Label>
-                        <Input
-                          type="file"
-                          accept="image/*,.pdf"
-                          onChange={(e) => handleFile('guarantorAddress', e.target.files?.[0])}
-                        />
-                      </div>
+                  <div className="grid md:grid-cols-3 gap-4 pt-2">
+                    <div className="space-y-2">
+                      <Label>CEP</Label>
+                      <Input
+                        value={guarantorData.zip}
+                        onBlur={() => fetchCep(guarantorData.zip, setGuarantorData)}
+                        onChange={(e) =>
+                          setGuarantorData({ ...guarantorData, zip: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Rua</Label>
+                      <Input
+                        value={guarantorData.street}
+                        onChange={(e) =>
+                          setGuarantorData({ ...guarantorData, street: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Número</Label>
+                      <Input
+                        value={guarantorData.number}
+                        onChange={(e) =>
+                          setGuarantorData({ ...guarantorData, number: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Bairro</Label>
+                      <Input
+                        value={guarantorData.neighborhood}
+                        onChange={(e) =>
+                          setGuarantorData({ ...guarantorData, neighborhood: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Cidade/UF</Label>
+                      <Input
+                        value={`${guarantorData.city} - ${guarantorData.state}`}
+                        disabled
+                        className="bg-muted/50"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-4 pt-4 border-t">
+                    <div className="space-y-2">
+                      <Label className="text-xs">RG/CPF (Frente) *</Label>
+                      <Input
+                        type="file"
+                        accept="image/*,.pdf"
+                        onChange={(e) => handleFile('guarantorIdFront', e.target.files?.[0])}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs">RG/CPF (Verso)</Label>
+                      <Input
+                        type="file"
+                        accept="image/*,.pdf"
+                        onChange={(e) => handleFile('guarantorIdBack', e.target.files?.[0])}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs">Selfie *</Label>
+                      <Input
+                        type="file"
+                        accept="image/*,.pdf"
+                        onChange={(e) => handleFile('guarantorSelfie', e.target.files?.[0])}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs">Comprovante de Residência *</Label>
+                      <Input
+                        type="file"
+                        accept="image/*,.pdf"
+                        onChange={(e) => handleFile('guarantorAddress', e.target.files?.[0])}
+                      />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label className="text-xs">Comprovante de Renda *</Label>
+                      <Input
+                        type="file"
+                        accept="image/*,.pdf"
+                        onChange={(e) => handleFile('guarantorIncome', e.target.files?.[0])}
+                      />
                     </div>
                   </div>
                 </div>
               )}
 
               <div className="space-y-2 pt-4 border-t">
-                <Label>Borderôs / Notas Fiscais</Label>
+                <Label>Documentos Adicionais (Múltiplos)</Label>
                 <FileUpload
-                  files={docsFiles.borderos}
-                  setFiles={(files: any) =>
+                  files={docsFiles.additionalDocs}
+                  setFiles={(f) =>
                     setDocsFiles({
                       ...docsFiles,
-                      borderos: typeof files === 'function' ? files(docsFiles.borderos) : files,
+                      additionalDocs: typeof f === 'function' ? f(docsFiles.additionalDocs) : f,
                     })
                   }
                 />
-              </div>
-
-              <div className="space-y-3 pt-4 border-t">
-                <div className="flex justify-between items-center">
-                  <Label>Sacados Relacionados (Devedores)</Label>
-                  <Button variant="outline" size="sm" onClick={addSacado} className="h-8 gap-1">
-                    <Plus className="h-3 w-3" /> Adicionar Sacado
-                  </Button>
-                </div>
-                {guarData.sacados.length === 0 ? (
-                  <div className="text-sm text-muted-foreground bg-muted/30 p-4 text-center rounded-md border border-dashed">
-                    Nenhum sacado informado.
-                  </div>
-                ) : (
-                  guarData.sacados.map((s, idx) => (
-                    <div
-                      key={idx}
-                      className="flex flex-col md:flex-row gap-2 items-end bg-muted/10 p-3 rounded-md border"
-                    >
-                      <div className="space-y-1 w-full">
-                        <Label className="text-xs">Nome</Label>
-                        <Input
-                          className="h-8"
-                          value={s.name}
-                          onChange={(e) => updateSacado(idx, 'name', e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-1 w-full">
-                        <Label className="text-xs">CNPJ/CPF</Label>
-                        <Input
-                          className="h-8"
-                          value={s.document}
-                          onChange={(e) => updateSacado(idx, 'document', e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-1 w-full">
-                        <Label className="text-xs">Valor (R$)</Label>
-                        <Input
-                          className="h-8"
-                          type="number"
-                          value={s.value}
-                          onChange={(e) => updateSacado(idx, 'value', e.target.value)}
-                        />
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive shrink-0"
-                        onClick={() => removeSacado(idx)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))
-                )}
               </div>
             </div>
           </div>
@@ -873,14 +933,9 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
           <Button
             onClick={handleSubmit}
             disabled={loading}
-            className="bg-[#00C2E0] hover:bg-[#00a9c4] text-white font-medium min-w-[150px]"
+            className="bg-[#00C2E0] hover:bg-[#00a9c4] text-white gap-2"
           >
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            ) : (
-              <CheckCircle2 className="h-4 w-4 mr-2" />
-            )}{' '}
-            Encaminhar Simulação e Emitir CCB
+            {loading && <Loader2 className="h-4 w-4 animate-spin" />} Encaminhar CCB
           </Button>
         )}
       </CardFooter>
