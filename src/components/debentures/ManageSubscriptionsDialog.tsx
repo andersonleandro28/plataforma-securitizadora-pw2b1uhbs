@@ -90,6 +90,7 @@ export function ManageSubscriptionsDialog({
         const { error } = await supabase.from('debenture_subscriptions').insert({
           ...payload,
           series_id: series.id,
+          status: 'Ativo',
         })
         if (error) throw error
         toast.success('Subscrição adicionada e sincronizada com os dashboards dos investidores.')
@@ -99,11 +100,8 @@ export function ManageSubscriptionsDialog({
           .update(payload)
           .eq('id', editingId)
         if (error) throw error
-        toast.success(
-          'Subscrição atualizada. Mudanças refletidas no painel do investidor em tempo real.',
-        )
+        toast.success('Sincronizado com dashboards investidores.')
       }
-
       setEditingId(null)
       setAddingNew(false)
 
@@ -117,28 +115,31 @@ export function ManageSubscriptionsDialog({
   }
 
   const handleDelete = async (id: string) => {
-    if (
-      !confirm(
-        'Deseja realmente EXCLUIR esta subscrição?\n\nEsta ação não poderá ser desfeita e a remoção refletirá Imediatamente no Dashboard do Investidor.',
-      )
-    )
-      return
+    if (!confirm("Excluir de 'Ativos'? Impacta dashboard investidor imediatamente.")) return
     try {
       setLoading(true)
 
       const subToDelete = subs.find((s) => s.id === id)
 
-      const { error } = await supabase.from('debenture_subscriptions').delete().eq('id', id)
+      const { error } = await supabase
+        .from('debenture_subscriptions')
+        .update({
+          status: 'Excluído',
+          deleted_at: new Date().toISOString(),
+          deleted_by: user?.id,
+        })
+        .eq('id', id)
+
       if (error) throw error
 
       if (subToDelete) {
         await supabase.from('audit_logs').insert({
           entity_type: 'debenture_subscriptions',
           entity_id: id,
-          action: 'subscription_deleted',
+          action: 'subscription_soft_deleted',
           user_id: user?.id,
           details: {
-            message: `Aporte excluído pelo Admin. Investidor: ${subToDelete.investor_name} (${subToDelete.document_number})`,
+            message: `Investimento ID ${id} marcado Excluído por Admin ${user?.id} em ${new Date().toISOString()}`,
             sub: {
               ...subToDelete,
               debenture_series: {
@@ -150,9 +151,7 @@ export function ManageSubscriptionsDialog({
         })
       }
 
-      toast.success(
-        'Subscrição removida e log de exclusão gerado. Dashboards dos investidores atualizados.',
-      )
+      toast.success('Sincronizado com dashboards investidores.')
       await onSuccess()
     } catch (err: any) {
       toast.error(err.message)
@@ -160,7 +159,6 @@ export function ManageSubscriptionsDialog({
       setLoading(false)
     }
   }
-
   const startAdd = () => {
     setAddingNew(true)
     setEditingId('new')
@@ -203,7 +201,10 @@ export function ManageSubscriptionsDialog({
               <p className="text-xs text-muted-foreground">Total Subscrito Atual</p>
               <p className="font-mono font-medium text-primary">
                 R${' '}
-                {subs.reduce((sum, s) => sum + Number(s.total_amount), 0).toLocaleString('pt-BR')}
+                {subs
+                  .filter((s: any) => s.status !== 'Excluído')
+                  .reduce((sum, s) => sum + Number(s.total_amount), 0)
+                  .toLocaleString('pt-BR')}
               </p>
             </div>
             <Button
@@ -310,124 +311,128 @@ export function ManageSubscriptionsDialog({
                   </TableRow>
                 )}
 
-                {subs.length === 0 && !addingNew && (
+                {subs.filter((s: any) => s.status !== 'Excluído').length === 0 && !addingNew && (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center text-muted-foreground h-24">
-                      Nenhuma subscrição registrada para esta série.
+                      Nenhuma subscrição ativa registrada para esta série.
                     </TableCell>
                   </TableRow>
                 )}
 
-                {subs.map((sub) =>
-                  editingId === sub.id ? (
-                    <TableRow key={sub.id} className="bg-muted/20">
-                      <TableCell className="p-2">
-                        <Input
-                          className="h-8 text-xs"
-                          value={editForm.investor_name}
-                          onChange={(e) =>
-                            setEditForm({ ...editForm, investor_name: e.target.value })
-                          }
-                          disabled={loading}
-                        />
-                      </TableCell>
-                      <TableCell className="p-2">
-                        <Input
-                          className="h-8 text-xs font-mono"
-                          value={editForm.document_number || ''}
-                          onChange={(e) =>
-                            setEditForm({ ...editForm, document_number: e.target.value })
-                          }
-                          disabled={loading}
-                        />
-                      </TableCell>
-                      <TableCell className="p-2">
-                        <Input
-                          type="number"
-                          className="h-8 text-xs text-right"
-                          value={editForm.quantity}
-                          onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })}
-                          disabled={loading}
-                        />
-                      </TableCell>
-                      <TableCell className="p-2">
-                        <Input
-                          type="number"
-                          className="h-8 text-xs text-right font-mono"
-                          value={editForm.unit_price}
-                          onChange={(e) => setEditForm({ ...editForm, unit_price: e.target.value })}
-                          disabled={loading}
-                        />
-                      </TableCell>
-                      <TableCell className="p-2">
-                        <Input
-                          type="date"
-                          className="h-8 text-xs w-full"
-                          value={editForm.subscription_date || ''}
-                          onChange={(e) =>
-                            setEditForm({ ...editForm, subscription_date: e.target.value })
-                          }
-                          disabled={loading}
-                        />
-                      </TableCell>
-                      <TableCell className="p-2 text-right space-x-1 whitespace-nowrap">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-primary bg-primary/10"
-                          onClick={handleSave}
-                          disabled={loading}
-                        >
-                          <Save className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive"
-                          onClick={cancelEdit}
-                          disabled={loading}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    <TableRow key={sub.id}>
-                      <TableCell className="font-medium text-xs">{sub.investor_name}</TableCell>
-                      <TableCell className="text-xs font-mono">
-                        {sub.document_number || '-'}
-                      </TableCell>
-                      <TableCell className="text-right text-xs">{sub.quantity}</TableCell>
-                      <TableCell className="text-right text-xs font-mono">
-                        R$ {Number(sub.unit_price).toLocaleString('pt-BR')}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {formatDateStr(sub.subscription_date)}
-                      </TableCell>
-                      <TableCell className="text-right space-x-1 whitespace-nowrap">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-primary"
-                          onClick={() => startEdit(sub)}
-                          disabled={!!editingId || loading}
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                          onClick={() => handleDelete(sub.id)}
-                          disabled={!!editingId || loading}
-                          title="Excluir investimento (ação imediata)"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ),
-                )}
+                {subs
+                  .filter((s: any) => s.status !== 'Excluído')
+                  .map((sub: any) =>
+                    editingId === sub.id ? (
+                      <TableRow key={sub.id} className="bg-muted/20">
+                        <TableCell className="p-2">
+                          <Input
+                            className="h-8 text-xs"
+                            value={editForm.investor_name}
+                            onChange={(e) =>
+                              setEditForm({ ...editForm, investor_name: e.target.value })
+                            }
+                            disabled={loading}
+                          />
+                        </TableCell>
+                        <TableCell className="p-2">
+                          <Input
+                            className="h-8 text-xs font-mono"
+                            value={editForm.document_number || ''}
+                            onChange={(e) =>
+                              setEditForm({ ...editForm, document_number: e.target.value })
+                            }
+                            disabled={loading}
+                          />
+                        </TableCell>
+                        <TableCell className="p-2">
+                          <Input
+                            type="number"
+                            className="h-8 text-xs text-right"
+                            value={editForm.quantity}
+                            onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })}
+                            disabled={loading}
+                          />
+                        </TableCell>
+                        <TableCell className="p-2">
+                          <Input
+                            type="number"
+                            className="h-8 text-xs text-right font-mono"
+                            value={editForm.unit_price}
+                            onChange={(e) =>
+                              setEditForm({ ...editForm, unit_price: e.target.value })
+                            }
+                            disabled={loading}
+                          />
+                        </TableCell>
+                        <TableCell className="p-2">
+                          <Input
+                            type="date"
+                            className="h-8 text-xs w-full"
+                            value={editForm.subscription_date || ''}
+                            onChange={(e) =>
+                              setEditForm({ ...editForm, subscription_date: e.target.value })
+                            }
+                            disabled={loading}
+                          />
+                        </TableCell>
+                        <TableCell className="p-2 text-right space-x-1 whitespace-nowrap">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-primary bg-primary/10"
+                            onClick={handleSave}
+                            disabled={loading}
+                          >
+                            <Save className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive"
+                            onClick={cancelEdit}
+                            disabled={loading}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      <TableRow key={sub.id}>
+                        <TableCell className="font-medium text-xs">{sub.investor_name}</TableCell>
+                        <TableCell className="text-xs font-mono">
+                          {sub.document_number || '-'}
+                        </TableCell>
+                        <TableCell className="text-right text-xs">{sub.quantity}</TableCell>
+                        <TableCell className="text-right text-xs font-mono">
+                          R$ {Number(sub.unit_price).toLocaleString('pt-BR')}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {formatDateStr(sub.subscription_date)}
+                        </TableCell>
+                        <TableCell className="text-right space-x-1 whitespace-nowrap">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-primary"
+                            onClick={() => startEdit(sub)}
+                            disabled={!!editingId || loading}
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            onClick={() => handleDelete(sub.id)}
+                            disabled={!!editingId || loading}
+                            title="Excluir investimento (ação imediata)"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ),
+                  )}
               </TableBody>
             </Table>
           </div>
