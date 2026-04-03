@@ -19,7 +19,6 @@
     "serve-pdf": 7,
     "generate-kyc-pdf": 7,
     "docusign-envelope": 9,
-    "docusign-callback": 7,
-    "notify-series-update": 1
+    "docusign-callback": 7
   }
 }

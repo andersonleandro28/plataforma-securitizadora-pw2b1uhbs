@@ -116,22 +116,10 @@ export function EditSeriesDialog({
         entity_id: series.id,
         action: 'series_updated',
         user_id: user?.id,
-        details: { message: 'Série atualizada. Notificando investidores em Realtime.' },
+        details: { message: 'Série atualizada.' },
       })
 
-      if (hasYieldImpact) {
-        supabase.functions.invoke('notify-series-update', {
-          body: {
-            series_id: series.id,
-            old_rate: series.rate,
-            new_rate: formData.rate,
-            old_maturity: series.maturity_date ? series.maturity_date.split('T')[0] : 'N/A',
-            new_maturity: formData.maturity_date || 'N/A',
-          },
-        })
-      }
-
-      toast.success('Série atualizada. Sincronizado com dashboards dos investidores!')
+      toast.success('Série atualizada com sucesso.')
       onSuccess?.()
       onOpenChange(false)
     } catch (err: any) {
@@ -195,15 +183,14 @@ export function EditSeriesDialog({
           )}
 
           {hasYieldImpact && (
-            <Alert className="bg-warning/10 text-warning-foreground border-warning/50">
-              <AlertCircle className="h-4 w-4 text-warning" />
-              <AlertTitle className="text-warning font-bold">
+            <Alert className="bg-amber-50 border-amber-200">
+              <AlertCircle className="h-4 w-4 text-amber-600" />
+              <AlertTitle className="text-amber-800 font-bold">
                 Atenção: Impacto no Rendimento
               </AlertTitle>
-              <AlertDescription className="mt-2 text-sm">
+              <AlertDescription className="text-amber-700 mt-2 text-sm">
                 As alterações na taxa ou vencimento afetarão os rendimentos projetados dos
-                investidores atuais. As atualizações serão transmitidas em tempo real para os
-                dashboards correspondentes e eles serão notificados por e-mail.
+                investidores atuais.
               </AlertDescription>
             </Alert>
           )}
@@ -261,7 +248,7 @@ export function EditSeriesDialog({
             ) : (
               <Save className="h-4 w-4 mr-2" />
             )}
-            {saving ? 'Sincronizando...' : 'Salvar e Sincronizar'}
+            {saving ? 'Salvando...' : 'Salvar'}
           </Button>
         </DialogFooter>
       </DialogContent>
