@@ -24,6 +24,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { supabase } from '@/lib/supabase/client'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
