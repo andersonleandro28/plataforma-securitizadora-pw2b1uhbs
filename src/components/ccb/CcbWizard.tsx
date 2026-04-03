@@ -15,8 +15,18 @@ import {
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { Loader2, CheckCircle2, ChevronRight, Plus, Trash2, Calculator } from 'lucide-react'
+import { Loader2, CheckCircle2, ChevronRight, Plus, Trash2, Calculator, Info } from 'lucide-react'
 import { FileUpload } from '@/components/operations/FileUpload'
+import {
+  Table,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
+} from '@/components/ui/table'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 
 export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
   const { user, profile } = useAuth()
@@ -118,30 +128,81 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
     opData.creditType?.toUpperCase().includes('AVAL') || guarData.guaranteeType === 'avalista'
 
   const [simData, setSimData] = useState({ installment_value: 0, total_to_pay: 0, cet: 0 })
+  const [schedule, setSchedule] = useState<any[]>([])
 
   useEffect(() => {
     if (ccbConfig && opData.requestedValue && opData.termMonths) {
       const pv = Number(opData.requestedValue)
       const n = Number(opData.termMonths)
-      const rate = ccbConfig.interest_rate_monthly / 100
+      const rate = (Number(ccbConfig.interest_rate_monthly) || 0) / 100
+
       let pmt = pv / n
       if (rate > 0) pmt = (pv * rate * Math.pow(1 + rate, n)) / (Math.pow(1 + rate, n) - 1)
-      const iof = pv * (ccbConfig.iof_rate / 100)
-      const fixedCost = ccbConfig.fixed_emission_cost || 0
-      const multiplier = ccbConfig.multiplier_factor || 1
-      const finalPmt = (pmt + iof / n + fixedCost / n) * multiplier
-      const totalToPay = finalPmt * n
-      const cet = (totalToPay / pv - 1) * 100
 
-      setSimData({ installment_value: finalPmt, total_to_pay: totalToPay, cet })
+      const fixedCost = Number(ccbConfig.fixed_emission_cost) || 0
+      const iofFixedRate = Number(ccbConfig.iof_rate) || 0.38
+      const iofDaily30 = Number(ccbConfig.iof_daily_rate_30) || 0.0041
+      const iofDailyAfter = Number(ccbConfig.iof_daily_rate_after) || 0.00274
+
+      const iofFixo = pv * (iofFixedRate / 100)
+
+      let saldo = pv
+      let totalIofDiario = 0
+      const newSchedule = []
+
+      for (let i = 1; i <= n; i++) {
+        const juros = saldo * rate
+        const amortizacao = pmt - juros
+
+        const days = i * 30
+        const days1to30 = Math.min(days, 30)
+        const daysAfter = Math.max(0, days - 30)
+
+        const iofDiarioParcela =
+          amortizacao * (days1to30 * (iofDaily30 / 100) + daysAfter * (iofDailyAfter / 100))
+        totalIofDiario += iofDiarioParcela
+
+        saldo -= amortizacao
+
+        newSchedule.push({
+          month: i,
+          amortizacao,
+          juros,
+          pmt_base: pmt,
+          iof_diario: iofDiarioParcela,
+          saldo_devedor: Math.max(0, saldo),
+        })
+      }
+
+      const totalIof = iofFixo + totalIofDiario
+      const parcelaFinal = pmt + totalIof / n + fixedCost / n
+      const totalToPay = parcelaFinal * n
+
+      let low = 0.0
+      let high = 1.0
+      let r = 0.0
+      for (let i = 0; i < 50; i++) {
+        r = (low + high) / 2
+        const currentPv = (parcelaFinal * (1 - Math.pow(1 + r, -n))) / r
+        if (currentPv > pv) low = r
+        else high = r
+      }
+      const cetAnual = (Math.pow(1 + r, 12) - 1) * 100
+
+      setSchedule(newSchedule)
+      setSimData({ installment_value: parcelaFinal, total_to_pay: totalToPay, cet: cetAnual })
       setOpData((prev: any) => ({
         ...prev,
         simulation: {
-          installment_value: finalPmt,
+          installment_value: parcelaFinal,
           total_to_pay: totalToPay,
-          cet,
+          cet: cetAnual,
           rate_used: rate,
           fixed_cost: fixedCost,
+          iof_fixo: iofFixo,
+          iof_diario: totalIofDiario,
+          total_iof: totalIof,
+          schedule: newSchedule,
         },
       }))
     }
@@ -671,12 +732,90 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                       })}
                     </span>
                   </div>
+                  <div className="flex justify-between border-b pb-2">
+                    <span className="text-sm">Total IOF</span>
+                    <span className="font-semibold">
+                      R${' '}
+                      {Number(opData.simulation?.total_iof || 0).toLocaleString('pt-BR', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
                   <div className="flex justify-between pb-2">
-                    <span className="text-sm">CET</span>
+                    <span className="text-sm">CET (a.a.)</span>
                     <span className="font-semibold text-[#00C2E0]">{simData.cet.toFixed(2)}%</span>
                   </div>
                 </div>
+
+                <Alert className="bg-muted/50 mt-4 border-primary/20">
+                  <Info className="h-4 w-4 text-primary" />
+                  <AlertDescription className="text-xs text-muted-foreground">
+                    IOF calculado conforme Lei 9.532/97 + Dec. 6.306/07. Simulação dia a dia sobre o
+                    saldo devedor.
+                  </AlertDescription>
+                </Alert>
               </div>
+            </div>
+
+            <div className="space-y-4 pt-4 border-t">
+              <h4 className="font-semibold text-sm">Calendário de Vencimentos e Amortização</h4>
+              <ScrollArea className="h-[250px] border rounded-md">
+                <Table>
+                  <TableHeader className="bg-muted/50 sticky top-0">
+                    <TableRow>
+                      <TableHead>Mês</TableHead>
+                      <TableHead>Amortização</TableHead>
+                      <TableHead>Juros</TableHead>
+                      <TableHead>IOF Diário</TableHead>
+                      <TableHead>Parcela (Base)</TableHead>
+                      <TableHead>Saldo Devedor</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {schedule.map((row: any) => (
+                      <TableRow key={row.month}>
+                        <TableCell className="font-medium">{row.month}</TableCell>
+                        <TableCell>
+                          R${' '}
+                          {row.amortizacao.toLocaleString('pt-BR', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </TableCell>
+                        <TableCell>
+                          R${' '}
+                          {row.juros.toLocaleString('pt-BR', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </TableCell>
+                        <TableCell>
+                          R${' '}
+                          {row.iof_diario.toLocaleString('pt-BR', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </TableCell>
+                        <TableCell>
+                          R${' '}
+                          {row.pmt_base.toLocaleString('pt-BR', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </TableCell>
+                        <TableCell>
+                          R${' '}
+                          {row.saldo_devedor.toLocaleString('pt-BR', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </ScrollArea>
             </div>
 
             <div className="space-y-4 pt-4 border-t">

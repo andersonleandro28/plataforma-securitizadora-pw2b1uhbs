@@ -158,6 +158,8 @@ export default function FinancialParameters() {
         interest_rate_monthly: Number(ccbConfig.interest_rate_monthly),
         interest_rate_annual: Number(ccbConfig.interest_rate_annual),
         iof_rate: Number(ccbConfig.iof_rate),
+        iof_daily_rate_30: Number(ccbConfig.iof_daily_rate_30 || 0.0041),
+        iof_daily_rate_after: Number(ccbConfig.iof_daily_rate_after || 0.00274),
         fixed_emission_cost: Number(ccbConfig.fixed_emission_cost),
         multiplier_factor: Number(ccbConfig.multiplier_factor),
         max_term_months: Number(ccbConfig.max_term_months),
@@ -445,7 +447,7 @@ export default function FinancialParameters() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>IOF Base (%)</Label>
+                  <Label>IOF Base Fixo (%)</Label>
                   <Input
                     type="number"
                     step="0.01"
@@ -454,7 +456,29 @@ export default function FinancialParameters() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Custo Fixo de Emissão CCB (R$)</Label>
+                  <Label>IOF Diário 1-30d (%)</Label>
+                  <Input
+                    type="number"
+                    step="0.00001"
+                    value={ccbConfig.iof_daily_rate_30 || 0.0041}
+                    onChange={(e) =>
+                      setCcbConfig({ ...ccbConfig, iof_daily_rate_30: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>IOF Diário &gt;30d (%)</Label>
+                  <Input
+                    type="number"
+                    step="0.00001"
+                    value={ccbConfig.iof_daily_rate_after || 0.00274}
+                    onChange={(e) =>
+                      setCcbConfig({ ...ccbConfig, iof_daily_rate_after: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Custo Fixo Emissão CCB (R$)</Label>
                   <Input
                     type="number"
                     step="0.01"
