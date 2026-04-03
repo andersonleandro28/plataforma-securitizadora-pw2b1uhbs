@@ -37,6 +37,7 @@ import {
   AlertCircle,
   FileSignature,
   Send,
+  CalendarDays,
 } from 'lucide-react'
 import { getStatusBadge } from '../dashboard/BorrowerOperationsList'
 import { RiskDossier } from './RiskDossier'
@@ -58,6 +59,13 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
 
   const [reasonOpen, setReasonOpen] = useState(false)
   const [reason, setReason] = useState('')
+
+  const [datesOpen, setDatesOpen] = useState(false)
+  const [datesForm, setDatesForm] = useState({
+    issue_date: '',
+    due_date: '',
+    liquidation_date: '',
+  })
 
   useEffect(() => {
     if (open && opId) fetchData()
@@ -103,6 +111,12 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
       setBankAccount(bankRes.data?.[0] || null)
       setCalc(calcRes.data || null)
       setHistory(histRes.data || [])
+
+      setDatesForm({
+        issue_date: operation.issue_date || '',
+        due_date: operation.due_date || '',
+        liquidation_date: operation.liquidation_date || '',
+      })
 
       let fetchedVersions = verRes.data || []
 
@@ -231,6 +245,43 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
     }
   }
 
+  const handleSaveDates = async () => {
+    setActionLoading(true)
+    try {
+      const payload = {
+        issue_date: datesForm.issue_date || null,
+        due_date: datesForm.due_date || null,
+        liquidation_date: datesForm.liquidation_date || null,
+      }
+
+      const { error } = await supabase.from('credit_operations').update(payload).eq('id', opId)
+      if (error) throw error
+
+      await supabase.from('audit_logs').insert({
+        entity_type: 'credit_operations',
+        entity_id: opId,
+        action: 'admin_updated_dates',
+        details: {
+          old_dates: {
+            issue_date: op.issue_date,
+            due_date: op.due_date,
+            liquidation_date: op.liquidation_date,
+          },
+          new_dates: payload,
+        },
+      })
+
+      toast.success('Datas atualizadas com sucesso.')
+      setDatesOpen(false)
+      fetchData()
+      if (onRefresh) onRefresh()
+    } catch (err: any) {
+      toast.error('Erro ao atualizar datas: ' + err.message)
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   const handleSendToSignature = async () => {
     setActionLoading(true)
     try {
@@ -302,6 +353,15 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                   disabled={actionLoading || op.status === 'pendencia_documental'}
                 >
                   <AlertCircle className="w-4 h-4 mr-2" /> Solicitar Documento
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setDatesOpen(true)}
+                  disabled={actionLoading}
+                >
+                  <CalendarDays className="w-4 h-4 mr-2" /> Editar Datas
                 </Button>
 
                 {/* Formalização Digital */}
@@ -694,6 +754,53 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
             </Button>
             <Button onClick={handleGenerateAditivo} disabled={!reason.trim()}>
               Confirmar Geração
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={datesOpen} onOpenChange={setDatesOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Datas (Migração/Correção)</DialogTitle>
+            <DialogDescription>
+              Atenção: Alterar datas afetará cálculos de prazo, juros e rentabilidade. Essa ação
+              será registrada na auditoria.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label>Data de Emissão / Início</Label>
+              <Input
+                type="date"
+                value={datesForm.issue_date}
+                onChange={(e) => setDatesForm({ ...datesForm, issue_date: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Data de Vencimento</Label>
+              <Input
+                type="date"
+                value={datesForm.due_date}
+                onChange={(e) => setDatesForm({ ...datesForm, due_date: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Data de Liquidação (Efetiva)</Label>
+              <Input
+                type="date"
+                value={datesForm.liquidation_date}
+                onChange={(e) => setDatesForm({ ...datesForm, liquidation_date: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDatesOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveDates} disabled={actionLoading}>
+              {actionLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Salvar Datas
             </Button>
           </DialogFooter>
         </DialogContent>

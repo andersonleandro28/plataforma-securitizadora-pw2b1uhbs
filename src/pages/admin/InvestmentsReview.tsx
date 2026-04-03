@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react'
-import { format } from 'date-fns'
-import { Check, X, Search, Loader2, Trash2 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
   TableBody,
@@ -12,23 +10,33 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { supabase } from '@/lib/supabase/client'
+import { Loader2, CalendarDays, CheckCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/use-auth'
 
 export default function InvestmentsReview() {
   const { user } = useAuth()
-  const [investments, setInvestments] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [processingId, setProcessingId] = useState<string | null>(null)
+  const [investments, setInvestments] = useState<any[]>([])
+  const [editOpen, setEditOpen] = useState(false)
+  const [selectedInv, setSelectedInv] = useState<any>(null)
+  const [datesForm, setDatesForm] = useState({ transfer_date: '' })
 
-  const fetchInvestments = async () => {
+  const fetchData = async () => {
     setLoading(true)
     const { data, error } = await supabase
       .from('investments')
-      .select('*, profiles(full_name, document_number, email), investment_products(title)')
+      .select('*, profiles(full_name, document_number), investment_products(title, rate)')
       .order('created_at', { ascending: false })
 
     if (data) setInvestments(data)
@@ -36,215 +44,166 @@ export default function InvestmentsReview() {
   }
 
   useEffect(() => {
-    fetchInvestments()
-
-    const channel = supabase
-      .channel('admin-investments-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'investments' }, () => {
-        fetchInvestments()
-      })
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
+    fetchData()
   }, [])
 
-  const handleAction = async (id: string, action: 'approve' | 'reject' | 'delete') => {
-    if (action === 'delete') {
-      if (
-        !confirm(
-          'Deseja realmente EXCLUIR este investimento?\nAção imediata e irreversível que refletirá no dashboard do investidor.',
-        )
-      )
-        return
-    } else if (action === 'reject') {
-      if (!confirm('Deseja reprovar este investimento?')) return
-    }
-
-    setProcessingId(id)
+  const handleApprove = async (id: string) => {
     try {
-      if (action === 'approve') {
-        const { error } = await supabase.rpc('approve_investment', { p_investment_id: id })
-        if (error) throw error
-        toast.success('Investimento aprovado. Sincronizado com dashboards investidores.')
-      } else if (action === 'reject') {
-        const { error } = await supabase
-          .from('investments')
-          .update({ status: 'rejected' })
-          .eq('id', id)
-        if (error) throw error
-        toast.success('Investimento reprovado. Dashboard do investidor atualizado.')
-      } else if (action === 'delete') {
-        const { error } = await supabase.rpc('cancel_investment', {
-          p_investment_id: id,
-          p_admin_id: user?.id,
-        } as any)
-        if (error) throw error
-
-        toast.success('Investimento excluído. Sincronizado com dashboards investidores.')
-      }
-      fetchInvestments()
+      const { error } = await supabase.rpc('approve_investment', { p_investment_id: id })
+      if (error) throw error
+      toast.success('Aporte aprovado.')
+      fetchData()
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao processar.')
-    } finally {
-      setProcessingId(null)
+      toast.error(err.message)
     }
   }
 
-  const formatCurrency = (val: number) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0)
+  const handleEditDates = (inv: any) => {
+    setSelectedInv(inv)
+    setDatesForm({
+      transfer_date: inv.transfer_date || '',
+    })
+    setEditOpen(true)
+  }
 
-  const filtered = investments.filter(
-    (inv) =>
-      inv.profiles?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      inv.profiles?.document_number?.includes(searchTerm) ||
-      inv.investment_products?.title?.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+  const handleSaveDates = async () => {
+    if (!selectedInv) return
+    try {
+      const { error } = await supabase
+        .from('investments')
+        .update({ transfer_date: datesForm.transfer_date || null })
+        .eq('id', selectedInv.id)
+      if (error) throw error
+
+      await supabase.from('audit_logs').insert({
+        entity_type: 'investments',
+        entity_id: selectedInv.id,
+        action: 'admin_updated_dates',
+        details: {
+          admin_id: user?.id,
+          old_transfer_date: selectedInv.transfer_date,
+          new_transfer_date: datesForm.transfer_date,
+        },
+      })
+
+      toast.success('Datas atualizadas (Migração/Ajuste).')
+      setEditOpen(false)
+      fetchData()
+    } catch (err: any) {
+      toast.error('Erro ao atualizar datas: ' + err.message)
+    }
+  }
+
+  if (loading)
+    return (
+      <div className="flex justify-center py-12">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    )
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up pb-10">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Revisão de Investimentos</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Aprovação de Aportes</h1>
         <p className="text-muted-foreground">
-          Gerencie aportes e comprovantes enviados pelos investidores.
+          Analise os investimentos recebidos e ajuste datas cronológicas se necessário.
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Solicitações de Aporte</CardTitle>
-          <CardDescription>
-            Qualquer alteração ou exclusão refletirá instantaneamente nos dashboards dos
-            investidores afetados.
-          </CardDescription>
+          <CardTitle>Histórico de Aportes</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="mb-4 relative max-w-md">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar por investidor, CPF ou produto..."
-              className="pl-9"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Investidor</TableHead>
-                  <TableHead>Produto</TableHead>
-                  <TableHead>Cotas</TableHead>
-                  <TableHead className="text-right">Valor Total</TableHead>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8">
-                      <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
-                    </TableCell>
-                  </TableRow>
-                ) : filtered.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                      Nenhum investimento encontrado.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filtered.map((inv) => (
-                    <TableRow key={inv.id}>
-                      <TableCell>
-                        <div className="font-medium">{inv.profiles?.full_name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {inv.profiles?.document_number}
-                        </div>
-                      </TableCell>
-                      <TableCell
-                        className="max-w-[200px] truncate"
-                        title={inv.investment_products?.title}
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Investidor</TableHead>
+                <TableHead>Produto</TableHead>
+                <TableHead>Valor</TableHead>
+                <TableHead>Data Transferência</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {investments.map((inv) => (
+                <TableRow key={inv.id}>
+                  <TableCell>
+                    <div className="font-medium">{inv.profiles?.full_name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {inv.profiles?.document_number}
+                    </div>
+                  </TableCell>
+                  <TableCell>{inv.investment_products?.title}</TableCell>
+                  <TableCell className="font-mono">
+                    R$ {Number(inv.total_value).toLocaleString('pt-BR')}
+                  </TableCell>
+                  <TableCell>
+                    {inv.transfer_date
+                      ? new Date(inv.transfer_date).toLocaleDateString('pt-BR')
+                      : '-'}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={inv.status === 'approved' ? 'default' : 'outline'}>
+                      {inv.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right space-x-2 whitespace-nowrap">
+                    {inv.status === 'awaiting_review' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                        onClick={() => handleApprove(inv.id)}
                       >
-                        {inv.investment_products?.title}
-                      </TableCell>
-                      <TableCell>{inv.quotas}</TableCell>
-                      <TableCell className="font-mono text-primary font-medium text-right">
-                        {formatCurrency(inv.total_value)}
-                      </TableCell>
-                      <TableCell>
-                        {inv.created_at ? format(new Date(inv.created_at), 'dd/MM/yyyy') : '-'}
-                      </TableCell>
-                      <TableCell>
-                        {inv.status === 'approved' ? (
-                          <Badge className="bg-emerald-500">Aprovado</Badge>
-                        ) : inv.status === 'awaiting_review' ? (
-                          <Badge className="bg-amber-500">Em Conferência</Badge>
-                        ) : inv.status === 'rejected' ? (
-                          <Badge variant="destructive">Reprovado</Badge>
-                        ) : inv.status === 'cancelled' || inv.status === 'Excluído' ? (
-                          <Badge variant="secondary">Excluído/Cancelado</Badge>
-                        ) : inv.status === 'resgatado' ? (
-                          <Badge className="bg-blue-500">Resgatado</Badge>
-                        ) : (
-                          <Badge variant="outline">Pendente</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right space-x-1 whitespace-nowrap">
-                        {inv.status === 'awaiting_review' && (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-emerald-600 border-emerald-200 hover:bg-emerald-50 h-8 px-2"
-                              onClick={() => handleAction(inv.id, 'approve')}
-                              disabled={!!processingId}
-                              title="Aprovar Investimento"
-                            >
-                              {processingId === inv.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Check className="h-4 w-4" />
-                              )}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-destructive border-destructive/30 hover:bg-destructive/10 h-8 px-2"
-                              onClick={() => handleAction(inv.id, 'reject')}
-                              disabled={!!processingId}
-                              title="Rejeitar Investimento"
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </>
-                        )}
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => handleAction(inv.id, 'delete')}
-                          disabled={
-                            !!processingId ||
-                            inv.status === 'cancelled' ||
-                            inv.status === 'Excluído'
-                          }
-                          title="Excluir investimento permanentemente"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                        <CheckCircle className="w-4 h-4 mr-2" /> Aprovar
+                      </Button>
+                    )}
+                    <Button variant="outline" size="sm" onClick={() => handleEditDates(inv)}>
+                      <CalendarDays className="w-4 h-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {investments.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                    Nenhum aporte encontrado.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Data do Aporte (Migração)</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label>Data Efetiva de Transferência</Label>
+              <Input
+                type="date"
+                value={datesForm.transfer_date}
+                onChange={(e) => setDatesForm({ ...datesForm, transfer_date: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">
+                Essa data impacta o cálculo de rendimento para o investidor.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveDates}>Salvar Data</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

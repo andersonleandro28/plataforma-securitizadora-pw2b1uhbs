@@ -114,6 +114,18 @@ const allNavItems = [
     roles: ['admin', 'staff'],
   },
   {
+    title: 'Fornecedores & Despesas',
+    path: '/admin/expenses',
+    icon: Building,
+    roles: ['admin', 'accountant'],
+  },
+  {
+    title: 'Contabilidade & Fiscal',
+    path: '/admin/accounting',
+    icon: PieChart,
+    roles: ['admin', 'accountant'],
+  },
+  {
     title: 'Relatórios',
     path: '/reports',
     icon: PieChart,
