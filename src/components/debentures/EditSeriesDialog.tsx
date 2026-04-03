@@ -17,7 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, Save, Edit2 } from 'lucide-react'
+import { Loader2, Save, Edit2, AlertCircle } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 
@@ -70,6 +71,11 @@ export function EditSeriesDialog({
 
   const isVolumeExceeded = Number(formData.volume || 0) > availableVolume
 
+  const hasYieldImpact =
+    Number(formData.rate) !== Number(series?.rate) ||
+    (formData.maturity_date || '') !==
+      (series?.maturity_date ? series.maturity_date.split('T')[0] : '')
+
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
 
@@ -103,7 +109,26 @@ export function EditSeriesDialog({
 
       if (error) throw new Error(`Erro ao atualizar série: ${error.message}`)
 
-      toast.success('Série atualizada com sucesso!')
+      await supabase.from('audit_logs').insert({
+        entity_type: 'debenture_series',
+        entity_id: series.id,
+        action: 'series_updated',
+        details: { message: 'Série atualizada. Notificando investidores.' },
+      })
+
+      if (hasYieldImpact) {
+        supabase.functions.invoke('notify-series-update', {
+          body: {
+            series_id: series.id,
+            old_rate: series.rate,
+            new_rate: formData.rate,
+            old_maturity: series.maturity_date ? series.maturity_date.split('T')[0] : 'N/A',
+            new_maturity: formData.maturity_date || 'N/A',
+          },
+        })
+      }
+
+      toast.success('Série atualizada e sincronizada com os investidores!')
       onSuccess?.()
       onOpenChange(false)
     } catch (err: any) {
@@ -166,6 +191,20 @@ export function EditSeriesDialog({
             </p>
           )}
 
+          {hasYieldImpact && (
+            <Alert className="bg-warning/10 text-warning-foreground border-warning/50">
+              <AlertCircle className="h-4 w-4 text-warning" />
+              <AlertTitle className="text-warning font-bold">
+                Atenção: Impacto no Rendimento
+              </AlertTitle>
+              <AlertDescription className="mt-2 text-sm">
+                As alterações na taxa ou vencimento afetarão os rendimentos projetados dos
+                investidores atuais. Eles serão notificados automaticamente por e-mail e seus
+                dashboards serão sincronizados em tempo real.
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Indexador</Label>
@@ -219,7 +258,7 @@ export function EditSeriesDialog({
             ) : (
               <Save className="h-4 w-4 mr-2" />
             )}
-            {saving ? 'Salvando...' : 'Salvar Alterações'}
+            {saving ? 'Sincronizando...' : 'Salvar e Sincronizar'}
           </Button>
         </DialogFooter>
       </DialogContent>

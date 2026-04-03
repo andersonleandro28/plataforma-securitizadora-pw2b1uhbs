@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import {
   Wallet,
   TrendingUp,
@@ -12,6 +12,7 @@ import {
   ArrowDownToLine,
   History,
   FileSignature,
+  RefreshCw,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
@@ -86,6 +87,7 @@ export default function InvestorDashboard() {
   const [redeemQuotas, setRedeemQuotas] = useState<number>(1)
   const [savingRedemption, setSavingRedemption] = useState(false)
 
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
   const [metrics, setMetrics] = useState({
     totalInvested: 0,
     grossYield: 0,
@@ -100,7 +102,7 @@ export default function InvestorDashboard() {
     walletBalance: 0,
   })
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     if (!profile?.document_number || !user) {
       setLoading(false)
       return
@@ -207,16 +209,48 @@ export default function InvestorDashboard() {
         chartData,
         walletBalance: profileRes.data?.wallet_balance || 0,
       })
+      setLastUpdated(new Date())
     } catch (err) {
       console.error(err)
     } finally {
       setLoading(false)
     }
-  }
+  }, [profile, user])
 
   useEffect(() => {
     fetchDashboardData()
-  }, [profile, user])
+
+    const handleFocus = () => fetchDashboardData()
+    window.addEventListener('focus', handleFocus)
+
+    const interval = setInterval(() => {
+      fetchDashboardData()
+    }, 30000)
+
+    const channel = supabase
+      .channel('investor-dashboard-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'debenture_series' }, () => {
+        toast.info('As condições das debêntures foram atualizadas. Recalculando portfólio...')
+        fetchDashboardData()
+      })
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'debenture_subscriptions' },
+        () => {
+          fetchDashboardData()
+        },
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'investments' }, () => {
+        fetchDashboardData()
+      })
+      .subscribe()
+
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+      clearInterval(interval)
+      supabase.removeChannel(channel)
+    }
+  }, [fetchDashboardData])
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0)
@@ -328,11 +362,22 @@ export default function InvestorDashboard() {
           />
         )}
 
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Painel do Investidor</h1>
-        <p className="text-muted-foreground">
-          Acompanhamento do seu portfólio, rendimentos reais e impostos retidos.
-        </p>
+      <div className="flex flex-col sm:flex-row justify-between sm:items-end gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Painel do Investidor</h1>
+          <p className="text-muted-foreground">
+            Acompanhamento do seu portfólio, rendimentos reais e impostos retidos.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-muted-foreground">
+            Atualizado em {lastUpdated.toLocaleTimeString('pt-BR')}
+          </span>
+          <Button variant="outline" size="sm" onClick={fetchDashboardData}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Atualizar
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
