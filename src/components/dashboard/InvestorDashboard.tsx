@@ -13,6 +13,7 @@ import {
   History,
   FileSignature,
   RefreshCw,
+  XCircle,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
@@ -82,6 +83,7 @@ export default function InvestorDashboard() {
   const [loading, setLoading] = useState(true)
   const [myInvestments, setMyInvestments] = useState<any[]>([])
   const [myRedemptions, setMyRedemptions] = useState<any[]>([])
+  const [deletedSubs, setDeletedSubs] = useState<any[]>([])
 
   const [redemptionInv, setRedemptionInv] = useState<any>(null)
   const [redeemQuotas, setRedeemQuotas] = useState<number>(1)
@@ -109,7 +111,7 @@ export default function InvestorDashboard() {
     }
 
     try {
-      const [subsRes, investmentsRes, redemptionsRes, profileRes] = await Promise.all([
+      const [subsRes, investmentsRes, redemptionsRes, profileRes, auditRes] = await Promise.all([
         supabase
           .from('debenture_subscriptions')
           .select('*, debenture_series(rate, indexer, maturity_date, debentures(issuer_name))')
@@ -125,10 +127,19 @@ export default function InvestorDashboard() {
           .eq('user_id', user.id)
           .order('created_at', { ascending: false }),
         supabase.from('profiles').select('wallet_balance').eq('id', user.id).single(),
+        supabase.from('audit_logs').select('*').eq('action', 'subscription_deleted'),
       ])
 
       setMyInvestments(investmentsRes.data || [])
       setMyRedemptions(redemptionsRes.data || [])
+
+      const myDeletedSubs = (auditRes.data || [])
+        .filter((a) => a.details?.sub?.document_number === profile.document_number)
+        .map((a) => ({
+          ...a.details?.sub,
+          deleted_at: a.created_at,
+        }))
+      setDeletedSubs(myDeletedSubs)
 
       let totalInvested = 0
       let totalGrossYield = 0
@@ -235,14 +246,25 @@ export default function InvestorDashboard() {
       })
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'debenture_subscriptions' },
+        {
+          event: '*',
+          schema: 'public',
+          table: 'debenture_subscriptions',
+          filter: `document_number=eq.${profile?.document_number}`,
+        },
         () => {
+          toast.info('Seus aportes diretos sofreram alterações e foram sincronizados.')
           fetchDashboardData()
         },
       )
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'investments' }, () => {
-        fetchDashboardData()
-      })
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'investments', filter: `user_id=eq.${user?.id}` },
+        () => {
+          toast.info('Houve alterações nos seus investimentos estruturados. Tabela atualizada.')
+          fetchDashboardData()
+        },
+      )
       .subscribe()
 
     return () => {
@@ -250,7 +272,7 @@ export default function InvestorDashboard() {
       clearInterval(interval)
       supabase.removeChannel(channel)
     }
-  }, [fetchDashboardData])
+  }, [fetchDashboardData, profile?.document_number, user?.id])
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0)
@@ -349,7 +371,33 @@ export default function InvestorDashboard() {
       </div>
     )
 
-  const activeInvestments = myInvestments.filter((i) => i.status !== 'resgatado')
+  const activeInvestments = myInvestments.filter(
+    (i) => i.status !== 'resgatado' && i.status !== 'cancelled' && i.status !== 'rejected',
+  )
+  const cancelledInvestments = myInvestments.filter(
+    (i) => i.status === 'cancelled' || i.status === 'rejected',
+  )
+
+  const historyExcluidos = [
+    ...cancelledInvestments.map((i) => ({
+      id: i.id,
+      title: i.investment_products?.title || 'Produto Estruturado',
+      value: i.total_value,
+      date: i.updated_at || i.created_at,
+      status: i.status === 'rejected' ? 'Reprovado pelo Admin' : 'Cancelado / Estornado',
+      type: 'investment',
+    })),
+    ...deletedSubs.map((s) => ({
+      id: s.id,
+      title: s.debenture_series?.debentures?.issuer_name
+        ? `${s.debenture_series.debentures.issuer_name} - Série ${s.debenture_series.series_number}`
+        : 'Aporte de Debênture (Direto)',
+      value: s.total_amount,
+      date: s.deleted_at,
+      status: 'Excluído pelo Admin (Baixa/Estorno)',
+      type: 'subscription',
+    })),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up pb-10">
@@ -366,16 +414,16 @@ export default function InvestorDashboard() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Painel do Investidor</h1>
           <p className="text-muted-foreground">
-            Acompanhamento do seu portfólio, rendimentos reais e impostos retidos.
+            Acompanhamento do seu portfólio, rendimentos reais e histórico de movimentações.
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-muted-foreground">
-            Atualizado em {lastUpdated.toLocaleTimeString('pt-BR')}
+          <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-md">
+            Atualizado em: {lastUpdated.toLocaleTimeString('pt-BR')}
           </span>
           <Button variant="outline" size="sm" onClick={fetchDashboardData}>
             <RefreshCw className="h-4 w-4 mr-2" />
-            Atualizar
+            Sincronizar
           </Button>
         </div>
       </div>
@@ -471,7 +519,7 @@ export default function InvestorDashboard() {
                 <YAxis
                   width={80}
                   tickFormatter={(v) =>
-                    v >= 1000 ? `R$${(v / 1000).toFixed(1)}k` : `R$${v.toFixed(0)}`
+                    v >= 1000 ? `R${(v / 1000).toFixed(1)}k` : `R${v.toFixed(0)}`
                   }
                 />
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -537,8 +585,6 @@ export default function InvestorDashboard() {
                         <Badge className="bg-emerald-500">Aprovado</Badge>
                       ) : inv.status === 'awaiting_review' ? (
                         <Badge className="bg-amber-500">Em Conferência</Badge>
-                      ) : inv.status === 'rejected' ? (
-                        <Badge variant="destructive">Reprovado</Badge>
                       ) : (
                         <Badge variant="outline">Aguardando Depósito</Badge>
                       )}
@@ -566,6 +612,49 @@ export default function InvestorDashboard() {
           </Table>
         </CardContent>
       </Card>
+
+      {historyExcluidos.length > 0 && (
+        <Card className="border-destructive/20 bg-destructive/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-destructive">
+              <XCircle className="h-5 w-5" /> Histórico de Excluídos / Cancelados
+            </CardTitle>
+            <CardDescription>
+              Investimentos reprovados ou aportes extornados pela administração.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Produto/Série</TableHead>
+                  <TableHead>Valor Total</TableHead>
+                  <TableHead>Data da Exclusão</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {historyExcluidos.map((item) => (
+                  <TableRow key={item.id} className="text-muted-foreground opacity-80">
+                    <TableCell className="font-medium line-through decoration-destructive/30">
+                      {item.title}
+                    </TableCell>
+                    <TableCell className="font-mono">{formatCurrency(item.value)}</TableCell>
+                    <TableCell className="text-sm">
+                      {item.date ? format(new Date(item.date), 'dd/MM/yyyy HH:mm') : '-'}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="destructive" className="bg-destructive/80">
+                        {item.status}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

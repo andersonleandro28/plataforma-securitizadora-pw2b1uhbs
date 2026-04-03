@@ -21,6 +21,7 @@ import { Loader2, Save, Edit2, AlertCircle } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import { useAuth } from '@/hooks/use-auth'
 
 interface EditSeriesDialogProps {
   series: any
@@ -37,6 +38,7 @@ export function EditSeriesDialog({
   onOpenChange,
   onSuccess,
 }: EditSeriesDialogProps) {
+  const { user } = useAuth()
   const [saving, setSaving] = useState(false)
   const [formData, setFormData] = useState({
     series_number: '',
@@ -113,7 +115,8 @@ export function EditSeriesDialog({
         entity_type: 'debenture_series',
         entity_id: series.id,
         action: 'series_updated',
-        details: { message: 'Série atualizada. Notificando investidores.' },
+        user_id: user?.id,
+        details: { message: 'Série atualizada. Notificando investidores em Realtime.' },
       })
 
       if (hasYieldImpact) {
@@ -128,7 +131,7 @@ export function EditSeriesDialog({
         })
       }
 
-      toast.success('Série atualizada e sincronizada com os investidores!')
+      toast.success('Série atualizada. Sincronizado com dashboards dos investidores!')
       onSuccess?.()
       onOpenChange(false)
     } catch (err: any) {
@@ -199,8 +202,8 @@ export function EditSeriesDialog({
               </AlertTitle>
               <AlertDescription className="mt-2 text-sm">
                 As alterações na taxa ou vencimento afetarão os rendimentos projetados dos
-                investidores atuais. Eles serão notificados automaticamente por e-mail e seus
-                dashboards serão sincronizados em tempo real.
+                investidores atuais. As atualizações serão transmitidas em tempo real para os
+                dashboards correspondentes e eles serão notificados por e-mail.
               </AlertDescription>
             </Alert>
           )}

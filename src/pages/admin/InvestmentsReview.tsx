@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { format } from 'date-fns'
+import { Check, X, Search, Loader2, Trash2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import {
   Table,
@@ -8,586 +10,245 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  CheckSquare,
-  Loader2,
-  Eye,
-  XCircle,
-  Search,
-  DollarSign,
-  ArrowDownRight,
-  History,
-  Filter,
-} from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
-import { useAuth } from '@/hooks/use-auth'
 import { toast } from 'sonner'
-import { format } from 'date-fns'
+import { useAuth } from '@/hooks/use-auth'
 
 export default function InvestmentsReview() {
   const { user } = useAuth()
   const [investments, setInvestments] = useState<any[]>([])
-  const [redemptions, setRedemptions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [searchRedemptions, setSearchRedemptions] = useState('')
-  const [showHistory, setShowHistory] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [processingId, setProcessingId] = useState<string | null>(null)
 
-  const [rejectId, setRejectId] = useState<string | null>(null)
-  const [rejectReason, setRejectReason] = useState('')
-
-  const [viewRedemption, setViewRedemption] = useState<any>(null)
-  const [rejectRedemptionId, setRejectRedemptionId] = useState<string | null>(null)
-  const [redemptionRejectReason, setRedemptionRejectReason] = useState('')
-  const [processingAction, setProcessingAction] = useState(false)
-
-  const fetchData = async () => {
+  const fetchInvestments = async () => {
     setLoading(true)
-
-    let invQuery = supabase
+    const { data, error } = await supabase
       .from('investments')
-      .select('*, profiles(full_name, email), investment_products(title)')
+      .select('*, profiles(full_name, document_number, email), investment_products(title)')
       .order('created_at', { ascending: false })
 
-    let redQuery = supabase
-      .from('investment_redemptions')
-      .select('*, profiles(full_name, email), investments(quotas, investment_products(title))')
-      .order('created_at', { ascending: false })
-
-    // Hide completed/rejected records by default to keep the queue clean
-    if (!showHistory) {
-      invQuery = invQuery.in('status', ['awaiting_review', 'pending_transfer'])
-      redQuery = redQuery.in('status', ['pending', 'approved'])
-    }
-
-    const [invRes, redRes] = await Promise.all([invQuery, redQuery])
-
-    if (invRes.data) setInvestments(invRes.data)
-    if (redRes.data) setRedemptions(redRes.data)
+    if (data) setInvestments(data)
     setLoading(false)
   }
 
   useEffect(() => {
-    fetchData()
-  }, [showHistory])
+    fetchInvestments()
+
+    const channel = supabase
+      .channel('admin-investments-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'investments' }, () => {
+        fetchInvestments()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [])
+
+  const handleAction = async (id: string, action: 'approve' | 'reject' | 'delete') => {
+    if (action === 'delete') {
+      if (
+        !confirm(
+          'Deseja realmente EXCLUIR este investimento?\nAção imediata e irreversível que refletirá no dashboard do investidor.',
+        )
+      )
+        return
+    } else if (action === 'reject') {
+      if (!confirm('Deseja reprovar este investimento?')) return
+    }
+
+    setProcessingId(id)
+    try {
+      if (action === 'approve') {
+        const { error } = await supabase.rpc('approve_investment', { p_investment_id: id })
+        if (error) throw error
+        toast.success('Investimento aprovado. Sincronizado com dashboards investidores.')
+      } else if (action === 'reject') {
+        const { error } = await supabase
+          .from('investments')
+          .update({ status: 'rejected' })
+          .eq('id', id)
+        if (error) throw error
+        toast.success('Investimento reprovado. Dashboard do investidor atualizado.')
+      } else if (action === 'delete') {
+        const { error } = await supabase
+          .from('investments')
+          .update({ status: 'cancelled' })
+          .eq('id', id)
+        if (error) throw error
+
+        await supabase.from('audit_logs').insert({
+          entity_type: 'investments',
+          entity_id: id,
+          action: 'admin_deleted_investment',
+          user_id: user?.id,
+          details: { message: `Investimento ${id} excluído/cancelado pelo Admin.` },
+        })
+
+        toast.success('Investimento excluído. Sincronizado com dashboards investidores.')
+      }
+      fetchInvestments()
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao processar.')
+    } finally {
+      setProcessingId(null)
+    }
+  }
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0)
 
-  const handleApprove = async (id: string) => {
-    try {
-      const { error } = await supabase.rpc('approve_investment', { p_investment_id: id })
-      if (error) throw error
-      toast.success('Investimento aprovado e cotas atualizadas.')
-      fetchData()
-    } catch (err: any) {
-      toast.error('Erro ao aprovar: ' + err.message)
-    }
-  }
-
-  const handleReject = async () => {
-    if (!rejectReason) return toast.error('Motivo obrigatório')
-    try {
-      await supabase
-        .from('investments')
-        .update({ status: 'rejected', rejection_reason: rejectReason })
-        .eq('id', rejectId)
-      toast.success('Investimento reprovado.')
-      setRejectId(null)
-      setRejectReason('')
-      fetchData()
-    } catch (err: any) {
-      toast.error('Erro ao reprovar: ' + err.message)
-    }
-  }
-
-  const handleViewProof = async (invId: string) => {
-    const { data: proofs } = await supabase
-      .from('investment_proofs')
-      .select('*')
-      .eq('investment_id', invId)
-      .order('uploaded_at', { ascending: false })
-      .limit(1)
-    if (proofs && proofs.length > 0) {
-      const { data } = await supabase.storage
-        .from('investment-proofs')
-        .createSignedUrl(proofs[0].file_path, 300)
-      if (data?.signedUrl) window.open(data.signedUrl, '_blank')
-    } else {
-      toast.error('Nenhum comprovante enviado.')
-    }
-  }
-
-  const handleApproveRedemption = async (id: string) => {
-    if (!confirm('Deseja aprovar esta solicitação de resgate?')) return
-    setProcessingAction(true)
-    try {
-      const { error } = await supabase
-        .from('investment_redemptions')
-        .update({ status: 'approved', updated_by: user?.id })
-        .eq('id', id)
-      if (error) throw error
-      toast.success('Resgate aprovado! A liberação do pagamento pode ser feita a seguir.')
-      fetchData()
-    } catch (err: any) {
-      toast.error('Erro: ' + err.message)
-    } finally {
-      setProcessingAction(false)
-    }
-  }
-
-  const handleRejectRedemption = async () => {
-    if (!redemptionRejectReason) return toast.error('Motivo obrigatório')
-    setProcessingAction(true)
-    try {
-      const { error } = await supabase
-        .from('investment_redemptions')
-        .update({
-          status: 'rejected',
-          rejection_reason: redemptionRejectReason,
-          updated_by: user?.id,
-        })
-        .eq('id', rejectRedemptionId)
-      if (error) throw error
-      toast.success('Solicitação de resgate rejeitada.')
-      setRejectRedemptionId(null)
-      setRedemptionRejectReason('')
-      fetchData()
-    } catch (err: any) {
-      toast.error('Erro: ' + err.message)
-    } finally {
-      setProcessingAction(false)
-    }
-  }
-
-  const handlePayRedemption = async (r: any) => {
-    if (
-      !confirm(
-        'Confirmar o pagamento do resgate? O status será atualizado e o estoque de cotas devolvido de forma atômica.',
-      )
-    )
-      return
-    setProcessingAction(true)
-    try {
-      const { error } = await supabase.rpc('process_redemption_payment', {
-        p_redemption_id: r.id,
-        p_admin_id: user?.id,
-      })
-      if (error) throw error
-      toast.success(
-        `Resgate concluído: Estoque +${r.requested_quotas} cotas, Saldo investidor atualizado.`,
-      )
-      fetchData()
-    } catch (err: any) {
-      toast.error('Erro: ' + err.message)
-    } finally {
-      setProcessingAction(false)
-    }
-  }
-
-  const filteredInv = investments.filter(
-    (i) =>
-      i.profiles?.full_name?.toLowerCase().includes(search.toLowerCase()) ||
-      i.investment_products?.title?.toLowerCase().includes(search.toLowerCase()),
-  )
-
-  const filteredRed = redemptions.filter(
-    (r) =>
-      r.profiles?.full_name?.toLowerCase().includes(searchRedemptions.toLowerCase()) ||
-      r.investments?.investment_products?.title
-        ?.toLowerCase()
-        .includes(searchRedemptions.toLowerCase()),
+  const filtered = investments.filter(
+    (inv) =>
+      inv.profiles?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      inv.profiles?.document_number?.includes(searchTerm) ||
+      inv.investment_products?.title?.toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up">
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Gestão de Investimentos</h1>
-          <p className="text-muted-foreground">
-            Aprove novos aportes e gerencie solicitações de resgates.
-          </p>
-        </div>
-        <Button
-          variant={showHistory ? 'secondary' : 'outline'}
-          size="sm"
-          onClick={() => setShowHistory(!showHistory)}
-          className="w-full sm:w-auto"
-        >
-          <Filter className="h-4 w-4 mr-2" />
-          {showHistory ? 'Ocultar Finalizados' : 'Mostrar Histórico'}
-        </Button>
+    <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up pb-10">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Revisão de Investimentos</h1>
+        <p className="text-muted-foreground">
+          Gerencie aportes e comprovantes enviados pelos investidores.
+        </p>
       </div>
 
-      <Tabs defaultValue="aportes" className="w-full">
-        <TabsList className="mb-6 h-auto p-1 bg-muted/50 border">
-          <TabsTrigger value="aportes" className="py-2.5 px-6">
-            Aprovações de Aportes
-          </TabsTrigger>
-          <TabsTrigger value="resgates" className="py-2.5 px-6">
-            Solicitações de Resgate
-          </TabsTrigger>
-        </TabsList>
+      <Card>
+        <CardHeader>
+          <CardTitle>Solicitações de Aporte</CardTitle>
+          <CardDescription>
+            Qualquer alteração ou exclusão refletirá instantaneamente nos dashboards dos
+            investidores afetados.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="mb-4 relative max-w-md">
+            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por investidor, CPF ou produto..."
+              className="pl-9"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
 
-        <TabsContent value="aportes">
-          <Card>
-            <CardHeader className="flex flex-row justify-between items-center pb-4">
-              <CardTitle>Fila de Análise</CardTitle>
-              <div className="relative w-64">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar investidor ou produto..."
-                  className="pl-9"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
+          <div className="rounded-md border overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Investidor</TableHead>
+                  <TableHead>Produto</TableHead>
+                  <TableHead>Cotas</TableHead>
+                  <TableHead className="text-right">Valor Total</TableHead>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
                   <TableRow>
-                    <TableHead>Investidor</TableHead>
-                    <TableHead>Produto</TableHead>
-                    <TableHead>Valor</TableHead>
-                    <TableHead>Data</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
+                    <TableCell colSpan={7} className="text-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8">
-                        <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
-                      </TableCell>
-                    </TableRow>
-                  ) : filteredInv.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                        Nenhuma solicitação encontrada.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredInv.map((inv) => (
-                      <TableRow key={inv.id}>
-                        <TableCell className="font-medium">
-                          {inv.profiles?.full_name || inv.profiles?.email}
-                        </TableCell>
-                        <TableCell>
-                          {inv.investment_products?.title} <br />
-                          <span className="text-xs text-muted-foreground">{inv.quotas} cotas</span>
-                        </TableCell>
-                        <TableCell className="font-mono text-primary font-medium">
-                          {formatCurrency(inv.transfer_value || inv.total_value)}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {inv.created_at
-                            ? format(new Date(inv.created_at), 'dd/MM/yyyy HH:mm')
-                            : '-'}
-                        </TableCell>
-                        <TableCell>
-                          {inv.status === 'approved' ? (
-                            <Badge className="bg-emerald-500">Aprovado</Badge>
-                          ) : inv.status === 'awaiting_review' ? (
-                            <Badge className="bg-amber-500">Em Conferência</Badge>
-                          ) : inv.status === 'rejected' ? (
-                            <Badge variant="destructive">Reprovado</Badge>
-                          ) : (
-                            <Badge variant="outline">Aguardando Pgto</Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right space-x-2 whitespace-nowrap">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleViewProof(inv.id)}
-                          >
-                            <Eye className="h-4 w-4 mr-1" /> Comprovante
-                          </Button>
-                          {inv.status === 'awaiting_review' && (
-                            <>
-                              <Button
-                                size="sm"
-                                className="bg-emerald-600 hover:bg-emerald-700"
-                                onClick={() => handleApprove(inv.id)}
-                              >
-                                <CheckSquare className="h-4 w-4 mr-1" /> Aprovar
-                              </Button>
-                              <Button
-                                variant="destructive"
-                                size="icon"
-                                className="h-9 w-9"
-                                onClick={() => setRejectId(inv.id)}
-                              >
-                                <XCircle className="h-4 w-4" />
-                              </Button>
-                            </>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="resgates">
-          <Card>
-            <CardHeader className="flex flex-row justify-between items-center pb-4">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <History className="h-5 w-5" /> Resgates Pendentes
-                </CardTitle>
-                <CardDescription className="mt-1">
-                  Aprovação de retiradas antecipadas e liquidações.
-                </CardDescription>
-              </div>
-              <div className="relative w-64">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar investidor ou produto..."
-                  className="pl-9"
-                  value={searchRedemptions}
-                  onChange={(e) => setSearchRedemptions(e.target.value)}
-                />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
+                ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableHead>Investidor</TableHead>
-                    <TableHead>Produto</TableHead>
-                    <TableHead>Valor Líquido</TableHead>
-                    <TableHead>Data</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                      Nenhum investimento encontrado.
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8">
-                        <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+                ) : (
+                  filtered.map((inv) => (
+                    <TableRow key={inv.id}>
+                      <TableCell>
+                        <div className="font-medium">{inv.profiles?.full_name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {inv.profiles?.document_number}
+                        </div>
                       </TableCell>
-                    </TableRow>
-                  ) : filteredRed.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                        Nenhum resgate encontrado.
+                      <TableCell
+                        className="max-w-[200px] truncate"
+                        title={inv.investment_products?.title}
+                      >
+                        {inv.investment_products?.title}
                       </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredRed.map((r) => (
-                      <TableRow key={r.id}>
-                        <TableCell className="font-medium">
-                          {r.profiles?.full_name || r.profiles?.email}
-                        </TableCell>
-                        <TableCell>
-                          {r.investments?.investment_products?.title} <br />
-                          <span className="text-xs text-muted-foreground">
-                            {r.requested_quotas} cotas
-                          </span>
-                        </TableCell>
-                        <TableCell className="font-mono text-emerald-600 font-medium">
-                          {formatCurrency(r.net_value)}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {r.created_at ? format(new Date(r.created_at), 'dd/MM/yyyy HH:mm') : '-'}
-                        </TableCell>
-                        <TableCell>
-                          {r.status === 'paid' ? (
-                            <Badge className="bg-emerald-500">Liquidado</Badge>
-                          ) : r.status === 'approved' ? (
-                            <Badge className="bg-primary">Aprovado (Pagar)</Badge>
-                          ) : r.status === 'rejected' ? (
-                            <Badge variant="destructive">Rejeitado</Badge>
-                          ) : (
-                            <Badge
-                              variant="outline"
-                              className="bg-amber-100 text-amber-800 border-amber-200"
-                            >
-                              Em Análise
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right space-x-1 whitespace-nowrap">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Ver Detalhes"
-                            onClick={() => setViewRedemption(r)}
-                          >
-                            <Eye className="h-4 w-4 text-muted-foreground hover:text-primary" />
-                          </Button>
-                          {r.status === 'pending' && (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                disabled={processingAction}
-                                onClick={() => handleApproveRedemption(r.id)}
-                              >
-                                <CheckSquare className="h-4 w-4 text-emerald-600" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                disabled={processingAction}
-                                onClick={() => setRejectRedemptionId(r.id)}
-                              >
-                                <XCircle className="h-4 w-4 text-destructive" />
-                              </Button>
-                            </>
-                          )}
-                          {r.status === 'approved' && (
+                      <TableCell>{inv.quotas}</TableCell>
+                      <TableCell className="font-mono text-primary font-medium text-right">
+                        {formatCurrency(inv.total_value)}
+                      </TableCell>
+                      <TableCell>
+                        {inv.created_at ? format(new Date(inv.created_at), 'dd/MM/yyyy') : '-'}
+                      </TableCell>
+                      <TableCell>
+                        {inv.status === 'approved' ? (
+                          <Badge className="bg-emerald-500">Aprovado</Badge>
+                        ) : inv.status === 'awaiting_review' ? (
+                          <Badge className="bg-amber-500">Em Conferência</Badge>
+                        ) : inv.status === 'rejected' ? (
+                          <Badge variant="destructive">Reprovado</Badge>
+                        ) : inv.status === 'cancelled' ? (
+                          <Badge variant="secondary">Excluído/Cancelado</Badge>
+                        ) : inv.status === 'resgatado' ? (
+                          <Badge className="bg-blue-500">Resgatado</Badge>
+                        ) : (
+                          <Badge variant="outline">Pendente</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right space-x-1 whitespace-nowrap">
+                        {inv.status === 'awaiting_review' && (
+                          <>
                             <Button
-                              variant="outline"
                               size="sm"
-                              className="bg-primary/10 text-primary border-primary/30"
-                              disabled={processingAction}
-                              onClick={() => handlePayRedemption(r)}
+                              variant="outline"
+                              className="text-emerald-600 border-emerald-200 hover:bg-emerald-50 h-8 px-2"
+                              onClick={() => handleAction(inv.id, 'approve')}
+                              disabled={!!processingId}
+                              title="Aprovar Investimento"
                             >
-                              <DollarSign className="h-4 w-4 mr-1" /> Pagar
+                              {processingId === inv.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Check className="h-4 w-4" />
+                              )}
                             </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-      <Dialog open={!!rejectId} onOpenChange={(v) => !v && setRejectId(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reprovar Comprovante de Aporte</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <Label>Motivo da Reprovação</Label>
-            <Input
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-              placeholder="Ex: Valor incorreto, comprovante ilegível..."
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRejectId(null)}>
-              Cancelar
-            </Button>
-            <Button variant="destructive" onClick={handleReject}>
-              Confirmar Reprovação
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!rejectRedemptionId} onOpenChange={(v) => !v && setRejectRedemptionId(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Rejeitar Solicitação de Resgate</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <Label>Motivo da Rejeição (Será enviado ao investidor)</Label>
-            <Input
-              value={redemptionRejectReason}
-              onChange={(e) => setRedemptionRejectReason(e.target.value)}
-              placeholder="Ex: Carência mínima não atingida, dados inválidos..."
-            />
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setRejectRedemptionId(null)}
-              disabled={processingAction}
-            >
-              Cancelar
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleRejectRedemption}
-              disabled={processingAction}
-            >
-              Confirmar Rejeição
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!viewRedemption} onOpenChange={(v) => !v && setViewRedemption(null)}>
-        <DialogContent className="sm:max-w-[450px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ArrowDownRight className="h-5 w-5 text-primary" /> Detalhes do Resgate
-            </DialogTitle>
-          </DialogHeader>
-          {viewRedemption && (
-            <div className="space-y-4 py-2">
-              <div className="text-sm space-y-1 bg-muted/20 p-3 rounded-md border">
-                <p>
-                  <strong>Investidor:</strong> {viewRedemption.profiles?.full_name}
-                </p>
-                <p>
-                  <strong>Produto:</strong> {viewRedemption.investments?.investment_products?.title}
-                </p>
-                <p>
-                  <strong>Cotas Solicitadas:</strong> {viewRedemption.requested_quotas}
-                </p>
-              </div>
-              <div className="space-y-2 pt-2">
-                <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>Valor Bruto Calculado</span>
-                  <span className="font-mono">{formatCurrency(viewRedemption.gross_value)}</span>
-                </div>
-                {Number(viewRedemption.penalty_applied) > 0 && (
-                  <div className="flex justify-between text-sm text-destructive">
-                    <span>Multa de Resgate Antecipado</span>
-                    <span className="font-mono">
-                      -{formatCurrency(viewRedemption.penalty_applied)}
-                    </span>
-                  </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-destructive border-destructive/30 hover:bg-destructive/10 h-8 px-2"
+                              onClick={() => handleAction(inv.id, 'reject')}
+                              disabled={!!processingId}
+                              title="Rejeitar Investimento"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => handleAction(inv.id, 'delete')}
+                          disabled={!!processingId || inv.status === 'cancelled'}
+                          title="Excluir investimento permanentemente"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
                 )}
-                {Number(viewRedemption.discount_applied) > 0 && (
-                  <div className="flex justify-between text-sm text-destructive">
-                    <span>Desconto sobre Rendimentos</span>
-                    <span className="font-mono">
-                      -{formatCurrency(viewRedemption.discount_applied)}
-                    </span>
-                  </div>
-                )}
-                <div className="border-t pt-2 flex justify-between font-bold text-lg">
-                  <span>Total Líquido a Pagar</span>
-                  <span className="text-primary font-mono">
-                    {formatCurrency(viewRedemption.net_value)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button onClick={() => setViewRedemption(null)}>Fechar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

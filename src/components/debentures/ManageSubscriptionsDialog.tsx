@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input'
 import { Trash2, Edit2, Save, X, Plus, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import { useAuth } from '@/hooks/use-auth'
 
 interface ManageSubscriptionsDialogProps {
   series: any
@@ -40,6 +41,7 @@ export function ManageSubscriptionsDialog({
   onOpenChange,
   onSuccess,
 }: ManageSubscriptionsDialogProps) {
+  const { user } = useAuth()
   const [subs, setSubs] = useState<any[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState<any>({})
@@ -90,14 +92,16 @@ export function ManageSubscriptionsDialog({
           series_id: series.id,
         })
         if (error) throw error
-        toast.success('Subscrição adicionada com sucesso!')
+        toast.success('Subscrição adicionada e sincronizada com os dashboards dos investidores.')
       } else {
         const { error } = await supabase
           .from('debenture_subscriptions')
           .update(payload)
           .eq('id', editingId)
         if (error) throw error
-        toast.success('Subscrição atualizada com sucesso!')
+        toast.success(
+          'Subscrição atualizada. Mudanças refletidas no painel do investidor em tempo real.',
+        )
       }
 
       setEditingId(null)
@@ -113,12 +117,42 @@ export function ManageSubscriptionsDialog({
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Deseja excluir esta subscrição?')) return
+    if (
+      !confirm(
+        'Deseja realmente EXCLUIR esta subscrição?\n\nEsta ação não poderá ser desfeita e a remoção refletirá Imediatamente no Dashboard do Investidor.',
+      )
+    )
+      return
     try {
       setLoading(true)
+
+      const subToDelete = subs.find((s) => s.id === id)
+
       const { error } = await supabase.from('debenture_subscriptions').delete().eq('id', id)
       if (error) throw error
-      toast.success('Subscrição removida.')
+
+      if (subToDelete) {
+        await supabase.from('audit_logs').insert({
+          entity_type: 'debenture_subscriptions',
+          entity_id: id,
+          action: 'subscription_deleted',
+          user_id: user?.id,
+          details: {
+            message: `Aporte excluído pelo Admin. Investidor: ${subToDelete.investor_name} (${subToDelete.document_number})`,
+            sub: {
+              ...subToDelete,
+              debenture_series: {
+                series_number: series.series_number,
+                debentures: { issuer_name: series.issuer_name },
+              },
+            },
+          },
+        })
+      }
+
+      toast.success(
+        'Subscrição removida e log de exclusão gerado. Dashboards dos investidores atualizados.',
+      )
       await onSuccess()
     } catch (err: any) {
       toast.error(err.message)
@@ -386,6 +420,7 @@ export function ManageSubscriptionsDialog({
                           className="h-8 w-8 text-muted-foreground hover:text-destructive"
                           onClick={() => handleDelete(sub.id)}
                           disabled={!!editingId || loading}
+                          title="Excluir investimento (ação imediata)"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
