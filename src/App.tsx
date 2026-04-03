@@ -28,6 +28,8 @@ import Expenses from './pages/admin/Expenses'
 import Accounting from './pages/admin/Accounting'
 import KycOnboarding from './pages/KycOnboarding'
 import CcbDigital from './pages/borrower/CcbDigital'
+import MyCcbInstallments from './pages/borrower/MyCcbInstallments'
+import CcbPurchases from './pages/admin/CcbPurchases'
 import { AuthGuard } from './components/auth/AuthGuard'
 import { RoleGuard } from './components/auth/RoleGuard'
 import { PendingSignatures } from './components/docusign/PendingSignatures'
@@ -341,6 +343,22 @@ const App = () => (
               element={
                 <RoleGuard allowedRoles={['admin', 'staff']}>
                   <AdminCcbRequests />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/admin/ccb-purchases"
+              element={
+                <RoleGuard allowedRoles={['admin', 'staff']}>
+                  <CcbPurchases />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/borrower/ccb-installments"
+              element={
+                <RoleGuard allowedRoles={['borrower', 'investor']}>
+                  <MyCcbInstallments />
                 </RoleGuard>
               }
             />

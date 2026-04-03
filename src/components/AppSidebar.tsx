@@ -48,6 +48,18 @@ const allNavItems = [
     roles: ['admin', 'staff'],
   },
   {
+    title: 'Compras CCB BDIGITAL',
+    path: '/admin/ccb-purchases',
+    icon: Landmark,
+    roles: ['admin', 'staff'],
+  },
+  {
+    title: 'Minhas Parcelas CCB',
+    path: '/borrower/ccb-installments',
+    icon: CheckSquare,
+    roles: ['borrower', 'investor'],
+  },
+  {
     title: 'Gestão de Usuários',
     path: '/admin/users',
     icon: UsersIcon,
