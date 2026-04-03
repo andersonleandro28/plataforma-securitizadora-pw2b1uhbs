@@ -110,6 +110,7 @@ export function ManageSubscriptionsDialog({
               quotas: payload.quantity,
               unit_price: payload.unit_price,
               total_value: payload.total_amount,
+              transfer_date: payload.subscription_date,
             })
             .eq('id', currentSub.investment_id)
         }

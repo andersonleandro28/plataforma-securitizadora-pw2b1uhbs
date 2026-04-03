@@ -17,6 +17,19 @@ import { Loader2, RefreshCw, Clock, History, Settings, TrendingUp } from 'lucide
 import { format } from 'date-fns'
 import { ManageSubscriptionsDialog } from '@/components/debentures/ManageSubscriptionsDialog'
 
+const formatSafeDate = (dateStr: string | null | undefined) => {
+  if (!dateStr) return '-'
+  const parts = dateStr.split('T')[0].split('-')
+  if (parts.length !== 3) {
+    try {
+      return format(new Date(dateStr), 'dd/MM/yyyy')
+    } catch {
+      return '-'
+    }
+  }
+  return `${parts[2]}/${parts[1]}/${parts[0]}`
+}
+
 export default function Debentures() {
   const { profile } = useAuth()
   const [loading, setLoading] = useState(true)
@@ -227,11 +240,7 @@ export default function Debentures() {
                         <TableCell>
                           {sub.debenture_series?.indexer} + {sub.debenture_series?.rate}%
                         </TableCell>
-                        <TableCell>
-                          {sub.subscription_date
-                            ? format(new Date(sub.subscription_date), 'dd/MM/yyyy')
-                            : '-'}
-                        </TableCell>
+                        <TableCell>{formatSafeDate(sub.subscription_date)}</TableCell>
                         <TableCell className="text-right">{sub.quantity}</TableCell>
                         <TableCell className="text-right font-mono text-primary font-medium">
                           R${' '}
@@ -286,11 +295,7 @@ export default function Debentures() {
                             Série {sub.debenture_series?.series_number}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          {sub.subscription_date
-                            ? format(new Date(sub.subscription_date), 'dd/MM/yyyy')
-                            : '-'}
-                        </TableCell>
+                        <TableCell>{formatSafeDate(sub.subscription_date)}</TableCell>
                         <TableCell className="text-right font-mono line-through">
                           R${' '}
                           {Number(sub.total_amount).toLocaleString('pt-BR', {
