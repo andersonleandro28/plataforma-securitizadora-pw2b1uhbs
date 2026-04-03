@@ -4,8 +4,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, x-supabase-client-platform, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, x-supabase-client-platform, apikey, content-type',
 }
 
 Deno.serve(async (req: Request) => {
@@ -23,10 +22,7 @@ Deno.serve(async (req: Request) => {
       .eq('series_id', series_id)
 
     if (!subs || subs.length === 0) {
-      return new Response(
-        JSON.stringify({ success: true, message: 'Nenhum investidor para notificar.' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      )
+      return new Response(JSON.stringify({ success: true, message: 'Nenhum investidor para notificar.' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
     // Get distinct document_numbers
@@ -44,13 +40,13 @@ Deno.serve(async (req: Request) => {
 
     if (resendApiKey && profiles && profiles.length > 0) {
       const emails = profiles.map((p: any) => p.email).filter(Boolean) as string[]
-
+      
       if (emails.length > 0) {
         await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${resendApiKey}`,
+            'Authorization': `Bearer ${resendApiKey}`
           },
           body: JSON.stringify({
             from: 'Plataforma Securitizadora <contato@seaconnection.api.br>',
@@ -69,21 +65,16 @@ Deno.serve(async (req: Request) => {
                 <br/>
                 <p>Atenciosamente,<br/>Equipe Plataforma Securitizadora</p>
               </div>
-            `,
-          }),
+            `
+          })
         })
       }
     } else {
-      console.log('Mocking email notification for:', docs, 'Series:', seriesName)
+        console.log('Mocking email notification for:', docs, 'Series:', seriesName)
     }
 
-    return new Response(JSON.stringify({ success: true, notified: profiles?.length || 0 }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    return new Response(JSON.stringify({ success: true, notified: profiles?.length || 0 }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    return new Response(JSON.stringify({ error: err.message }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 })
