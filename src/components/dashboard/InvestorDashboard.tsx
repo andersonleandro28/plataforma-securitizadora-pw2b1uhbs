@@ -12,6 +12,7 @@ import {
   ArrowDownToLine,
   History,
   FileSignature,
+  Trash2,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
@@ -111,10 +112,11 @@ export default function InvestorDashboard() {
         supabase
           .from('debenture_subscriptions')
           .select('*, debenture_series(rate, indexer, maturity_date, debentures(issuer_name))')
-          .eq('document_number', profile.document_number),
+          .eq('document_number', profile.document_number)
+          .neq('status', 'Excluído'),
         supabase
           .from('investments')
-          .select('*, investment_products(*)')
+          .select('*, investment_products(*), debenture_subscriptions(*)')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false }),
         supabase
@@ -216,7 +218,36 @@ export default function InvestorDashboard() {
 
   useEffect(() => {
     fetchDashboardData()
-  }, [fetchDashboardData])
+
+    if (!user) return
+
+    const channel1 = supabase
+      .channel(`investments-changes-${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'investments', filter: `user_id=eq.${user.id}` },
+        () => {
+          fetchDashboardData()
+        },
+      )
+      .subscribe()
+
+    const channel2 = supabase
+      .channel(`subs-changes-${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'debenture_subscriptions' },
+        () => {
+          fetchDashboardData()
+        },
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel1)
+      supabase.removeChannel(channel2)
+    }
+  }, [fetchDashboardData, user])
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0)
@@ -316,7 +347,11 @@ export default function InvestorDashboard() {
     )
 
   const activeInvestments = myInvestments.filter(
-    (i) => i.status !== 'resgatado' && i.status !== 'cancelled' && i.status !== 'rejected',
+    (i) =>
+      i.status !== 'resgatado' &&
+      i.status !== 'cancelled' &&
+      i.status !== 'rejected' &&
+      i.status !== 'Excluído',
   )
 
   return (
@@ -476,46 +511,111 @@ export default function InvestorDashboard() {
                   </TableCell>
                 </TableRow>
               ) : (
-                activeInvestments.map((inv) => (
-                  <TableRow key={inv.id}>
-                    <TableCell className="font-medium">{inv.investment_products?.title}</TableCell>
-                    <TableCell>
-                      {inv.quotas - (inv.redeemed_quotas || 0)}{' '}
-                      <span className="text-xs text-muted-foreground">de {inv.quotas}</span>
-                    </TableCell>
-                    <TableCell className="font-mono text-primary font-medium">
-                      {formatCurrency(inv.total_value)}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {inv.created_at ? format(new Date(inv.created_at), 'dd/MM/yyyy') : '-'}
-                    </TableCell>
-                    <TableCell>
-                      {inv.status === 'approved' ? (
-                        <Badge className="bg-emerald-500">Aprovado</Badge>
-                      ) : inv.status === 'awaiting_review' ? (
-                        <Badge className="bg-amber-500">Em Conferência</Badge>
-                      ) : (
-                        <Badge variant="outline">Aguardando Depósito</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right space-x-2">
-                      {inv.status === 'pending_transfer' && (
-                        <Button
-                          size="sm"
-                          onClick={() => navigate(`/investments/checkout/${inv.id}`)}
-                          className="gap-2"
-                        >
-                          Enviar Comprovante <ArrowRight className="h-3 w-3" />
-                        </Button>
-                      )}
-                      {inv.status === 'approved' && inv.quotas > (inv.redeemed_quotas || 0) && (
-                        <Button size="sm" variant="outline" onClick={() => openRedemption(inv)}>
-                          <ArrowDownToLine className="h-4 w-4 mr-1" /> Resgatar
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
+                activeInvestments.map((inv) => {
+                  const sub = inv.debenture_subscriptions?.find((s: any) => s.status !== 'Excluído')
+                  const displayDate = sub?.subscription_date
+                    ? sub.subscription_date
+                    : inv.created_at
+                  const displayQuotas = sub ? sub.quantity : inv.quotas
+                  const displayValue = sub ? sub.total_amount : inv.total_value
+
+                  return (
+                    <TableRow key={inv.id}>
+                      <TableCell className="font-medium">
+                        {inv.investment_products?.title}
+                      </TableCell>
+                      <TableCell>
+                        {displayQuotas - (inv.redeemed_quotas || 0)}{' '}
+                        <span className="text-xs text-muted-foreground">de {displayQuotas}</span>
+                      </TableCell>
+                      <TableCell className="font-mono text-primary font-medium">
+                        {formatCurrency(displayValue)}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {displayDate ? format(new Date(displayDate), 'dd/MM/yyyy') : '-'}
+                      </TableCell>
+                      <TableCell>
+                        {inv.status === 'approved' ? (
+                          <Badge className="bg-emerald-500">Aprovado</Badge>
+                        ) : inv.status === 'awaiting_review' ? (
+                          <Badge className="bg-amber-500">Em Conferência</Badge>
+                        ) : (
+                          <Badge variant="outline">Aguardando Depósito</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right space-x-2">
+                        {inv.status === 'pending_transfer' && (
+                          <Button
+                            size="sm"
+                            onClick={() => navigate(`/investments/checkout/${inv.id}`)}
+                            className="gap-2"
+                          >
+                            Enviar Comprovante <ArrowRight className="h-3 w-3" />
+                          </Button>
+                        )}
+                        {inv.status === 'approved' &&
+                          displayQuotas > (inv.redeemed_quotas || 0) && (
+                            <Button size="sm" variant="outline" onClick={() => openRedemption(inv)}>
+                              <ArrowDownToLine className="h-4 w-4 mr-1" /> Resgatar
+                            </Button>
+                          )}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Trash2 className="h-5 w-5 text-destructive" /> Histórico de Cancelados / Excluídos
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Produto</TableHead>
+                <TableHead>Cotas</TableHead>
+                <TableHead>Valor Total</TableHead>
+                <TableHead>Data Exclusão</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {myInvestments.filter((i) => i.status === 'Excluído' || i.status === 'cancelled')
+                .length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center py-6 text-muted-foreground">
+                    Nenhum investimento cancelado ou excluído.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                myInvestments
+                  .filter((i) => i.status === 'Excluído' || i.status === 'cancelled')
+                  .map((inv) => (
+                    <TableRow key={inv.id}>
+                      <TableCell className="font-medium text-muted-foreground">
+                        {inv.investment_products?.title}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{inv.quotas}</TableCell>
+                      <TableCell className="font-mono text-muted-foreground">
+                        {formatCurrency(inv.total_value)}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {inv.updated_at
+                          ? format(new Date(inv.updated_at), 'dd/MM/yyyy HH:mm')
+                          : '-'}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">Excluído</Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))
               )}
             </TableBody>
           </Table>

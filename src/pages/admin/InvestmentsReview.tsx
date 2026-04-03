@@ -76,19 +76,11 @@ export default function InvestmentsReview() {
         if (error) throw error
         toast.success('Investimento reprovado. Dashboard do investidor atualizado.')
       } else if (action === 'delete') {
-        const { error } = await supabase
-          .from('investments')
-          .update({ status: 'cancelled' })
-          .eq('id', id)
+        const { error } = await supabase.rpc('cancel_investment', {
+          p_investment_id: id,
+          p_admin_id: user?.id,
+        } as any)
         if (error) throw error
-
-        await supabase.from('audit_logs').insert({
-          entity_type: 'investments',
-          entity_id: id,
-          action: 'admin_deleted_investment',
-          user_id: user?.id,
-          details: { message: `Investimento ${id} excluído/cancelado pelo Admin.` },
-        })
 
         toast.success('Investimento excluído. Sincronizado com dashboards investidores.')
       }
@@ -193,7 +185,7 @@ export default function InvestmentsReview() {
                           <Badge className="bg-amber-500">Em Conferência</Badge>
                         ) : inv.status === 'rejected' ? (
                           <Badge variant="destructive">Reprovado</Badge>
-                        ) : inv.status === 'cancelled' ? (
+                        ) : inv.status === 'cancelled' || inv.status === 'Excluído' ? (
                           <Badge variant="secondary">Excluído/Cancelado</Badge>
                         ) : inv.status === 'resgatado' ? (
                           <Badge className="bg-blue-500">Resgatado</Badge>
@@ -235,7 +227,11 @@ export default function InvestmentsReview() {
                           variant="ghost"
                           className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                           onClick={() => handleAction(inv.id, 'delete')}
-                          disabled={!!processingId || inv.status === 'cancelled'}
+                          disabled={
+                            !!processingId ||
+                            inv.status === 'cancelled' ||
+                            inv.status === 'Excluído'
+                          }
                           title="Excluir investimento permanentemente"
                         >
                           <Trash2 className="h-4 w-4" />

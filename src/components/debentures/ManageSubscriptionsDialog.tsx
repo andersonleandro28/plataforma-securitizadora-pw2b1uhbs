@@ -100,6 +100,20 @@ export function ManageSubscriptionsDialog({
           .update(payload)
           .eq('id', editingId)
         if (error) throw error
+
+        // Se estiver atrelado a um investimento, também sincroniza dados base
+        const currentSub = subs.find((s) => s.id === editingId)
+        if (currentSub?.investment_id) {
+          await supabase
+            .from('investments')
+            .update({
+              quotas: payload.quantity,
+              unit_price: payload.unit_price,
+              total_value: payload.total_amount,
+            })
+            .eq('id', currentSub.investment_id)
+        }
+
         toast.success('Sincronizado com dashboards investidores.')
       }
       setEditingId(null)
@@ -121,16 +135,24 @@ export function ManageSubscriptionsDialog({
 
       const subToDelete = subs.find((s) => s.id === id)
 
-      const { error } = await supabase
-        .from('debenture_subscriptions')
-        .update({
-          status: 'Excluído',
-          deleted_at: new Date().toISOString(),
-          deleted_by: user?.id,
-        })
-        .eq('id', id)
+      if (subToDelete?.investment_id) {
+        const { error } = await supabase.rpc('cancel_investment', {
+          p_investment_id: subToDelete.investment_id,
+          p_admin_id: user?.id,
+        } as any)
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from('debenture_subscriptions')
+          .update({
+            status: 'Excluído',
+            deleted_at: new Date().toISOString(),
+            deleted_by: user?.id,
+          })
+          .eq('id', id)
 
-      if (error) throw error
+        if (error) throw error
+      }
 
       if (subToDelete) {
         await supabase.from('audit_logs').insert({
