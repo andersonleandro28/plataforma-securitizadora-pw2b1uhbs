@@ -43,6 +43,9 @@ export default function FinancialParameters() {
     analysis_fee_type: 'fixed',
     iof_fixed_rate: 0.38,
     iof_daily_rate: 0.0041,
+    penalty_rate: 0,
+    default_interest_rate: 0,
+    grace_period_days: 0,
   }
 
   const defaultCcbConfig = {
@@ -111,6 +114,9 @@ export default function FinancialParameters() {
         analysis_fee_type: params.analysis_fee_type,
         iof_fixed_rate: Number(params.iof_fixed_rate),
         iof_daily_rate: Number(params.iof_daily_rate),
+        penalty_rate: Number(params.penalty_rate),
+        default_interest_rate: Number(params.default_interest_rate),
+        grace_period_days: Number(params.grace_period_days),
         updated_by: user?.id,
         updated_at: new Date().toISOString(),
       }
@@ -356,7 +362,43 @@ export default function FinancialParameters() {
               </div>
               <div>
                 <h3 className="text-sm font-semibold mb-4 flex items-center gap-2 text-foreground/80 border-b pb-2">
-                  3. Tributação (IOF)
+                  3. Inadimplência / Atraso
+                </h3>
+                <div className="grid sm:grid-cols-3 gap-6">
+                  <div className="space-y-2">
+                    <Label>Multa Fixa (%)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={params.penalty_rate || 0}
+                      onChange={(e) => setParams({ ...params, penalty_rate: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Juros de Mora (% a.m.)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={params.default_interest_rate || 0}
+                      onChange={(e) =>
+                        setParams({ ...params, default_interest_rate: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Carência (dias)</Label>
+                    <Input
+                      type="number"
+                      step="1"
+                      value={params.grace_period_days || 0}
+                      onChange={(e) => setParams({ ...params, grace_period_days: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold mb-4 flex items-center gap-2 text-foreground/80 border-b pb-2 mt-8">
+                  4. Tributação (IOF)
                 </h3>
                 <div className="grid sm:grid-cols-2 gap-6">
                   <div className="space-y-2">

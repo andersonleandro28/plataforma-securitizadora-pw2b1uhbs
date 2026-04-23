@@ -39,6 +39,9 @@ export function BorrowerNewOperation({ onSuccess }: { onSuccess?: () => void }) 
     receivableTypeOther: '',
     cedente: '',
     sacado: '',
+    sacadoDocument: '',
+    sacadoEmail: '',
+    sacadoPhone: '',
     documentNumber: '',
     faceValue: '',
     requestedValue: '',
@@ -84,6 +87,13 @@ export function BorrowerNewOperation({ onSuccess }: { onSuccess?: () => void }) 
     if (!formData.receivableType) return toast.error('Tipo de Recebível é obrigatório')
     if (formData.receivableType === 'outro' && !formData.receivableTypeOther)
       return toast.error('Descreva o tipo de recebível')
+    if (
+      !formData.sacado ||
+      !formData.sacadoDocument ||
+      !formData.sacadoEmail ||
+      !formData.sacadoPhone
+    )
+      return toast.error('Preencha todos os dados do sacado')
     if (!files.length) return toast.error('Anexe pelo menos um documento comprobatório')
     if (Number(formData.requestedValue) > Number(formData.faceValue))
       return toast.error('Valor solicitado não pode ser maior que o valor de face')
@@ -99,6 +109,9 @@ export function BorrowerNewOperation({ onSuccess }: { onSuccess?: () => void }) 
           receivable_type_other: formData.receivableTypeOther,
           cedente: formData.cedente,
           sacado: formData.sacado,
+          sacado_document: formData.sacadoDocument,
+          sacado_email: formData.sacadoEmail,
+          sacado_phone: formData.sacadoPhone,
           document_number: formData.documentNumber,
           face_value: Number(formData.faceValue),
           requested_value: Number(formData.requestedValue),
@@ -150,6 +163,9 @@ export function BorrowerNewOperation({ onSuccess }: { onSuccess?: () => void }) 
         receivableTypeOther: '',
         cedente: '',
         sacado: '',
+        sacadoDocument: '',
+        sacadoEmail: '',
+        sacadoPhone: '',
         documentNumber: '',
         faceValue: '',
         requestedValue: '',
@@ -213,6 +229,11 @@ export function BorrowerNewOperation({ onSuccess }: { onSuccess?: () => void }) 
           </div>
 
           <div className="grid md:grid-cols-2 gap-4">
+            <div className="space-y-2 md:col-span-2 border-b pb-2 mb-2 mt-4">
+              <h3 className="text-sm font-semibold text-foreground/80">
+                Dados do Originador e Operação
+              </h3>
+            </div>
             <div className="space-y-2">
               <Label>Cedente / Originador *</Label>
               <Input
@@ -221,14 +242,7 @@ export function BorrowerNewOperation({ onSuccess }: { onSuccess?: () => void }) 
               />
             </div>
             <div className="space-y-2">
-              <Label>Sacado / Devedor *</Label>
-              <Input
-                value={formData.sacado}
-                onChange={(e) => setFormData({ ...formData, sacado: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Número do Documento *</Label>
+              <Label>Número do Documento (Ex: NF) *</Label>
               <Input
                 value={formData.documentNumber}
                 onChange={(e) => setFormData({ ...formData, documentNumber: e.target.value })}
@@ -261,7 +275,44 @@ export function BorrowerNewOperation({ onSuccess }: { onSuccess?: () => void }) 
             </div>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-4 pt-2">
+          <div className="grid md:grid-cols-2 gap-4 pt-4">
+            <div className="space-y-2 md:col-span-2 border-b pb-2 mb-2">
+              <h3 className="text-sm font-semibold text-foreground/80">
+                Dados do Sacado (Devedor)
+              </h3>
+            </div>
+            <div className="space-y-2">
+              <Label>Nome / Razão Social *</Label>
+              <Input
+                value={formData.sacado}
+                onChange={(e) => setFormData({ ...formData, sacado: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>CPF / CNPJ *</Label>
+              <Input
+                value={formData.sacadoDocument}
+                onChange={(e) => setFormData({ ...formData, sacadoDocument: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>E-mail *</Label>
+              <Input
+                type="email"
+                value={formData.sacadoEmail}
+                onChange={(e) => setFormData({ ...formData, sacadoEmail: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Telefone *</Label>
+              <Input
+                value={formData.sacadoPhone}
+                onChange={(e) => setFormData({ ...formData, sacadoPhone: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4 pt-4">
             <div className="space-y-2">
               <Label>Valor de Face (VF) *</Label>
               <Input

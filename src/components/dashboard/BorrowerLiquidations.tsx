@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase/client'
 import { generatePixPayload } from '@/lib/pix'
-import { QrCode, Upload, CheckCircle2, AlertCircle, Clock, Loader2 } from 'lucide-react'
+import { QrCode, Upload, CheckCircle2, AlertCircle, Clock, Loader2, Info } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { useToast } from '@/hooks/use-toast'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -30,6 +31,7 @@ export function BorrowerLiquidations() {
   const [bankInfo, setBankInfo] = useState<any>(null)
   const [pixPayload, setPixPayload] = useState<string>('')
   const [uploading, setUploading] = useState(false)
+  const [finParams, setFinParams] = useState<any>({})
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const fetchLiquidations = async () => {
@@ -39,7 +41,7 @@ export function BorrowerLiquidations() {
     const { data: ops } = await supabase
       .from('credit_operations')
       .select(
-        'id, status, requested_value, due_date, face_value, operation_calculations(net_value), payment_receipt_url',
+        'id, status, requested_value, due_date, face_value, receivable_type, operation_calculations(net_value), payment_receipt_url',
       )
       .eq('borrower_id', user.id)
       .in('status', [
@@ -50,6 +52,14 @@ export function BorrowerLiquidations() {
       .order('due_date', { ascending: true })
 
     if (ops) setOperations(ops)
+
+    const { data: paramsData } = await supabase.from('financial_parameters').select('*')
+    const paramsMap: any = {}
+    paramsData?.forEach((p) => {
+      paramsMap[p.receivable_type] = p
+    })
+    setFinParams(paramsMap)
+
     setLoading(false)
   }
 
@@ -79,11 +89,11 @@ export function BorrowerLiquidations() {
     setBankInfo(account)
 
     if (account?.pix_key) {
-      const netValue = op.operation_calculations?.[0]?.net_value || op.face_value
+      const calc = calculateUpdatedValue(op)
       const txid = op.id.substring(0, 25).replace(/[^a-zA-Z0-9]/g, '')
       const payload = generatePixPayload(
         account.pix_key,
-        netValue,
+        calc.total,
         'Securitizadora',
         'Sao Paulo',
         txid,
@@ -166,7 +176,38 @@ export function BorrowerLiquidations() {
   const checkOverdue = (dueDate: string) => {
     const due = new Date(dueDate).getTime()
     const now = new Date().getTime()
-    return now - due > 7 * 24 * 60 * 60 * 1000 // 7 dias timeout
+    // Normal overdue check without grace period for UI badging (using 0 days to mark as overdue)
+    return now - due > 0
+  }
+
+  const calculateUpdatedValue = (op: any) => {
+    const baseValue = op.operation_calculations?.[0]?.net_value || op.face_value
+    const due = new Date(op.due_date).getTime()
+    const now = new Date().getTime()
+    const diffTime = now - due
+    const daysOverdue = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)))
+
+    const params = finParams[op.receivable_type] || finParams['global'] || {}
+    const gracePeriod = params.grace_period_days || 0
+    const penaltyRate = params.penalty_rate || 0
+    const defaultInterestRate = params.default_interest_rate || 0
+
+    let penalty = 0
+    let interest = 0
+
+    if (daysOverdue > gracePeriod) {
+      penalty = baseValue * (penaltyRate / 100)
+      interest = baseValue * (defaultInterestRate / 100 / 30) * daysOverdue
+    }
+
+    return {
+      baseValue,
+      penalty,
+      interest,
+      total: baseValue + penalty + interest,
+      daysOverdue,
+      isOverdue: daysOverdue > gracePeriod,
+    }
   }
 
   if (loading)
@@ -189,11 +230,13 @@ export function BorrowerLiquidations() {
   return (
     <div className="space-y-4">
       {operations.map((op) => {
+        const calc = calculateUpdatedValue(op)
         const isOverdue = checkOverdue(op.due_date)
+
         return (
           <Card
             key={op.id}
-            className={`overflow-hidden border-l-4 ${isOverdue ? 'border-l-destructive' : 'border-l-primary'}`}
+            className={`overflow-hidden border-l-4 ${calc.isOverdue ? 'border-l-destructive' : 'border-l-primary'}`}
           >
             <CardContent className="p-0">
               <div className="flex flex-col md:flex-row items-center justify-between p-6 gap-6">
@@ -202,7 +245,7 @@ export function BorrowerLiquidations() {
                     <h3 className="font-bold text-lg">
                       Cessão #{op.id.split('-')[0].toUpperCase()}
                     </h3>
-                    {op.status === 'aguardando_liquidacao' && (
+                    {op.status === 'aguardando_liquidacao' && !calc.isOverdue && (
                       <Badge variant="secondary">Aguardando Pagamento</Badge>
                     )}
                     {op.status === 'pagamento_recebido_pendente_analise' && (
@@ -211,23 +254,65 @@ export function BorrowerLiquidations() {
                     {op.status === 'pagamento_invalido' && (
                       <Badge variant="destructive">Pagamento Inválido</Badge>
                     )}
-                    {isOverdue && op.status === 'aguardando_liquidacao' && (
-                      <Badge variant="destructive">Atrasado (+7 dias)</Badge>
+                    {calc.isOverdue && op.status === 'aguardando_liquidacao' && (
+                      <Badge variant="destructive">Vencido ({calc.daysOverdue} dias)</Badge>
                     )}
                   </div>
-                  <div className="grid grid-cols-2 md:flex md:gap-8 text-sm text-muted-foreground">
+                  <div className="flex flex-wrap gap-4 md:gap-8 text-sm text-muted-foreground mt-2">
                     <div>
                       <span className="block text-xs">Vencimento</span>
-                      <strong className="text-foreground">
+                      <strong className={calc.isOverdue ? 'text-destructive' : 'text-foreground'}>
                         {new Date(op.due_date).toLocaleDateString('pt-BR')}
                       </strong>
                     </div>
                     <div>
-                      <span className="block text-xs">Valor Líquido</span>
-                      <strong className="text-foreground">
-                        {formatCurrency(op.operation_calculations?.[0]?.net_value || op.face_value)}
+                      <span className="block text-xs">Valor Original</span>
+                      <strong
+                        className={
+                          calc.isOverdue ? 'text-muted-foreground line-through' : 'text-foreground'
+                        }
+                      >
+                        {formatCurrency(calc.baseValue)}
                       </strong>
                     </div>
+                    {calc.isOverdue && (
+                      <div>
+                        <span className="block text-xs text-destructive font-bold flex items-center gap-1">
+                          Valor Atualizado
+                          <HoverCard>
+                            <HoverCardTrigger>
+                              <Info className="h-3 w-3 cursor-pointer" />
+                            </HoverCardTrigger>
+                            <HoverCardContent className="w-64 p-3 shadow-lg">
+                              <div className="space-y-2 text-xs">
+                                <p className="font-semibold border-b pb-1 mb-1">
+                                  Detalhamento dos Encargos
+                                </p>
+                                <div className="flex justify-between">
+                                  <span>Principal:</span>
+                                  <span>{formatCurrency(calc.baseValue)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Multa:</span>
+                                  <span>{formatCurrency(calc.penalty)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Juros Mora:</span>
+                                  <span>{formatCurrency(calc.interest)}</span>
+                                </div>
+                                <div className="flex justify-between font-bold border-t pt-1 mt-1 text-destructive">
+                                  <span>Total a Pagar:</span>
+                                  <span>{formatCurrency(calc.total)}</span>
+                                </div>
+                              </div>
+                            </HoverCardContent>
+                          </HoverCard>
+                        </span>
+                        <strong className="text-destructive text-base">
+                          {formatCurrency(calc.total)}
+                        </strong>
+                      </div>
+                    )}
                   </div>
                   {op.status === 'pagamento_invalido' && (
                     <p className="text-sm text-destructive flex items-center gap-1 mt-2">
@@ -270,12 +355,13 @@ export function BorrowerLiquidations() {
               <div className="bg-muted p-4 rounded-md text-center space-y-2">
                 <p className="text-sm text-muted-foreground">
                   Valor a pagar{' '}
-                  {checkOverdue(selectedOp.due_date) ? '(com juros e multa automáticos)' : ''}:
+                  {calculateUpdatedValue(selectedOp).isOverdue
+                    ? '(com juros e multa automáticos)'
+                    : ''}
+                  :
                 </p>
                 <p className="text-3xl font-bold text-emerald-600">
-                  {formatCurrency(
-                    selectedOp.operation_calculations?.[0]?.net_value || selectedOp.face_value,
-                  )}
+                  {formatCurrency(calculateUpdatedValue(selectedOp).total)}
                 </p>
               </div>
 
