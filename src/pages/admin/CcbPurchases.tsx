@@ -25,21 +25,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { supabase } from '@/lib/supabase/client'
+import { useAuth } from '@/hooks/use-auth'
 import { toast } from 'sonner'
-import { Plus } from 'lucide-react'
+import { Plus, Trash2, Edit, Upload, FileText } from 'lucide-react'
 
 export default function CcbPurchases() {
+  const { user } = useAuth()
   const [purchases, setPurchases] = useState<any[]>([])
   const [ccbs, setCcbs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   const [form, setForm] = useState({
     ccb_id: '',
     acquisition_value: '',
     boleto_count: '',
     boleto_unit_value: '',
+    created_at: '',
+    ccb_created_at: '',
   })
   const [boletos, setBoletos] = useState<any[]>([])
 
@@ -52,8 +58,7 @@ export default function CcbPurchases() {
     const { data: c } = await supabase
       .from('ccb_solicitacoes')
       .select('*, profiles(*)')
-      .in('status', ['aprovado', 'aprovada_bdigital', 'pendente'])
-
+      .in('status', ['aprovado', 'aprovada_bdigital', 'pendente', 'comprada_bdigital'])
     setPurchases(p || [])
     setCcbs(c || [])
     setLoading(false)
@@ -64,42 +69,42 @@ export default function CcbPurchases() {
   }, [])
 
   useEffect(() => {
-    const count = Number(form.boleto_count) || 0
-    const val = Number(form.boleto_unit_value) || 0
-    if (count > 0 && val > 0) {
-      const newBoletos = Array.from({ length: count }).map((_, i) => {
-        const d = new Date()
-        d.setMonth(d.getMonth() + i + 1)
-        return {
-          due_date: d.toISOString().split('T')[0],
-          unit_value: val,
-          status: 'Pendente',
-        }
-      })
-      setBoletos(newBoletos)
-    } else {
-      setBoletos([])
+    if (!editingId && open) {
+      const count = Number(form.boleto_count) || 0
+      const val = Number(form.boleto_unit_value) || 0
+      if (count > 0 && val > 0) {
+        setBoletos(
+          Array.from({ length: count }).map((_, i) => {
+            const d = new Date()
+            d.setMonth(d.getMonth() + i + 1)
+            return { due_date: d.toISOString().split('T')[0], unit_value: val, status: 'Pendente' }
+          }),
+        )
+      } else {
+        setBoletos([])
+      }
     }
-  }, [form.boleto_count, form.boleto_unit_value])
+  }, [form.boleto_count, form.boleto_unit_value, editingId, open])
 
   const calculateMetrics = () => {
     const acq = Number(form.acquisition_value) || 0
     const count = Number(form.boleto_count) || 0
     const val = Number(form.boleto_unit_value) || 0
     const total = count * val
-    const profit = total - acq
-    const tir = acq > 0 ? (profit / acq) * 100 : 0
-    const prov = total * 0.03 // 3% provision
-    return { acq, total, profit, tir, prov }
+    return {
+      acq,
+      total,
+      profit: total - acq,
+      tir: acq > 0 ? ((total - acq) / acq) * 100 : 0,
+      prov: total * 0.03,
+    }
   }
 
   const handleSubmit = async () => {
     if (!form.ccb_id || !form.acquisition_value || !form.boleto_count || !form.boleto_unit_value) {
       return toast.error('Preencha todos os campos')
     }
-
     const { acq, profit, tir, prov } = calculateMetrics()
-
     const payload = {
       ccb_id: form.ccb_id,
       acquisition_value: acq,
@@ -108,91 +113,168 @@ export default function CcbPurchases() {
       gross_profit: profit,
       tir_effective: tir,
       provision_amount: prov,
-      boletos: boletos,
+      boletos,
       status: 'Ativo',
+      ...(form.created_at && { created_at: new Date(form.created_at).toISOString() }),
     }
 
-    const { error } = await supabase.from('recebiveis_ccb').insert(payload)
-    if (error) {
-      return toast.error('Erro ao registrar compra: ' + error.message)
+    if (editingId) {
+      const { error } = await supabase.from('recebiveis_ccb').update(payload).eq('id', editingId)
+      if (error) return toast.error('Erro: ' + error.message)
+      await supabase
+        .from('audit_logs')
+        .insert({
+          entity_type: 'recebiveis_ccb',
+          entity_id: editingId,
+          action: 'admin_edited_purchase',
+          details: { admin: user?.id },
+        })
+      toast.success('Editado com sucesso!')
+    } else {
+      const { error } = await supabase.from('recebiveis_ccb').insert(payload)
+      if (error) return toast.error('Erro: ' + error.message)
+      await supabase
+        .from('ccb_solicitacoes')
+        .update({ status: 'comprada_bdigital' })
+        .eq('id', form.ccb_id)
+      toast.success('Compra registrada com sucesso!')
     }
 
-    // Vincula a operação - sem afetar finanças da CCB original
-    await supabase
-      .from('ccb_solicitacoes')
-      .update({ status: 'comprada_bdigital' })
-      .eq('id', form.ccb_id)
+    if (form.ccb_created_at && form.ccb_id) {
+      await supabase
+        .from('ccb_solicitacoes')
+        .update({ created_at: new Date(form.ccb_created_at).toISOString() })
+        .eq('id', form.ccb_id)
+    }
 
-    toast.success('Compra registrada com sucesso! Lançamentos contábeis gerados de forma autônoma.')
     setOpen(false)
     fetchPurchases()
   }
 
-  const metrics = calculateMetrics()
+  const handleDelete = async (id: string) => {
+    if (!confirm('Deseja realmente excluir esta operação? As parcelas sumirão para o cliente.'))
+      return
+    await supabase.from('recebiveis_ccb').delete().eq('id', id)
+    await supabase
+      .from('audit_logs')
+      .insert({
+        entity_type: 'recebiveis_ccb',
+        entity_id: id,
+        action: 'admin_deleted_purchase',
+        details: { admin: user?.id },
+      })
+    toast.success('Excluído')
+    fetchPurchases()
+  }
+
+  const openCreate = () => {
+    setEditingId(null)
+    setForm({
+      ccb_id: '',
+      acquisition_value: '',
+      boleto_count: '',
+      boleto_unit_value: '',
+      created_at: new Date().toISOString().substring(0, 10),
+      ccb_created_at: new Date().toISOString().substring(0, 10),
+    })
+    setBoletos([])
+    setOpen(true)
+  }
+
+  const openEdit = (p: any) => {
+    setEditingId(p.id)
+    setForm({
+      ccb_id: p.ccb_id,
+      acquisition_value: String(p.acquisition_value),
+      boleto_count: String(p.boleto_count),
+      boleto_unit_value: String(p.boleto_unit_value),
+      created_at: p.created_at ? new Date(p.created_at).toISOString().substring(0, 10) : '',
+      ccb_created_at: p.ccb_solicitacoes?.created_at
+        ? new Date(p.ccb_solicitacoes.created_at).toISOString().substring(0, 10)
+        : '',
+    })
+    setBoletos(p.boletos || [])
+    setOpen(true)
+  }
+
+  const handleBoletoChange = (idx: number, field: string, val: any) => {
+    const newB = [...boletos]
+    newB[idx] = { ...newB[idx], [field]: val }
+    setBoletos(newB)
+  }
+
+  const handleUploadBoleto = async (idx: number, e: any) => {
+    const file = e.target.files[0]
+    if (!file) return
+    const toastId = toast.loading('Enviando...')
+    const filePath = `boletos/${editingId || 'novo'}/${idx}_${Date.now()}.pdf`
+    const { error } = await supabase.storage.from('operation-docs').upload(filePath, file)
+    if (error) {
+      toast.dismiss(toastId)
+      return toast.error('Erro no upload')
+    }
+    const { data } = supabase.storage.from('operation-docs').getPublicUrl(filePath)
+    handleBoletoChange(idx, 'file_url', data.publicUrl)
+    toast.dismiss(toastId)
+    toast.success('Anexado!')
+  }
+
+  const m = calculateMetrics()
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto animate-fade-in-up pb-10">
+    <div className="space-y-6 max-w-6xl mx-auto pb-10">
       <div className="flex justify-between items-end">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Compras CCB BDIGITAL</h1>
           <p className="text-muted-foreground">
-            Gestão de aquisição de recebíveis pós-pagamento, com isolamento contábil e geração de
-            boletos.
+            Gestão de aquisição de recebíveis, com isolamento contábil e edição retroativa.
           </p>
         </div>
-        <Button onClick={() => setOpen(true)} className="gap-2">
+        <Button onClick={openCreate} className="gap-2">
           <Plus className="w-4 h-4" /> Registrar Compra
         </Button>
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Histórico de Compras (Recebíveis)</CardTitle>
-          <CardDescription>
-            Lançamentos contábeis autônomos com provisão de lucro integrada ao DRE.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Data Compra</TableHead>
+                <TableHead className="pl-4">Data Aquisição</TableHead>
                 <TableHead>Tomador</TableHead>
                 <TableHead>Boletos</TableHead>
-                <TableHead>Valor Aquisição</TableHead>
-                <TableHead>Valor Boletos</TableHead>
                 <TableHead>Lucro Bruto</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead className="text-right pr-4">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {purchases.map((p) => {
-                const totalBoletos = p.boleto_count * p.boleto_unit_value
-                return (
-                  <TableRow key={p.id}>
-                    <TableCell>{new Date(p.created_at).toLocaleDateString('pt-BR')}</TableCell>
-                    <TableCell className="font-medium">
-                      {p.ccb_solicitacoes?.profiles?.full_name || 'Desconhecido'}
-                    </TableCell>
-                    <TableCell>
-                      {p.boleto_count}x de R$ {p.boleto_unit_value}
-                    </TableCell>
-                    <TableCell>R$ {Number(p.acquisition_value).toLocaleString('pt-BR')}</TableCell>
-                    <TableCell>R$ {totalBoletos.toLocaleString('pt-BR')}</TableCell>
-                    <TableCell className="text-emerald-600 font-medium">
-                      + R$ {Number(p.gross_profit).toLocaleString('pt-BR')}
-                    </TableCell>
-                    <TableCell>
-                      <span className="bg-emerald-100 text-emerald-800 text-xs px-2 py-1 rounded font-medium">
-                        {p.status}
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
+              {purchases.map((p) => (
+                <TableRow key={p.id}>
+                  <TableCell className="pl-4">
+                    {new Date(p.created_at).toLocaleDateString('pt-BR')}
+                  </TableCell>
+                  <TableCell className="font-medium">
+                    {p.ccb_solicitacoes?.profiles?.full_name || 'Desconhecido'}
+                  </TableCell>
+                  <TableCell>
+                    {p.boleto_count}x R$ {p.boleto_unit_value}
+                  </TableCell>
+                  <TableCell className="text-emerald-600 font-medium">
+                    + R$ {Number(p.gross_profit).toLocaleString('pt-BR')}
+                  </TableCell>
+                  <TableCell className="text-right pr-4 space-x-2">
+                    <Button variant="outline" size="icon" onClick={() => openEdit(p)}>
+                      <Edit className="w-4 h-4" />
+                    </Button>
+                    <Button variant="destructive" size="icon" onClick={() => handleDelete(p.id)}>
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
               {purchases.length === 0 && !loading && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                     Nenhuma compra registrada.
                   </TableCell>
                 </TableRow>
@@ -203,105 +285,146 @@ export default function CcbPurchases() {
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Registrar Compra de Recebíveis (CCB BDIGITAL)</DialogTitle>
+            <DialogTitle>
+              {editingId ? 'Editar Compra e Parcelas' : 'Registrar Compra de Recebíveis'}
+            </DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-1 gap-2">
-              <Label>Simulação CCB (Lookup)</Label>
-              <Select value={form.ccb_id} onValueChange={(v) => setForm({ ...form, ccb_id: v })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a operação pré-aprovada..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {ccbs.length === 0 && (
-                    <SelectItem value="none" disabled>
-                      Nenhuma CCB pendente.
-                    </SelectItem>
-                  )}
-                  {ccbs.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.profiles?.full_name} - Solicitado: R$ {c.requested_value}
-                    </SelectItem>
+          <Tabs defaultValue="dados" className="mt-2">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="dados">Dados Operacionais</TabsTrigger>
+              <TabsTrigger value="cronograma">Cronograma & Docs</TabsTrigger>
+            </TabsList>
+            <TabsContent value="dados" className="space-y-4 pt-4">
+              <div className="space-y-2">
+                <Label>Simulação CCB (Lookup)</Label>
+                <Select
+                  value={form.ccb_id}
+                  onValueChange={(v) => setForm({ ...form, ccb_id: v })}
+                  disabled={!!editingId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a operação..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ccbs.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.profiles?.full_name} - R$ {c.requested_value}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Data Aquisição</Label>
+                  <Input
+                    type="date"
+                    value={form.created_at}
+                    onChange={(e) => setForm({ ...form, created_at: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Data Emissão CCB</Label>
+                  <Input
+                    type="date"
+                    value={form.ccb_created_at}
+                    onChange={(e) => setForm({ ...form, ccb_created_at: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Valor Aquisição (R$)</Label>
+                  <Input
+                    type="number"
+                    value={form.acquisition_value}
+                    onChange={(e) => setForm({ ...form, acquisition_value: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Qtd. Boletos</Label>
+                  <Input
+                    type="number"
+                    value={form.boleto_count}
+                    onChange={(e) => setForm({ ...form, boleto_count: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Valor Unit. Boleto</Label>
+                  <Input
+                    type="number"
+                    value={form.boleto_unit_value}
+                    onChange={(e) => setForm({ ...form, boleto_unit_value: e.target.value })}
+                  />
+                </div>
+              </div>
+            </TabsContent>
+            <TabsContent value="cronograma" className="pt-4 max-h-[50vh] overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>#</TableHead>
+                    <TableHead>Vencimento</TableHead>
+                    <TableHead>Valor</TableHead>
+                    <TableHead>Documento</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {boletos.map((b, i) => (
+                    <TableRow key={i}>
+                      <TableCell>{i + 1}</TableCell>
+                      <TableCell>
+                        <Input
+                          type="date"
+                          value={b.due_date}
+                          onChange={(e) => handleBoletoChange(i, 'due_date', e.target.value)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          value={b.unit_value}
+                          onChange={(e) =>
+                            handleBoletoChange(i, 'unit_value', Number(e.target.value))
+                          }
+                          className="w-24"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {b.file_url ? (
+                            <a
+                              href={b.file_url}
+                              target="_blank"
+                              className="text-primary hover:underline text-xs flex items-center"
+                            >
+                              <FileText className="w-3 h-3 mr-1" /> Ver PDF
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">Sem anexo</span>
+                          )}
+                          <Label className="cursor-pointer bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2 py-1 rounded text-xs whitespace-nowrap">
+                            <Upload className="w-3 h-3 inline mr-1" /> Enviar
+                            <Input
+                              type="file"
+                              className="hidden"
+                              accept=".pdf"
+                              onChange={(e) => handleUploadBoleto(i, e)}
+                            />
+                          </Label>
+                        </div>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label>Valor de Aquisição (R$)</Label>
-                <Input
-                  type="number"
-                  value={form.acquisition_value}
-                  onChange={(e) => setForm({ ...form, acquisition_value: e.target.value })}
-                  placeholder="Ex: 90000"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Qtd. Boletos</Label>
-                <Input
-                  type="number"
-                  value={form.boleto_count}
-                  onChange={(e) => setForm({ ...form, boleto_count: e.target.value })}
-                  placeholder="Ex: 12"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Valor Unit. Boleto (R$)</Label>
-                <Input
-                  type="number"
-                  value={form.boleto_unit_value}
-                  onChange={(e) => setForm({ ...form, boleto_unit_value: e.target.value })}
-                  placeholder="Ex: 8500"
-                />
-              </div>
-            </div>
-
-            {boletos.length > 0 && (
-              <div className="bg-muted/30 p-4 rounded-md border mt-2 grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-muted-foreground">Valor Total dos Boletos</p>
-                  <p className="font-semibold text-lg">
-                    R$ {metrics.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Lucro Bruto Projetado</p>
-                  <p className="font-semibold text-lg text-emerald-600">
-                    + R$ {metrics.profit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">TIR Efetiva (Aprox.)</p>
-                  <p className="font-semibold">{metrics.tir.toFixed(2)}%</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Provisão Inadimplência (3%)</p>
-                  <p className="font-semibold text-rose-600">
-                    - R$ {metrics.prov.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-4 mt-2">
-              <div className="space-y-2">
-                <Label>Comprovante Pgto. BDIGITAL</Label>
-                <Input type="file" />
-              </div>
-              <div className="space-y-2">
-                <Label>Planilha/PDF de Boletos</Label>
-                <Input type="file" />
-              </div>
-            </div>
-          </div>
+                </TableBody>
+              </Table>
+            </TabsContent>
+          </Tabs>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleSubmit}>Confirmar e Contabilizar</Button>
+            <Button onClick={handleSubmit}>Salvar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

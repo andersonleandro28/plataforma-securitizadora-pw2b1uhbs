@@ -11,7 +11,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
-import { Receipt, AlertCircle } from 'lucide-react'
+import { Receipt, AlertCircle, Download } from 'lucide-react'
 
 export default function MyCcbInstallments() {
   const { user } = useAuth()
@@ -19,8 +19,18 @@ export default function MyCcbInstallments() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (user) {
-      fetchInstallments()
+    if (!user) return
+    fetchInstallments()
+
+    const channel = supabase
+      .channel('recebiveis_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'recebiveis_ccb' }, () => {
+        fetchInstallments() // Auto refresh on changes
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
     }
   }, [user])
 
@@ -34,6 +44,8 @@ export default function MyCcbInstallments() {
       const ccbIds = ccbs.map((c) => c.id)
       const { data: p } = await supabase.from('recebiveis_ccb').select('*').in('ccb_id', ccbIds)
       setPurchases(p || [])
+    } else {
+      setPurchases([])
     }
     setLoading(false)
   }
@@ -43,11 +55,11 @@ export default function MyCcbInstallments() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Minhas Parcelas CCB</h1>
         <p className="text-muted-foreground">
-          Acompanhe os boletos e vencimentos das suas operações de crédito já liquidadas.
+          Acompanhe seus vencimentos e baixe os boletos atualizados em tempo real.
         </p>
       </div>
 
-      {loading ? (
+      {loading && purchases.length === 0 ? (
         <div className="h-40 flex items-center justify-center">Carregando parcelas...</div>
       ) : purchases.length === 0 ? (
         <Card className="bg-muted/20 border-dashed">
@@ -71,7 +83,7 @@ export default function MyCcbInstallments() {
                   </span>
                 </CardTitle>
                 <CardDescription>
-                  Emissão registrada em {new Date(p.created_at).toLocaleDateString('pt-BR')}
+                  Emitido em {new Date(p.created_at).toLocaleDateString('pt-BR')}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -82,7 +94,7 @@ export default function MyCcbInstallments() {
                       <TableHead>Vencimento</TableHead>
                       <TableHead>Valor</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Pagamento</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -94,7 +106,7 @@ export default function MyCcbInstallments() {
                             {idx + 1} de {p.boleto_count}
                           </TableCell>
                           <TableCell className={isOverdue ? 'text-rose-600 font-medium' : ''}>
-                            {new Date(b.due_date).toLocaleDateString('pt-BR')}
+                            {new Date(b.due_date).toLocaleDateString('pt-BR')}{' '}
                             {isOverdue && ' (Vencido)'}
                           </TableCell>
                           <TableCell>
@@ -105,26 +117,32 @@ export default function MyCcbInstallments() {
                           </TableCell>
                           <TableCell>
                             <span
-                              className={`px-2 py-1 rounded text-xs font-medium ${
-                                b.status === 'Pago'
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : isOverdue
-                                    ? 'bg-rose-100 text-rose-800'
-                                    : 'bg-amber-100 text-amber-800'
-                              }`}
+                              className={`px-2 py-1 rounded text-xs font-medium ${b.status === 'Pago' ? 'bg-emerald-100 text-emerald-800' : isOverdue ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'}`}
                             >
                               {isOverdue ? 'Vencido' : b.status || 'Pendente'}
                             </span>
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="gap-2"
-                              disabled={b.status === 'Pago'}
-                            >
-                              <Receipt className="w-4 h-4" /> Copiar Código
-                            </Button>
+                            <div className="flex justify-end gap-2">
+                              {b.file_url && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="gap-2"
+                                  onClick={() => window.open(b.file_url, '_blank')}
+                                >
+                                  <Download className="w-4 h-4" /> Boleto
+                                </Button>
+                              )}
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                className="gap-2"
+                                disabled={b.status === 'Pago'}
+                              >
+                                <Receipt className="w-4 h-4" /> Código PIX
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       )
