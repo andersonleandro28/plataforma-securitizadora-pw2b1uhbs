@@ -28,12 +28,23 @@ import {
 } from '@/components/ui/select'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { Loader2, Plus, Receipt, Users, FileUp, CheckCircle } from 'lucide-react'
+import {
+  Loader2,
+  Plus,
+  Receipt,
+  Users,
+  FileUp,
+  CheckCircle,
+  Pencil,
+  Trash2,
+  AlertTriangle,
+} from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 
 export default function Expenses() {
   const { activeRole } = useAuth()
   const isReadOnly = activeRole === 'accountant'
+  const isAdmin = activeRole === 'admin'
 
   const [loading, setLoading] = useState(true)
   const [suppliers, setSuppliers] = useState<any[]>([])
@@ -41,6 +52,8 @@ export default function Expenses() {
 
   const [supplierOpen, setSupplierOpen] = useState(false)
   const [expenseOpen, setExpenseOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [expenseToDelete, setExpenseToDelete] = useState<any>(null)
   const [saving, setSaving] = useState(false)
 
   const [supForm, setSupForm] = useState({
@@ -52,11 +65,13 @@ export default function Expenses() {
     category: '',
   })
   const [expForm, setExpForm] = useState({
+    id: '',
     supplier_id: '',
     description: '',
     category: '',
     amount: '',
     due_date: '',
+    payment_date: '',
     status: 'pending',
   })
   const [file, setFile] = useState<File | null>(null)
@@ -91,6 +106,56 @@ export default function Expenses() {
     setSaving(false)
   }
 
+  const handleNewExpense = () => {
+    setExpForm({
+      id: '',
+      supplier_id: '',
+      description: '',
+      category: '',
+      amount: '',
+      due_date: '',
+      payment_date: '',
+      status: 'pending',
+    })
+    setFile(null)
+    setExpenseOpen(true)
+  }
+
+  const handleEditExpense = (e: any) => {
+    if (isReadOnly) return
+    setExpForm({
+      id: e.id,
+      supplier_id: e.supplier_id || '',
+      description: e.description || '',
+      category: e.category || '',
+      amount: e.amount?.toString() || '',
+      due_date: e.due_date || '',
+      payment_date: e.payment_date || '',
+      status: e.status || 'pending',
+    })
+    setFile(null)
+    setExpenseOpen(true)
+  }
+
+  const confirmDelete = (expense: any) => {
+    setExpenseToDelete(expense)
+    setDeleteOpen(true)
+  }
+
+  const handleDeleteExpense = async () => {
+    if (!expenseToDelete) return
+    setSaving(true)
+    const { error } = await supabase.from('expenses').delete().eq('id', expenseToDelete.id)
+    if (error) toast.error(error.message)
+    else {
+      toast.success('Despesa excluída com sucesso.')
+      setDeleteOpen(false)
+      setExpenseToDelete(null)
+      fetchData()
+    }
+    setSaving(false)
+  }
+
   const handleSaveExpense = async () => {
     setSaving(true)
     let filePath = null
@@ -109,18 +174,41 @@ export default function Expenses() {
       filePath = data.path
     }
 
-    const payload = {
-      ...expForm,
+    const payload: any = {
+      supplier_id: expForm.supplier_id,
+      description: expForm.description,
+      category: expForm.category,
       amount: Number(expForm.amount),
-      invoice_file_path: filePath,
+      due_date: expForm.due_date,
+      status: expForm.status,
     }
 
-    const { error } = await supabase.from('expenses').insert(payload)
-    if (error) toast.error(error.message)
-    else {
-      toast.success('Despesa cadastrada.')
-      setExpenseOpen(false)
-      fetchData()
+    if (expForm.status === 'paid') {
+      payload.payment_date = expForm.payment_date || new Date().toISOString().split('T')[0]
+    } else {
+      payload.payment_date = null
+    }
+
+    if (filePath) {
+      payload.invoice_file_path = filePath
+    }
+
+    if (expForm.id) {
+      const { error } = await supabase.from('expenses').update(payload).eq('id', expForm.id)
+      if (error) toast.error(error.message)
+      else {
+        toast.success('Despesa atualizada com sucesso.')
+        setExpenseOpen(false)
+        fetchData()
+      }
+    } else {
+      const { error } = await supabase.from('expenses').insert(payload)
+      if (error) toast.error(error.message)
+      else {
+        toast.success('Despesa cadastrada com sucesso.')
+        setExpenseOpen(false)
+        fetchData()
+      }
     }
     setSaving(false)
   }
@@ -169,7 +257,7 @@ export default function Expenses() {
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Lançamentos (Contas a Pagar)</CardTitle>
               {!isReadOnly && (
-                <Button onClick={() => setExpenseOpen(true)}>
+                <Button onClick={handleNewExpense}>
                   <Plus className="w-4 h-4 mr-2" /> Nova Despesa
                 </Button>
               )}
@@ -184,7 +272,7 @@ export default function Expenses() {
                     <TableHead>Vencimento</TableHead>
                     <TableHead>Valor</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead></TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -193,8 +281,12 @@ export default function Expenses() {
                       <TableCell className="font-medium">{e.description}</TableCell>
                       <TableCell>{e.suppliers?.company_name}</TableCell>
                       <TableCell>{e.category}</TableCell>
-                      <TableCell>{new Date(e.due_date).toLocaleDateString('pt-BR')}</TableCell>
-                      <TableCell>R$ {Number(e.amount).toLocaleString('pt-BR')}</TableCell>
+                      <TableCell>
+                        {new Date(e.due_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
+                      </TableCell>
+                      <TableCell>
+                        R$ {Number(e.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </TableCell>
                       <TableCell>
                         <span
                           className={`px-2 py-1 rounded text-xs ${e.status === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}
@@ -203,36 +295,63 @@ export default function Expenses() {
                         </span>
                       </TableCell>
                       <TableCell className="text-right">
-                        {e.status === 'pending' && !isReadOnly && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleMarkPaid(e.id)}
-                            className="text-emerald-600"
-                          >
-                            <CheckCircle className="w-4 h-4 mr-2" /> Baixar
-                          </Button>
-                        )}
-                        {e.invoice_file_path && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              window.open(
-                                `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/operation-docs/${e.invoice_file_path}`,
-                                '_blank',
-                              )
-                            }
-                          >
-                            <FileUp className="w-4 h-4" />
-                          </Button>
-                        )}
+                        <div className="flex justify-end gap-1">
+                          {e.status === 'pending' && !isReadOnly && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleMarkPaid(e.id)}
+                              className="text-emerald-600 px-2"
+                              title="Baixar"
+                            >
+                              <CheckCircle className="w-4 h-4" />
+                            </Button>
+                          )}
+                          {e.invoice_file_path && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                window.open(
+                                  `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/operation-docs/${e.invoice_file_path}`,
+                                  '_blank',
+                                )
+                              }
+                              className="px-2"
+                              title="Ver Anexo"
+                            >
+                              <FileUp className="w-4 h-4" />
+                            </Button>
+                          )}
+                          {!isReadOnly && (isAdmin || e.status === 'pending') && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleEditExpense(e)}
+                                className="px-2 text-blue-600 hover:text-blue-700"
+                                title="Editar"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => confirmDelete(e)}
+                                className="px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                title="Excluir"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
                   {expenses.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground">
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                         Nenhuma despesa lançada.
                       </TableCell>
                     </TableRow>
@@ -276,7 +395,7 @@ export default function Expenses() {
                   ))}
                   {suppliers.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground">
+                      <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                         Nenhum fornecedor cadastrado.
                       </TableCell>
                     </TableRow>
@@ -344,12 +463,15 @@ export default function Expenses() {
       <Dialog open={expenseOpen} onOpenChange={setExpenseOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Lançar Despesa / NF</DialogTitle>
+            <DialogTitle>{expForm.id ? 'Editar Despesa' : 'Lançar Despesa / NF'}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
               <Label>Fornecedor</Label>
-              <Select onValueChange={(v) => setExpForm({ ...expForm, supplier_id: v })}>
+              <Select
+                value={expForm.supplier_id}
+                onValueChange={(v) => setExpForm({ ...expForm, supplier_id: v })}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione o fornecedor" />
                 </SelectTrigger>
@@ -412,14 +534,74 @@ export default function Expenses() {
                 </Select>
               </div>
             </div>
+            {expForm.status === 'paid' && (
+              <div className="space-y-2 animate-fade-in">
+                <Label>Data de Pagamento</Label>
+                <Input
+                  type="date"
+                  value={expForm.payment_date}
+                  onChange={(e) => setExpForm({ ...expForm, payment_date: e.target.value })}
+                  required
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Anexar Nota Fiscal (PDF/XML)</Label>
               <Input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
             </div>
           </div>
           <DialogFooter>
-            <Button onClick={handleSaveExpense} disabled={saving || !expForm.supplier_id}>
+            <Button
+              onClick={handleSaveExpense}
+              disabled={saving || !expForm.supplier_id || !expForm.amount || !expForm.due_date}
+            >
               {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Salvar Despesa
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Excluir Despesa</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p>
+              Tem certeza que deseja excluir a despesa{' '}
+              <strong>{expenseToDelete?.description}</strong>?
+            </p>
+            {expenseToDelete?.status === 'paid' ? (
+              <div className="mt-4 p-3 bg-amber-50 text-amber-900 border border-amber-200 rounded-md flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-semibold mb-1">Impacto na Tesouraria</p>
+                  <p>
+                    Esta despesa já está paga. A exclusão removerá o lançamento correspondente na
+                    Tesouraria (via estorno automático),{' '}
+                    <strong>
+                      aumentando o saldo atual em R${' '}
+                      {Number(expenseToDelete?.amount).toLocaleString('pt-BR', {
+                        minimumFractionDigits: 2,
+                      })}
+                    </strong>
+                    .
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 text-sm text-muted-foreground">
+                Esta despesa está pendente. Não haverá impacto no saldo da tesouraria.
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteExpense} disabled={saving}>
+              {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Confirmar Exclusão
             </Button>
           </DialogFooter>
         </DialogContent>
