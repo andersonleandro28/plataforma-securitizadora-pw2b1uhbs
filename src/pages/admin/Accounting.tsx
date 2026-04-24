@@ -41,16 +41,24 @@ export default function Accounting() {
     try {
       setLoading(true)
 
-      const { data: operations } = await supabase
-        .from('credit_operations')
-        .select(
-          'id, face_value, requested_value, status, operation_calculations(iof_fixed_value, iof_daily_value, total_discounts)',
-        )
-        .in('status', ['liquidado', 'pago', 'aprovado'])
-
-      const { data: expenses } = await supabase.from('expenses').select('*').eq('status', 'paid')
-      const { data: recebiveis } = await supabase.from('recebiveis_ccb').select('*')
-      const { data: debentures } = await supabase.from('debentures').select('*')
+      const [
+        { data: operations },
+        { data: expenses },
+        { data: recebiveis },
+        { data: debentures },
+        { data: manuals },
+      ] = await Promise.all([
+        supabase
+          .from('credit_operations')
+          .select(
+            'id, face_value, requested_value, status, operation_calculations(iof_fixed_value, iof_daily_value, total_discounts)',
+          )
+          .in('status', ['liquidado', 'pago', 'aprovado']),
+        supabase.from('expenses').select('*').eq('status', 'paid'),
+        supabase.from('recebiveis_ccb').select('*'),
+        supabase.from('debentures').select('*'),
+        supabase.from('treasury_transactions').select('*'),
+      ])
 
       let receitas = 0
       let receitasRecebiveis = 0
@@ -91,14 +99,32 @@ export default function Accounting() {
         despesasPorCategoria[exp.category] = (despesasPorCategoria[exp.category] || 0) + val
       })
 
+      const manualReceitasMap: Record<string, number> = {}
+      manuals?.forEach((m) => {
+        const val = Number(m.amount)
+        if (m.type === 'in') {
+          receitas += val
+          manualReceitasMap[m.category] = (manualReceitasMap[m.category] || 0) + val
+        } else {
+          despesas += val
+          despesasPorCategoria[m.category] = (despesasPorCategoria[m.category] || 0) + val
+        }
+      })
+
       const lucroLiquido = receitas - despesas
 
       const dre = [
         {
-          label: 'Receita Bruta (Deságio + Taxas)',
-          value: receitas + impostosIOF,
+          label: 'Receita Bruta Operacional (Deságio + Taxas)',
+          value:
+            receitas - Object.values(manualReceitasMap).reduce((a, b) => a + b, 0) + impostosIOF,
           type: 'receita',
         },
+        ...Object.entries(manualReceitasMap).map(([cat, val]) => ({
+          label: `(+) Receita Manual: ${cat}`,
+          value: val,
+          type: 'receita',
+        })),
         { label: '(-) Impostos Diretos (IOF Retido)', value: -impostosIOF, type: 'imposto' },
         {
           label: '(+) Receita Bruta Recebíveis CCB (Projetada)',
