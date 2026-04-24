@@ -121,14 +121,12 @@ export default function CcbPurchases() {
     if (editingId) {
       const { error } = await supabase.from('recebiveis_ccb').update(payload).eq('id', editingId)
       if (error) return toast.error('Erro: ' + error.message)
-      await supabase
-        .from('audit_logs')
-        .insert({
-          entity_type: 'recebiveis_ccb',
-          entity_id: editingId,
-          action: 'admin_edited_purchase',
-          details: { admin: user?.id },
-        })
+      await supabase.from('audit_logs').insert({
+        entity_type: 'recebiveis_ccb',
+        entity_id: editingId,
+        action: 'admin_edited_purchase',
+        details: { admin: user?.id },
+      })
       toast.success('Editado com sucesso!')
     } else {
       const { error } = await supabase.from('recebiveis_ccb').insert(payload)
@@ -155,14 +153,12 @@ export default function CcbPurchases() {
     if (!confirm('Deseja realmente excluir esta operação? As parcelas sumirão para o cliente.'))
       return
     await supabase.from('recebiveis_ccb').delete().eq('id', id)
-    await supabase
-      .from('audit_logs')
-      .insert({
-        entity_type: 'recebiveis_ccb',
-        entity_id: id,
-        action: 'admin_deleted_purchase',
-        details: { admin: user?.id },
-      })
+    await supabase.from('audit_logs').insert({
+      entity_type: 'recebiveis_ccb',
+      entity_id: id,
+      action: 'admin_deleted_purchase',
+      details: { admin: user?.id },
+    })
     toast.success('Excluído')
     fetchPurchases()
   }
@@ -208,15 +204,32 @@ export default function CcbPurchases() {
     if (!file) return
     const toastId = toast.loading('Enviando...')
     const filePath = `boletos/${editingId || 'novo'}/${idx}_${Date.now()}.pdf`
-    const { error } = await supabase.storage.from('operation-docs').upload(filePath, file)
+    // Upload para o bucket correto: boletos_ccb
+    const { error } = await supabase.storage
+      .from('boletos_ccb')
+      .upload(filePath, file, { upsert: true })
     if (error) {
       toast.dismiss(toastId)
-      return toast.error('Erro no upload')
+      return toast.error(`Erro no upload: ${error.message}`)
     }
-    const { data } = supabase.storage.from('operation-docs').getPublicUrl(filePath)
+    const { data } = supabase.storage.from('boletos_ccb').getPublicUrl(filePath)
     handleBoletoChange(idx, 'file_url', data.publicUrl)
     toast.dismiss(toastId)
-    toast.success('Anexado!')
+    toast.success('Anexado com sucesso!')
+  }
+
+  const handleViewPdf = async (url: string, e: any) => {
+    e.preventDefault()
+    try {
+      const res = await fetch(url, { method: 'HEAD' })
+      if (!res.ok) {
+        toast.error('Documento não encontrado (Bucket ou Arquivo inexistente).')
+        return
+      }
+      window.open(url, '_blank')
+    } catch (err) {
+      window.open(url, '_blank')
+    }
   }
 
   const m = calculateMetrics()
@@ -395,8 +408,8 @@ export default function CcbPurchases() {
                           {b.file_url ? (
                             <a
                               href={b.file_url}
-                              target="_blank"
-                              className="text-primary hover:underline text-xs flex items-center"
+                              onClick={(e) => handleViewPdf(b.file_url, e)}
+                              className="text-primary hover:underline text-xs flex items-center cursor-pointer"
                             >
                               <FileText className="w-3 h-3 mr-1" /> Ver PDF
                             </a>

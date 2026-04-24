@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { Receipt, AlertCircle, Download } from 'lucide-react'
+import { toast } from 'sonner'
 
 export default function MyCcbInstallments() {
   const { user } = useAuth()
@@ -33,6 +34,19 @@ export default function MyCcbInstallments() {
       supabase.removeChannel(channel)
     }
   }, [user])
+
+  const handleViewPdf = async (url: string) => {
+    try {
+      const res = await fetch(url, { method: 'HEAD' })
+      if (!res.ok) {
+        toast.error('O documento não foi encontrado no servidor (Bucket/Arquivo inexistente).')
+        return
+      }
+      window.open(url, '_blank')
+    } catch (err) {
+      window.open(url, '_blank') // Fallback if CORS prevents HEAD
+    }
+  }
 
   const fetchInstallments = async () => {
     setLoading(true)
@@ -129,7 +143,7 @@ export default function MyCcbInstallments() {
                                   variant="outline"
                                   size="sm"
                                   className="gap-2"
-                                  onClick={() => window.open(b.file_url, '_blank')}
+                                  onClick={() => handleViewPdf(b.file_url)}
                                 >
                                   <Download className="w-4 h-4" /> Boleto
                                 </Button>
