@@ -75,24 +75,19 @@ export default function Treasury() {
   const fetchTransactions = async () => {
     setLoading(true)
     try {
-      const [{ data: invs }, { data: ops }, { data: exps }, { data: manuals }, { data: reds }] =
-        await Promise.all([
-          supabase.from('investments').select('id, total_value, transfer_date, created_at, status'),
-          supabase
-            .from('credit_operations')
-            .select(
-              'id, requested_value, liquidation_value, issue_date, liquidation_date, status, sacado',
-            ),
-          supabase
-            .from('expenses')
-            .select('id, amount, payment_date, created_at, description, category')
-            .eq('status', 'paid'),
-          supabase.from('treasury_transactions').select('*'),
-          supabase
-            .from('investment_redemptions')
-            .select('id, net_value, updated_at, status')
-            .eq('status', 'paid'),
-        ])
+      const [{ data: invs }, { data: ops }, { data: manuals }, { data: reds }] = await Promise.all([
+        supabase.from('investments').select('id, total_value, transfer_date, created_at, status'),
+        supabase
+          .from('credit_operations')
+          .select(
+            'id, requested_value, liquidation_value, issue_date, liquidation_date, status, sacado',
+          ),
+        supabase.from('treasury_transactions').select('*'),
+        supabase
+          .from('investment_redemptions')
+          .select('id, net_value, updated_at, status')
+          .eq('status', 'paid'),
+      ])
 
       const allTx: any[] = []
 
@@ -142,17 +137,6 @@ export default function Treasury() {
             is_escrow: true,
           })
       })
-      exps?.forEach((e) =>
-        allTx.push({
-          id: `exp-${e.id}`,
-          date: e.payment_date || e.created_at?.split('T')[0],
-          description: e.description,
-          category: e.category || 'OpEx',
-          type: 'out',
-          amount: Number(e.amount),
-          is_escrow: false,
-        }),
-      )
       manuals?.forEach((m) =>
         allTx.push({
           id: `man-${m.id}`,
