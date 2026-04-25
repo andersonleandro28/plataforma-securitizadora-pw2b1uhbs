@@ -45,14 +45,12 @@ Deno.serve(async (req: Request) => {
           aud: authServer,
           iat: now,
           exp: now + 3600,
-          scope: 'signature impersonation',
+          scope: 'signature impersonation'
         })
         const claimB64 = base64urlEncode(new TextEncoder().encode(claimStr))
 
         // 2. Parse Private Key (PEM to DER format for Deno Crypto)
-        const pemContents = privateKeyPem
-          .replace(/-----(BEGIN|END) (RSA )?PRIVATE KEY-----/g, '')
-          .replace(/\s+/g, '')
+        const pemContents = privateKeyPem.replace(/-----(BEGIN|END) (RSA )?PRIVATE KEY-----/g, '').replace(/\s+/g, '')
         const binaryDerString = atob(pemContents)
         const binaryDer = new Uint8Array(binaryDerString.length)
         for (let i = 0; i < binaryDerString.length; i++) {
@@ -64,18 +62,14 @@ Deno.serve(async (req: Request) => {
           binaryDer.buffer,
           { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
           false,
-          ['sign'],
+          ['sign']
         )
 
         // 3. Sign the JWT Payload
         const payloadStr = `${headerB64}.${claimB64}`
         const payloadBytes = new TextEncoder().encode(payloadStr)
-        const signatureBytes = await crypto.subtle.sign(
-          'RSASSA-PKCS1-v1_5',
-          cryptoKey,
-          payloadBytes,
-        )
-
+        const signatureBytes = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', cryptoKey, payloadBytes)
+        
         const signatureB64 = base64urlEncode(signatureBytes)
         const jwt = `${payloadStr}.${signatureB64}`
 
@@ -83,7 +77,7 @@ Deno.serve(async (req: Request) => {
         const tokenResp = await fetch(`https://${authServer}/oauth/token`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
+          body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`
         })
         const tokenData = await tokenResp.json()
         if (!tokenResp.ok) throw new Error(`DocuSign Auth Error: ${JSON.stringify(tokenData)}`)
@@ -92,109 +86,88 @@ Deno.serve(async (req: Request) => {
         // 5. Create Envelope with Embedded Signing
         const envelopeResp = await fetch(`${baseUrl}accounts/${accountId}/envelopes`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+          headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            emailSubject:
-              type === 'kyc'
-                ? 'Assine seu KYC - Plataforma Securitizadora'
-                : 'Assine seu Aditivo - Plataforma Securitizadora',
-            documents: [
-              {
-                name: type === 'kyc' ? 'KYC.pdf' : 'Aditivo.pdf',
-                fileExtension: 'pdf',
-                documentId: '1',
-                // Basic empty PDF as fallback payload
-                documentBase64:
-                  'JVBERi0xLjcKJeLjz9MKMSAwIG9iaiA8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFI+PiBlbmRvYmoKMiAwIG9iaiA8PC9UeXBlL1BhZ2VzL0NvdW50IDEvS2lkc1szIDAgUl0+PiBlbmRvYmoKMyAwIG9iaiA8PC9UeXBlL1BhZ2UvUGFyZW50IDIgMCBSL01lZGlhQm94WzAgMCA1OTUuMjggODQxLjg5XS9SZXNvdXJjZXM8PC9Gb250PDwvRjEgNCAwIFI+Pj4+L0NvbnRlbnRzIDUgMCBSPj4gZW5kb2JqCjQgMCBvYmogPDwvVHlwZS9Gb250L1N1YnR5cGUvVHlwZTEvQmFzZUZvbnQvSGVsdmV0aWNhPj4gZW5kb2JqCjUgMCBvYmogPDwvTGVuZ3RoIDQ0Pj5zdHJlYW0KQlQKMCAwIDAgcmcKL0YxIDI0IFRmCjUwIDc1MCBUZAooRG9jdW1lbnRvIGRlIHRlc3RlKSBUagpFVAplbmRzdHJlYW0gZW5kb2JqCnhyZWYKMCA2CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAxNSAwMDAwMCBuIAowMDAwMDAwMDYwIDAwMDAwIG4gCjAwMDAwMDAxMTcgMDAwMDAgbiAKMDAwMDAwMDIxNSAwMDAwMCBuIAowMDAwMDAwMzA0IDAwMDAwIG4gCnRyYWlsZXIgPDwvU2l6ZSA2L1Jvb3QgMSAwIFI+PgpzdGFydHhyZWYKMzk3CiUlRU9G',
-              },
-            ],
-            recipients: {
-              signers: [
-                {
-                  email: signerEmail,
-                  name: signerName,
-                  recipientId: '1',
-                  clientUserId: id || '1000', // Required for Embedded Signing
-                  userId: '1000',
-                  routingOrder: '1',
-                  tabs: {
-                    signHereTabs: [
-                      { anchorString: 'Assinatura', documentId: '1', pageNumber: '1' },
-                    ],
-                  },
-                },
-              ],
+            emailSubject: type === 'kyc' ? 'Assine seu KYC - Plataforma Securitizadora' : 'Assine seu Aditivo - Plataforma Securitizadora',
+            documents: [{ 
+              name: type === 'kyc' ? 'KYC.pdf' : 'Aditivo.pdf', 
+              fileExtension: 'pdf', 
+              documentId: '1',
+              // Basic empty PDF as fallback payload
+              documentBase64: 'JVBERi0xLjcKJeLjz9MKMSAwIG9iaiA8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFI+PiBlbmRvYmoKMiAwIG9iaiA8PC9UeXBlL1BhZ2VzL0NvdW50IDEvS2lkc1szIDAgUl0+PiBlbmRvYmoKMyAwIG9iaiA8PC9UeXBlL1BhZ2UvUGFyZW50IDIgMCBSL01lZGlhQm94WzAgMCA1OTUuMjggODQxLjg5XS9SZXNvdXJjZXM8PC9Gb250PDwvRjEgNCAwIFI+Pj4+L0NvbnRlbnRzIDUgMCBSPj4gZW5kb2JqCjQgMCBvYmogPDwvVHlwZS9Gb250L1N1YnR5cGUvVHlwZTEvQmFzZUZvbnQvSGVsdmV0aWNhPj4gZW5kb2JqCjUgMCBvYmogPDwvTGVuZ3RoIDQ0Pj5zdHJlYW0KQlQKMCAwIDAgcmcKL0YxIDI0IFRmCjUwIDc1MCBUZAooRG9jdW1lbnRvIGRlIHRlc3RlKSBUagpFVAplbmRzdHJlYW0gZW5kb2JqCnhyZWYKMCA2CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAxNSAwMDAwMCBuIAowMDAwMDAwMDYwIDAwMDAwIG4gCjAwMDAwMDAxMTcgMDAwMDAgbiAKMDAwMDAwMDIxNSAwMDAwMCBuIAowMDAwMDAwMzA0IDAwMDAwIG4gCnRyYWlsZXIgPDwvU2l6ZSA2L1Jvb3QgMSAwIFI+PgpzdGFydHhyZWYKMzk3CiUlRU9G'
+            }],
+            recipients: { 
+              signers: [{ 
+                email: signerEmail, 
+                name: signerName, 
+                recipientId: '1', 
+                clientUserId: id || '1000', // Required for Embedded Signing
+                userId: '1000', 
+                routingOrder: '1',
+                tabs: { signHereTabs: [{ anchorString: 'Assinatura', documentId: '1', pageNumber: '1' }] }
+              }] 
             },
             status: 'sent',
-            ...(callbackUrl ? { eventNotification: { url: callbackUrl } } : {}),
-          }),
-        })
-        const envelope = await envelopeResp.json()
-        if (envelope.errorCode) throw new Error(`DocuSign API Error: ${envelope.message}`)
-        envelopeId = envelope.envelopeId
+            ...(callbackUrl ? { eventNotification: { url: callbackUrl } } : {})
+          })
+        });
+        const envelope = await envelopeResp.json();
+        if (envelope.errorCode) throw new Error(`DocuSign API Error: ${envelope.message}`);
+        envelopeId = envelope.envelopeId;
 
         // 6. Generate Signing URL embedded (Recipients View)
-        const signingUrlResp = await fetch(
-          `${baseUrl}accounts/${accountId}/envelopes/${envelopeId}/views/recipient`,
-          {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              authenticationMethod: 'none',
-              clientUserId: id || '1000',
-              recipientId: '1',
-              returnUrl: returnUrl,
-              userName: signerName,
-              email: signerEmail,
-            }),
-          },
-        )
-        const signingUrlData = await signingUrlResp.json()
-        if (signingUrlData.errorCode)
-          throw new Error(`DocuSign View Error: ${signingUrlData.message}`)
-        signingUrl = signingUrlData.url
+        const signingUrlResp = await fetch(`${baseUrl}accounts/${accountId}/envelopes/${envelopeId}/views/recipient`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            authenticationMethod: 'none',
+            clientUserId: id || '1000',
+            recipientId: '1',
+            returnUrl: returnUrl,
+            userName: signerName,
+            email: signerEmail
+          })
+        });
+        const signingUrlData = await signingUrlResp.json();
+        if (signingUrlData.errorCode) throw new Error(`DocuSign View Error: ${signingUrlData.message}`);
+        signingUrl = signingUrlData.url;
+
       } catch (docusignErr: any) {
-        console.error('DocuSign Auth/API Flow Error:', docusignErr)
+        console.error('DocuSign Auth/API Flow Error:', docusignErr);
         // Fallback for sandbox simulation
-        signingUrl = `${returnUrl}${returnUrl.includes('?') ? '&' : '?'}docusign_mock=true&envelopeId=${envelopeId}`
+        signingUrl = `${returnUrl}${returnUrl.includes('?') ? '&' : '?'}docusign_mock=true&envelopeId=${envelopeId}`;
       }
     } else {
       // Fallback if environment variables are not set
-      signingUrl = `${returnUrl}${returnUrl.includes('?') ? '&' : '?'}docusign_mock=true&envelopeId=${envelopeId}`
+      signingUrl = `${returnUrl}${returnUrl.includes('?') ? '&' : '?'}docusign_mock=true&envelopeId=${envelopeId}`;
     }
 
     // 7. Save envelopeId and URL to corresponding table
     if (type === 'kyc') {
-      await supabase
-        .from('profiles')
-        .update({
-          kyc_signature_envelope_id: envelopeId,
-          kyc_signature_status: 'enviado',
-          kyc_signature_url: signingUrl,
-        })
-        .eq('id', id)
-
+      await supabase.from('profiles').update({
+        kyc_signature_envelope_id: envelopeId,
+        kyc_signature_status: 'enviado',
+        kyc_signature_url: signingUrl
+      }).eq('id', id)
+      
       await supabase.from('audit_logs').insert({
         entity_type: 'profiles',
         entity_id: id,
         action: 'docusign_kyc_sent',
-        details: { envelopeId, signerEmail, documentUrl, signingUrl, isMock: !accountId },
+        details: { envelopeId, signerEmail, documentUrl, signingUrl, isMock: !accountId }
       })
     } else if (type === 'operation') {
-      await supabase
-        .from('credit_operations')
-        .update({
-          signature_envelope_id: envelopeId,
-          signature_status: 'enviado',
-          signature_url: signingUrl,
-        })
-        .eq('id', id)
-
+      await supabase.from('credit_operations').update({
+        signature_envelope_id: envelopeId,
+        signature_status: 'enviado',
+        signature_url: signingUrl
+      }).eq('id', id)
+      
       await supabase.from('audit_logs').insert({
         entity_type: 'credit_operations',
         entity_id: id,
         action: 'docusign_operation_sent',
-        details: { envelopeId, signerEmail, documentUrl, signingUrl, isMock: !accountId },
+        details: { envelopeId, signerEmail, documentUrl, signingUrl, isMock: !accountId }
       })
     }
 
@@ -205,15 +178,12 @@ Deno.serve(async (req: Request) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${resendApiKey}`,
+          'Authorization': `Bearer ${resendApiKey}`
         },
         body: JSON.stringify({
           from: 'Plataforma Securitizadora <contato@seaconnection.api.br>',
           to: [signerEmail],
-          subject:
-            type === 'kyc'
-              ? 'Assine seu KYC (DocuSign)'
-              : 'Assine seu Aditivo de Cessão (DocuSign)',
+          subject: type === 'kyc' ? 'Assine seu KYC (DocuSign)' : 'Assine seu Aditivo de Cessão (DocuSign)',
           html: `
             <div style="font-family: sans-serif; color: #333;">
               <h2>Assinatura Eletrônica Pendente</h2>
@@ -223,18 +193,17 @@ Deno.serve(async (req: Request) => {
               <br/>
               <p>Atenciosamente,<br/>Equipe Plataforma Securitizadora</p>
             </div>
-          `,
-        }),
+          `
+        })
       })
     }
 
-    return new Response(JSON.stringify({ success: true, envelopeId, url: signingUrl }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    return new Response(JSON.stringify({ success: true, envelopeId, url: signingUrl }), { 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     })
   } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    return new Response(JSON.stringify({ error: err.message }), { 
+      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     })
   }
 })
