@@ -89,17 +89,20 @@ export default function AdminDashboard() {
         // BI: AUM and Concentrations based on Active Subscriptions
         const { data: subs } = await supabase
           .from('debenture_subscriptions')
-          .select('total_amount, debenture_series(debentures(issuer_name))')
+          .select('total_amount, status, debenture_series(debentures(issuer_name))')
           .neq('status', 'Excluído')
 
         let totalAUM = 0
         const issuers: Record<string, number> = {}
 
         subs?.forEach((sub: any) => {
-          const amt = Number(sub.total_amount || 0)
-          totalAUM += amt
-          const issuerName = sub.debenture_series?.debentures?.issuer_name || 'Desconhecido'
-          issuers[issuerName] = (issuers[issuerName] || 0) + amt
+          // Apenas considera subscrições Ativas no Passivo Total (AUM)
+          if (sub.status === 'Ativo' || !sub.status) {
+            const amt = Number(sub.total_amount || 0)
+            totalAUM += amt
+            const issuerName = sub.debenture_series?.debentures?.issuer_name || 'Desconhecido'
+            issuers[issuerName] = (issuers[issuerName] || 0) + amt
+          }
         })
 
         const sortedIssuers = Object.entries(issuers)

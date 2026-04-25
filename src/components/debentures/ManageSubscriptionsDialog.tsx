@@ -20,6 +20,7 @@ import { Trash2, Edit2, Save, X, Plus, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/use-auth'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 interface ManageSubscriptionsDialogProps {
   series: any
@@ -47,6 +48,7 @@ export function ManageSubscriptionsDialog({
   const [editForm, setEditForm] = useState<any>({})
   const [loading, setLoading] = useState(false)
   const [addingNew, setAddingNew] = useState(false)
+  const [activeTab, setActiveTab] = useState<'ativos' | 'historico'>('ativos')
 
   useEffect(() => {
     if (series) {
@@ -183,6 +185,7 @@ export function ManageSubscriptionsDialog({
     }
   }
   const startAdd = () => {
+    setActiveTab('ativos')
     setAddingNew(true)
     setEditingId('new')
 
@@ -221,26 +224,39 @@ export function ManageSubscriptionsDialog({
               </p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Total Subscrito Atual</p>
+              <p className="text-xs text-muted-foreground">Total Subscrito Ativo</p>
               <p className="font-mono font-medium text-primary">
                 R${' '}
                 {subs
-                  .filter((s: any) => s.status !== 'Excluído')
+                  .filter((s: any) => s.status === 'Ativo' || !s.status)
                   .reduce((sum, s) => sum + Number(s.total_amount), 0)
                   .toLocaleString('pt-BR')}
               </p>
             </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <Tabs
+              value={activeTab}
+              onValueChange={(v: any) => setActiveTab(v)}
+              className="w-[400px]"
+            >
+              <TabsList>
+                <TabsTrigger value="ativos">Ativos</TabsTrigger>
+                <TabsTrigger value="historico">Histórico / Encerrados</TabsTrigger>
+              </TabsList>
+            </Tabs>
             <Button
               size="sm"
               onClick={startAdd}
-              disabled={!!editingId || addingNew || loading}
+              disabled={!!editingId || addingNew || loading || activeTab !== 'ativos'}
               className="gap-2"
             >
               <Plus className="h-4 w-4" /> Nova Subscrição
             </Button>
           </div>
 
-          <div className="border rounded-md relative">
+          <div className="border rounded-md relative mt-2">
             {loading && (
               <div className="absolute inset-0 bg-background/50 z-10 flex items-center justify-center">
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -254,11 +270,13 @@ export function ManageSubscriptionsDialog({
                   <TableHead className="text-right w-20">Qtd</TableHead>
                   <TableHead className="text-right w-28">PU (R$)</TableHead>
                   <TableHead className="w-[140px]">Data</TableHead>
-                  <TableHead className="w-[100px] text-right">Ações</TableHead>
+                  <TableHead className="w-[100px] text-right">
+                    {activeTab === 'ativos' ? 'Ações' : 'Status'}
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {addingNew && (
+                {addingNew && activeTab === 'ativos' && (
                   <TableRow className="bg-muted/20">
                     <TableCell className="p-2">
                       <Input
@@ -334,18 +352,29 @@ export function ManageSubscriptionsDialog({
                   </TableRow>
                 )}
 
-                {subs.filter((s: any) => s.status !== 'Excluído').length === 0 && !addingNew && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground h-24">
-                      Nenhuma subscrição ativa registrada para esta série.
-                    </TableCell>
-                  </TableRow>
-                )}
+                {subs.filter((s: any) => {
+                  if (s.status === 'Excluído') return false
+                  if (activeTab === 'ativos') return s.status === 'Ativo' || !s.status
+                  return s.status === 'Encerrado' || s.status === 'Resgatado'
+                }).length === 0 &&
+                  !addingNew && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center text-muted-foreground h-24">
+                        {activeTab === 'ativos'
+                          ? 'Nenhuma subscrição ativa registrada.'
+                          : 'Nenhum histórico de resgate.'}
+                      </TableCell>
+                    </TableRow>
+                  )}
 
                 {subs
-                  .filter((s: any) => s.status !== 'Excluído')
+                  .filter((s: any) => {
+                    if (s.status === 'Excluído') return false
+                    if (activeTab === 'ativos') return s.status === 'Ativo' || !s.status
+                    return s.status === 'Encerrado' || s.status === 'Resgatado'
+                  })
                   .map((sub: any) =>
-                    editingId === sub.id ? (
+                    editingId === sub.id && activeTab === 'ativos' ? (
                       <TableRow key={sub.id} className="bg-muted/20">
                         <TableCell className="p-2">
                           <Input
@@ -433,25 +462,33 @@ export function ManageSubscriptionsDialog({
                           {formatDateStr(sub.subscription_date)}
                         </TableCell>
                         <TableCell className="text-right space-x-1 whitespace-nowrap">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-primary"
-                            onClick={() => startEdit(sub)}
-                            disabled={!!editingId || loading}
-                          >
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                            onClick={() => handleDelete(sub.id)}
-                            disabled={!!editingId || loading}
-                            title="Excluir investimento (ação imediata)"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          {activeTab === 'ativos' ? (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-primary"
+                                onClick={() => startEdit(sub)}
+                                disabled={!!editingId || loading}
+                              >
+                                <Edit2 className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                onClick={() => handleDelete(sub.id)}
+                                disabled={!!editingId || loading}
+                                title="Excluir investimento (ação imediata)"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </>
+                          ) : (
+                            <span className="text-xs font-medium text-muted-foreground px-2 py-1 bg-muted rounded">
+                              {sub.status}
+                            </span>
+                          )}
                         </TableCell>
                       </TableRow>
                     ),
