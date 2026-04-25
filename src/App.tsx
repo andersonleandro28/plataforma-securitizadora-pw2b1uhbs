@@ -357,7 +357,7 @@ const App = () => (
             <Route
               path="/borrower/ccb-installments"
               element={
-                <RoleGuard allowedRoles={['borrower', 'investor']}>
+                <RoleGuard allowedRoles={['borrower']}>
                   <MyCcbInstallments />
                 </RoleGuard>
               }

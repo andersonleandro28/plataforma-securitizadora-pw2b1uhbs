@@ -57,7 +57,7 @@ const allNavItems = [
     title: 'Minhas Parcelas CCB',
     path: '/borrower/ccb-installments',
     icon: CheckSquare,
-    roles: ['borrower', 'investor'],
+    roles: ['borrower'],
   },
   {
     title: 'Gestão de Usuários',

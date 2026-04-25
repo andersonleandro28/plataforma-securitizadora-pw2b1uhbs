@@ -65,8 +65,16 @@ export default function Debentures() {
         if (error) throw error
 
         const subs = data || []
-        setActiveSubs(subs.filter((s) => s.status !== 'Excluído'))
-        setExcludedSubs(subs.filter((s) => s.status === 'Excluído'))
+        setActiveSubs(
+          subs.filter(
+            (s) => s.status !== 'Excluído' && s.status !== 'Encerrado' && s.status !== 'Resgatado',
+          ),
+        )
+        setExcludedSubs(
+          subs.filter(
+            (s) => s.status === 'Excluído' || s.status === 'Encerrado' || s.status === 'Resgatado',
+          ),
+        )
       }
       setLastUpdated(new Date())
     } catch (err: any) {
@@ -170,8 +178,12 @@ export default function Debentures() {
                     <TableCell>R$ {Number(s.volume).toLocaleString('pt-BR')}</TableCell>
                     <TableCell>
                       <Badge variant="secondary">
-                        {s.debenture_subscriptions?.filter((sub: any) => sub.status !== 'Excluído')
-                          .length || 0}{' '}
+                        {s.debenture_subscriptions?.filter(
+                          (sub: any) =>
+                            sub.status !== 'Excluído' &&
+                            sub.status !== 'Encerrado' &&
+                            sub.status !== 'Resgatado',
+                        ).length || 0}{' '}
                         ativos
                       </Badge>
                     </TableCell>
@@ -250,7 +262,7 @@ export default function Debentures() {
                         </TableCell>
                         <TableCell>
                           <Badge className="bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 border-emerald-200">
-                            Ativo
+                            {sub.status || 'Ativo'}
                           </Badge>
                         </TableCell>
                       </TableRow>
@@ -307,7 +319,7 @@ export default function Debentures() {
                             variant="destructive"
                             className="bg-destructive/10 text-destructive border-destructive/20"
                           >
-                            Excluído
+                            {sub.status || 'Excluído'}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
