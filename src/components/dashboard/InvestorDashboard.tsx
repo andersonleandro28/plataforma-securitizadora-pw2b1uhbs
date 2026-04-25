@@ -81,6 +81,20 @@ const PendingSignatureBanner = ({
 )
 
 const calculateInvestmentMetrics = (inv: any) => {
+  if (!inv) {
+    return {
+      principal: 0,
+      yieldAmount: 0,
+      estimatedIR: 0,
+      netYield: 0,
+      netValue: 0,
+      daysElapsed: 0,
+      annualRate: 0,
+      activeQuotas: 0,
+      unitPrice: 0,
+    }
+  }
+
   const prod = inv.investment_products || {}
   const unitPrice = inv.unit_price || prod.quota_value || 1000
   const activeQuotas = inv.quotas - (inv.redeemed_quotas || 0)
