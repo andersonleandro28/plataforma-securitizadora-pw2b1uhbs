@@ -40,6 +40,7 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
+import { cn } from '@/lib/utils'
 
 export default function Expenses() {
   const { activeRole } = useAuth()
@@ -75,6 +76,7 @@ export default function Expenses() {
     status: 'pending',
   })
   const [file, setFile] = useState<File | null>(null)
+  const [categoryHighlight, setCategoryHighlight] = useState(false)
 
   useEffect(() => {
     fetchData()
@@ -118,6 +120,7 @@ export default function Expenses() {
       status: 'pending',
     })
     setFile(null)
+    setCategoryHighlight(false)
     setExpenseOpen(true)
   }
 
@@ -134,7 +137,24 @@ export default function Expenses() {
       status: e.status || 'pending',
     })
     setFile(null)
+    setCategoryHighlight(false)
     setExpenseOpen(true)
+  }
+
+  const handleSupplierChange = (supplierId: string) => {
+    const selectedSupplier = suppliers.find((s) => s.id === supplierId)
+    const newCategory = selectedSupplier?.category || ''
+
+    setExpForm((prev) => ({
+      ...prev,
+      supplier_id: supplierId,
+      category: newCategory,
+    }))
+
+    if (newCategory) {
+      setCategoryHighlight(true)
+      setTimeout(() => setCategoryHighlight(false), 1500)
+    }
   }
 
   const confirmDelete = (expense: any) => {
@@ -468,10 +488,7 @@ export default function Expenses() {
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
               <Label>Fornecedor</Label>
-              <Select
-                value={expForm.supplier_id}
-                onValueChange={(v) => setExpForm({ ...expForm, supplier_id: v })}
-              >
+              <Select value={expForm.supplier_id} onValueChange={handleSupplierChange}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione o fornecedor" />
                 </SelectTrigger>
@@ -492,12 +509,24 @@ export default function Expenses() {
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
+              <div className="space-y-2 relative">
                 <Label>Categoria</Label>
                 <Input
                   value={expForm.category}
                   onChange={(e) => setExpForm({ ...expForm, category: e.target.value })}
+                  className={cn(
+                    'transition-all duration-500',
+                    categoryHighlight
+                      ? 'ring-2 ring-primary ring-offset-1 bg-primary/5 border-primary'
+                      : '',
+                  )}
                 />
+                {categoryHighlight && (
+                  <span className="absolute right-2 top-[34px] flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
+                  </span>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>Valor (R$)</Label>
