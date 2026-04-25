@@ -53,15 +53,10 @@ export default function AdminDashboard() {
 
         if (error) throw error
 
-        let totalAUM = 0
-        const issuers: Record<string, number> = {}
         const cashFlowMap: Record<string, number> = {}
         let nearMaturityCount = 0
 
         debentures?.forEach((deb) => {
-          totalAUM += Number(deb.total_volume)
-          issuers[deb.issuer_name] = (issuers[deb.issuer_name] || 0) + Number(deb.total_volume)
-
           deb.debenture_series?.forEach((series) => {
             if (series.maturity_date) {
               const date = new Date(series.maturity_date)
@@ -90,6 +85,22 @@ export default function AdminDashboard() {
               in: cashFlowMap[key],
             }
           })
+
+        // BI: AUM and Concentrations based on Active Subscriptions
+        const { data: subs } = await supabase
+          .from('debenture_subscriptions')
+          .select('total_amount, debenture_series(debentures(issuer_name))')
+          .neq('status', 'Excluído')
+
+        let totalAUM = 0
+        const issuers: Record<string, number> = {}
+
+        subs?.forEach((sub: any) => {
+          const amt = Number(sub.total_amount || 0)
+          totalAUM += amt
+          const issuerName = sub.debenture_series?.debentures?.issuer_name || 'Desconhecido'
+          issuers[issuerName] = (issuers[issuerName] || 0) + amt
+        })
 
         const sortedIssuers = Object.entries(issuers)
           .sort((a, b) => b[1] - a[1])

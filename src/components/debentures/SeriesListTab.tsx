@@ -1,6 +1,9 @@
 import { useState } from 'react'
-import { Search, Loader2, Users, Edit2 } from 'lucide-react'
+import { Search, Loader2, Users, Edit2, History } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { supabase } from '@/lib/supabase/client'
+import { format } from 'date-fns'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import {
@@ -45,6 +48,19 @@ export function SeriesListTab({
   const [indexerFilter, setIndexerFilter] = useState('all')
   const [manageSeriesId, setManageSeriesId] = useState<string | null>(null)
   const [editSeriesId, setEditSeriesId] = useState<string | null>(null)
+  const [historySeriesId, setHistorySeriesId] = useState<string | null>(null)
+  const [seriesLogs, setSeriesLogs] = useState<any[]>([])
+
+  const openHistory = async (id: string) => {
+    setHistorySeriesId(id)
+    const { data } = await supabase
+      .from('audit_logs')
+      .select('*')
+      .eq('entity_type', 'debenture_series')
+      .eq('entity_id', id)
+      .order('created_at', { ascending: false })
+    setSeriesLogs(data || [])
+  }
 
   const allSeries = debentures.flatMap((d) =>
     (d.series || []).map((s: any) => ({
@@ -157,6 +173,15 @@ export function SeriesListTab({
                       >
                         <Edit2 className="h-4 w-4" />
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-primary"
+                        onClick={() => openHistory(s.id)}
+                        title="Histórico da Série"
+                      >
+                        <History className="h-4 w-4" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))
@@ -190,6 +215,30 @@ export function SeriesListTab({
         }}
         onSuccess={onRefresh}
       />
+
+      <Dialog open={!!historySeriesId} onOpenChange={(op) => !op && setHistorySeriesId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Histórico de Eventos da Série</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[400px] overflow-y-auto space-y-4 pt-4">
+            {seriesLogs.length > 0 ? (
+              seriesLogs.map((log) => (
+                <div key={log.id} className="border-b pb-3 last:border-0 text-sm">
+                  <div className="text-xs text-muted-foreground mb-1">
+                    {format(new Date(log.created_at), 'dd/MM/yyyy HH:mm')}
+                  </div>
+                  <div className="font-medium text-foreground">
+                    {log.details?.message || log.action}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-muted-foreground text-center py-4">Nenhum evento registrado.</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }
