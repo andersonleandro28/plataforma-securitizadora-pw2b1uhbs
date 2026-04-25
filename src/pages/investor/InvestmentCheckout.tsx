@@ -108,10 +108,28 @@ export default function InvestmentCheckout() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Confirme seu Depósito</h1>
         <p className="text-muted-foreground">
-          Envie o comprovante para finalizar seu aporte em{' '}
-          <strong>{investment.investment_products?.title}</strong>.
+          Termo de subscrição digitalmente formalizado. Envie o comprovante (PIX/TED) para finalizar
+          seu aporte em <strong>{investment.investment_products?.title}</strong>.
         </p>
       </div>
+
+      {investment.contract_url && (
+        <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-lg flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold text-emerald-900">Termo de Investimento Assinado</h3>
+            <p className="text-sm text-emerald-700">
+              Seu contrato foi gerado e está disponível para download.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            className="bg-white border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+            onClick={() => window.open(investment.contract_url, '_blank')}
+          >
+            Ver Documento
+          </Button>
+        </div>
+      )}
 
       <Card className="border-primary/20 bg-primary/5">
         <CardHeader className="pb-3">

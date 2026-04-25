@@ -651,8 +651,18 @@ export default function InvestorDashboard() {
 
                   return (
                     <TableRow key={inv.id}>
-                      <TableCell className="font-medium">
-                        {inv.investment_products?.title}
+                      <TableCell className="font-medium flex flex-col">
+                        <span>{inv.investment_products?.title}</span>
+                        {inv.contract_url && (
+                          <a
+                            href={inv.contract_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-primary flex items-center gap-1 hover:underline mt-1 w-fit"
+                          >
+                            <FileText className="h-3 w-3" /> Termo de Subscrição
+                          </a>
+                        )}
                       </TableCell>
                       <TableCell className="font-mono text-primary">
                         {formatCurrency(m ? m.principal : inv.total_value)}
