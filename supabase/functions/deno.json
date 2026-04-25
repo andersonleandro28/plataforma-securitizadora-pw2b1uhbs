@@ -5,6 +5,7 @@
     "invite-user": 19,
     "public-signup": 15,
     "delete-user": 17,
+    "extract-debenture-data": 22,
     "batch-import-users": 15,
     "calculate-operation": 15,
     "send-operation-email": 17,
@@ -19,6 +20,6 @@
     "generate-kyc-pdf": 7,
     "docusign-envelope": 9,
     "docusign-callback": 7,
-    "generate-redemption-receipt": 2
+    "generate-redemption-receipt": 3
   }
 }

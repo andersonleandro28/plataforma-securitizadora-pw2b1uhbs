@@ -46,6 +46,13 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { toast } from 'sonner'
 
 const chartConfig = {
@@ -141,9 +148,13 @@ export default function InvestorDashboard() {
   const [myRedemptions, setMyRedemptions] = useState<any[]>([])
 
   const [redemptionInv, setRedemptionInv] = useState<any>(null)
-  const [redemptionType, setRedemptionType] = useState<'total' | 'capital' | 'rendimentos'>('total')
+  const [redemptionType, setRedemptionType] = useState<
+    'total' | 'capital' | 'rendimentos' | 'reinvestir'
+  >('total')
   const [redeemQuotas, setRedeemQuotas] = useState<number>(1)
   const [savingRedemption, setSavingRedemption] = useState(false)
+  const [availableProducts, setAvailableProducts] = useState<any[]>([])
+  const [reinvestProduct, setReinvestProduct] = useState<string>('')
 
   const [detailsInv, setDetailsInv] = useState<any>(null)
 
@@ -168,7 +179,7 @@ export default function InvestorDashboard() {
     }
 
     try {
-      const [investmentsRes, redemptionsRes, profileRes] = await Promise.all([
+      const [investmentsRes, redemptionsRes, profileRes, productsRes] = await Promise.all([
         supabase
           .from('investments')
           .select('*, investment_products(*), debenture_subscriptions(*)')
@@ -180,9 +191,15 @@ export default function InvestorDashboard() {
           .eq('user_id', user.id)
           .order('created_at', { ascending: false }),
         supabase.from('profiles').select('wallet_balance').eq('id', user.id).single(),
+        supabase
+          .from('investment_products')
+          .select('id, title, quota_value, min_investment')
+          .eq('is_active', true)
+          .eq('is_archived', false),
       ])
 
       setMyInvestments(investmentsRes.data || [])
+      setAvailableProducts(productsRes.data || [])
       setMyRedemptions(redemptionsRes.data || [])
 
       let totalInvested = 0
@@ -298,13 +315,14 @@ export default function InvestorDashboard() {
 
     setRedemptionType('total')
     setRedemptionInv(inv)
+    setReinvestProduct(inv.product_id)
   }
 
   useEffect(() => {
     if (!redemptionInv) return
     const m = calculateInvestmentMetrics(redemptionInv)
 
-    if (redemptionType === 'total') {
+    if (redemptionType === 'total' || redemptionType === 'reinvestir') {
       setRedeemQuotas(m.activeQuotas)
     } else if (redemptionType === 'rendimentos') {
       const quotasForYield = Math.floor(m.netYield / m.unitPrice)
@@ -355,7 +373,7 @@ export default function InvestorDashboard() {
     if (!redemptionInv || !redemptionMath || !user) return
     setSavingRedemption(true)
     try {
-      const { error } = await supabase.from('investment_redemptions').insert({
+      const payload: any = {
         investment_id: redemptionInv.id,
         user_id: user.id,
         requested_quotas: redeemQuotas,
@@ -364,7 +382,27 @@ export default function InvestorDashboard() {
         penalty_applied: redemptionMath.penalty,
         discount_applied: redemptionMath.discount,
         status: 'pending',
-      })
+      }
+
+      if (redemptionType === 'reinvestir') {
+        const targetProduct = availableProducts.find((p) => p.id === reinvestProduct)
+        const pu = targetProduct
+          ? targetProduct.quota_value || targetProduct.min_investment || 1000
+          : 1000
+        const maxReinvestQuotas = Math.floor(redemptionMath.netValue / pu)
+
+        if (maxReinvestQuotas <= 0) {
+          return toast.error(
+            'Valor líquido insuficiente para comprar pelo menos 1 cota do produto selecionado.',
+          )
+        }
+
+        payload.is_reinvestment = true
+        payload.reinvestment_product_id = reinvestProduct
+        payload.reinvestment_quotas = maxReinvestQuotas
+      }
+
+      const { error } = await supabase.from('investment_redemptions').insert(payload)
       if (error) throw error
       toast.success(
         'Solicitação de resgate enviada com sucesso! Aguarde a aprovação da administração.',
@@ -765,22 +803,61 @@ export default function InvestorDashboard() {
                 onValueChange={(v: any) => setRedemptionType(v)}
                 className="w-full"
               >
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="total">Resgate Total</TabsTrigger>
-                  <TabsTrigger value="capital">Parcial (Cotas)</TabsTrigger>
-                  <TabsTrigger value="rendimentos">Apenas Rendimentos</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-4">
+                  <TabsTrigger value="total" className="text-xs sm:text-sm">
+                    Total
+                  </TabsTrigger>
+                  <TabsTrigger value="capital" className="text-xs sm:text-sm">
+                    Parcial
+                  </TabsTrigger>
+                  <TabsTrigger value="rendimentos" className="text-xs sm:text-sm">
+                    Rendimentos
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="reinvestir"
+                    className="text-xs sm:text-sm bg-emerald-100 text-emerald-800 data-[state=active]:bg-emerald-600 data-[state=active]:text-white"
+                  >
+                    Reinvestir
+                  </TabsTrigger>
                 </TabsList>
               </Tabs>
 
-              <div className="space-y-2">
-                <Label>Quantidade de Cotas a Resgatar</Label>
+              {redemptionType === 'reinvestir' && (
+                <div className="space-y-3 bg-emerald-50 border border-emerald-200 p-4 rounded-lg animate-fade-in mt-4">
+                  <Label className="text-emerald-900 font-bold">
+                    Produto Destino (Reinvestimento)
+                  </Label>
+                  <Select value={reinvestProduct} onValueChange={setReinvestProduct}>
+                    <SelectTrigger className="bg-white">
+                      <SelectValue placeholder="Selecione o produto" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableProducts.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.title} (PU: {formatCurrency(p.quota_value || p.min_investment || 1000)}
+                          )
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-emerald-700">
+                    O sistema irá calcular automaticamente a quantidade máxima de cotas que o valor
+                    líquido pode comprar. O troco será depositado no seu saldo em caixa.
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-2 mt-4">
+                <Label>
+                  Quantidade de Cotas a {redemptionType === 'reinvestir' ? 'Baixar' : 'Resgatar'}
+                </Label>
                 <div className="flex gap-4 items-center">
                   <Input
                     type="number"
                     min={1}
                     max={calculateInvestmentMetrics(redemptionInv).activeQuotas}
                     value={redeemQuotas}
-                    disabled={redemptionType !== 'capital'}
+                    disabled={redemptionType !== 'capital' && redemptionType !== 'reinvestir'}
                     onChange={(e) => setRedeemQuotas(Number(e.target.value))}
                     className="w-32 text-lg text-center"
                   />
@@ -840,14 +917,70 @@ export default function InvestorDashboard() {
 
                 <div className="border-t pt-2 mt-2">
                   <div className="flex justify-between font-bold text-lg">
-                    <span>Valor Líquido a Receber</span>
+                    <span>
+                      Valor Líquido {redemptionType === 'reinvestir' ? 'Disponível' : 'a Receber'}
+                    </span>
                     <span className="text-primary font-mono text-xl">
                       {formatCurrency(redemptionMath.netValue)}
                     </span>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1 text-right">
-                    O valor será creditado no seu Saldo Disponível (Caixa) na aprovação.
-                  </p>
+
+                  {redemptionType === 'reinvestir' && reinvestProduct && (
+                    <div className="mt-4 p-3 bg-emerald-600 text-white rounded-md space-y-2 text-sm animate-fade-in">
+                      <div className="flex justify-between items-center border-b border-emerald-500/50 pb-2">
+                        <span>Preço Unitário (Destino)</span>
+                        <span className="font-mono">
+                          {formatCurrency(
+                            availableProducts.find((p) => p.id === reinvestProduct)?.quota_value ||
+                              availableProducts.find((p) => p.id === reinvestProduct)
+                                ?.min_investment ||
+                              1000,
+                          )}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center font-bold">
+                        <span>Novas Cotas Adquiridas</span>
+                        <span className="text-lg">
+                          {Math.floor(
+                            redemptionMath.netValue /
+                              (availableProducts.find((p) => p.id === reinvestProduct)
+                                ?.quota_value ||
+                                availableProducts.find((p) => p.id === reinvestProduct)
+                                  ?.min_investment ||
+                                1000),
+                          )}{' '}
+                          cotas
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-emerald-100 pt-2 border-t border-emerald-500/50">
+                        <span>Troco (Depositado no Caixa)</span>
+                        <span className="font-mono">
+                          {formatCurrency(
+                            redemptionMath.netValue -
+                              Math.floor(
+                                redemptionMath.netValue /
+                                  (availableProducts.find((p) => p.id === reinvestProduct)
+                                    ?.quota_value ||
+                                    availableProducts.find((p) => p.id === reinvestProduct)
+                                      ?.min_investment ||
+                                    1000),
+                              ) *
+                                (availableProducts.find((p) => p.id === reinvestProduct)
+                                  ?.quota_value ||
+                                  availableProducts.find((p) => p.id === reinvestProduct)
+                                    ?.min_investment ||
+                                  1000),
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {redemptionType !== 'reinvestir' && (
+                    <p className="text-xs text-muted-foreground mt-1 text-right">
+                      O valor será creditado no seu Saldo Disponível (Caixa) na aprovação.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

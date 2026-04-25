@@ -504,20 +504,32 @@ export default function InvestmentsReview() {
                             })
                           : '-'}
                       </TableCell>
-                      <TableCell>
-                        {red.status === 'paid' ? (
-                          <Badge className="bg-emerald-500">Liquidado</Badge>
-                        ) : red.status === 'approved' ? (
-                          <Badge className="bg-primary">Aprovado</Badge>
-                        ) : red.status === 'rejected' ? (
-                          <Badge variant="destructive">Rejeitado</Badge>
-                        ) : (
-                          <Badge
-                            variant="outline"
-                            className="bg-amber-100 text-amber-800 border-amber-200"
-                          >
-                            Pendente
-                          </Badge>
+                      <TableCell className="space-y-1">
+                        <div>
+                          {red.status === 'paid' ? (
+                            <Badge className="bg-emerald-500">Liquidado</Badge>
+                          ) : red.status === 'approved' ? (
+                            <Badge className="bg-primary">Aprovado</Badge>
+                          ) : red.status === 'rejected' ? (
+                            <Badge variant="destructive">Rejeitado</Badge>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="bg-amber-100 text-amber-800 border-amber-200"
+                            >
+                              Pendente
+                            </Badge>
+                          )}
+                        </div>
+                        {red.is_reinvestment && (
+                          <div>
+                            <Badge
+                              variant="secondary"
+                              className="bg-blue-100 text-blue-800 border-blue-200 text-[10px]"
+                            >
+                              Reinvestimento
+                            </Badge>
+                          </div>
                         )}
                       </TableCell>
                       <TableCell className="text-right space-x-2 whitespace-nowrap">
@@ -608,6 +620,14 @@ export default function InvestmentsReview() {
                   <span className="font-medium">{approveData.metrics.taxRate}%</span>
                 </div>
               </div>
+
+              {approveData.red.is_reinvestment && (
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 rounded-md text-sm mb-4">
+                  <strong>Reinvestimento Automático:</strong> Esta solicitação converterá o valor
+                  líquido em novas cotas, gerando os lançamentos contábeis de Integralização. O
+                  troco será depositado no caixa do investidor.
+                </div>
+              )}
 
               <div className="space-y-2 pt-4 border-t">
                 <Label>Imposto Retido (IRRF) Ajustável</Label>
