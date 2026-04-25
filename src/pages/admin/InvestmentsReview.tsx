@@ -56,6 +56,11 @@ export default function InvestmentsReview() {
   const [recalcResult, setRecalcResult] = useState<any>(null)
   const [processing, setProcessing] = useState(false)
 
+  // Aprovação States
+  const [approveModalOpen, setApproveModalOpen] = useState(false)
+  const [approveData, setApproveData] = useState<any>(null)
+  const [manualTax, setManualTax] = useState('')
+
   const fetchData = async () => {
     setLoading(true)
     const { data, error } = await supabase
@@ -86,6 +91,19 @@ export default function InvestmentsReview() {
   }, [])
 
   const calculateInvestmentMetricsToDate = (inv: any, quotas: number, targetDateStr: string) => {
+    if (!inv)
+      return {
+        principal: 0,
+        yieldAmount: 0,
+        penalty: 0,
+        discount: 0,
+        taxRate: 0,
+        taxAmount: 0,
+        netValue: 0,
+        grossValue: 0,
+        daysElapsed: 0,
+      }
+
     const prod = inv.investment_products || {}
     const unitPrice = inv.unit_price || prod.quota_value || 1000
     const principal = quotas * unitPrice
@@ -107,6 +125,14 @@ export default function InvestmentsReview() {
     const yieldAmount =
       principal > 0 ? principal * Math.pow(1 + annualRate, daysElapsed / 365) - principal : 0
 
+    let taxRate = 0
+    if (daysElapsed <= 180) taxRate = 22.5
+    else if (daysElapsed <= 360) taxRate = 20
+    else if (daysElapsed <= 720) taxRate = 17.5
+    else taxRate = 15
+
+    const taxAmount = yieldAmount * (taxRate / 100)
+
     const monthsElapsed = daysElapsed / 30
     const gracePeriodMet = monthsElapsed >= (prod.min_grace_period_months || 0)
 
@@ -117,15 +143,18 @@ export default function InvestmentsReview() {
       discount = yieldAmount * ((prod.early_redemption_discount_pct || 0) / 100)
     }
 
-    const netValueWithoutIR = principal + yieldAmount - penalty - discount
+    const netValue = principal + yieldAmount - penalty - discount - taxAmount
 
     return {
       principal,
       yieldAmount,
       penalty,
       discount,
-      netValue: netValueWithoutIR,
+      taxRate,
+      taxAmount,
+      netValue,
       grossValue: principal + yieldAmount,
+      daysElapsed,
     }
   }
 
@@ -187,22 +216,48 @@ export default function InvestmentsReview() {
     }
   }
 
-  const handleApproveRedemption = async (red: any) => {
+  const handleOpenApproveModal = (red: any) => {
+    const dateStr = (red.updated_at || red.created_at).split('T')[0]
+    const metrics = calculateInvestmentMetricsToDate(red.investments, red.requested_quotas, dateStr)
+    setApproveData({ red, metrics })
+    setManualTax(metrics.taxAmount.toFixed(2))
+    setApproveModalOpen(true)
+  }
+
+  const handleConfirmApproval = async () => {
+    if (!approveData) return
     setProcessing(true)
     try {
-      const { error: err1 } = await supabase
-        .from('investment_redemptions')
-        .update({ status: 'approved' })
-        .eq('id', red.id)
-      if (err1) throw err1
+      const finalTax = parseFloat(manualTax.replace(',', '.')) || 0
+      const netVal =
+        approveData.metrics.grossValue -
+        approveData.metrics.penalty -
+        approveData.metrics.discount -
+        finalTax
 
-      const { error: err2 } = await supabase.rpc('process_redemption_payment', {
-        p_redemption_id: red.id,
+      const { error: updErr } = await supabase
+        .from('investment_redemptions')
+        .update({
+          status: 'approved',
+          tax_amount: finalTax,
+          tax_rate: approveData.metrics.taxRate,
+          yield_amount: approveData.metrics.yieldAmount,
+          net_value: netVal,
+          gross_value: approveData.metrics.grossValue,
+        })
+        .eq('id', approveData.red.id)
+
+      if (updErr) throw updErr
+
+      const { error: rpcErr } = await supabase.rpc('process_redemption_payment', {
+        p_redemption_id: approveData.red.id,
         p_admin_id: user?.id,
       })
-      if (err2) throw err2
+
+      if (rpcErr) throw rpcErr
 
       toast.success('Resgate aprovado e liquidado com sucesso.')
+      setApproveModalOpen(false)
       fetchRedemptions()
     } catch (err: any) {
       toast.error(err.message)
@@ -256,6 +311,9 @@ export default function InvestmentsReview() {
         net_value: recalcResult.netValue,
         penalty_applied: recalcResult.penalty,
         discount_applied: recalcResult.discount,
+        tax_amount: recalcResult.taxAmount,
+        tax_rate: recalcResult.taxRate,
+        yield_amount: recalcResult.yieldAmount,
         updated_at: new Date(editRedemptionForm.effective_date + 'T12:00:00Z').toISOString(),
         updated_by: user?.id,
       }
@@ -469,7 +527,7 @@ export default function InvestmentsReview() {
                               variant="outline"
                               size="sm"
                               className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
-                              onClick={() => handleApproveRedemption(red)}
+                              onClick={() => handleOpenApproveModal(red)}
                               disabled={processing}
                             >
                               <CheckCircle className="w-4 h-4 mr-2" /> Aprovar
@@ -513,6 +571,86 @@ export default function InvestmentsReview() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Approve Modal with Tax Details */}
+      <Dialog open={approveModalOpen} onOpenChange={setApproveModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Aprovar Liquidação de Resgate</DialogTitle>
+            <DialogDescription>
+              Revise os cálculos de rendimento e retenção de IR (Tabela Regressiva) antes de
+              liquidar.
+            </DialogDescription>
+          </DialogHeader>
+          {approveData && (
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground block">Valor Bruto</span>
+                  <span className="font-mono font-medium">
+                    {formatC(approveData.metrics.grossValue)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">Rendimento Tributável</span>
+                  <span className="font-mono font-medium">
+                    {formatC(approveData.metrics.yieldAmount)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">Tempo Decorrido</span>
+                  <span className="font-medium">
+                    {Math.floor(approveData.metrics.daysElapsed)} dias
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">Alíquota IR Aplicada</span>
+                  <span className="font-medium">{approveData.metrics.taxRate}%</span>
+                </div>
+              </div>
+
+              <div className="space-y-2 pt-4 border-t">
+                <Label>Imposto Retido (IRRF) Ajustável</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={manualTax}
+                  onChange={(e) => setManualTax(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  O sistema calculou automaticamente R$ {approveData.metrics.taxAmount.toFixed(2)}.
+                  Altere apenas para correções de migração.
+                </p>
+              </div>
+
+              <div className="pt-4 border-t flex justify-between items-center text-lg font-bold text-emerald-600">
+                <span>Valor Líquido a Pagar</span>
+                <span className="font-mono">
+                  {formatC(
+                    approveData.metrics.grossValue -
+                      approveData.metrics.penalty -
+                      approveData.metrics.discount -
+                      (parseFloat(manualTax.replace(',', '.')) || 0),
+                  )}
+                </span>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setApproveModalOpen(false)}
+              disabled={processing}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleConfirmApproval} disabled={processing}>
+              {processing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Confirmar e Liquidar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
         <DialogContent>
