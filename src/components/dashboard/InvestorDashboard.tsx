@@ -170,6 +170,7 @@ export default function InvestorDashboard() {
     topIndexer: '-',
     chartData: [] as any[],
     walletBalance: 0,
+    totalRedeemed: 0,
   })
 
   const fetchDashboardData = useCallback(async () => {
@@ -232,6 +233,13 @@ export default function InvestorDashboard() {
         }
       })
 
+      let totalRedeemed = 0
+      redemptionsRes.data?.forEach((r: any) => {
+        if (r.status === 'paid') {
+          totalRedeemed += r.net_value || 0
+        }
+      })
+
       const totalPatrimony = totalInvested + totalNetYield
       const yieldPercentage = totalInvested > 0 ? (totalNetYield / totalInvested) * 100 : 0
 
@@ -271,6 +279,7 @@ export default function InvestorDashboard() {
         topIndexer,
         chartData,
         walletBalance: profileRes.data?.wallet_balance || 0,
+        totalRedeemed,
       })
     } catch (err) {
       console.error(err)
@@ -547,14 +556,14 @@ export default function InvestorDashboard() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Saldo Disponível (Caixa)</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Já Resgatado</CardTitle>
             <Wallet className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-primary font-mono">
-              {formatCurrency(metrics.walletBalance)}
+              {formatCurrency(metrics.totalRedeemed)}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Livre para saque ou novo aporte</p>
+            <p className="text-xs text-muted-foreground mt-1">Histórico de saídas efetuadas</p>
           </CardContent>
         </Card>
       </div>
@@ -741,7 +750,7 @@ export default function InvestorDashboard() {
                     </TableCell>
                     <TableCell>
                       {red.status === 'paid' ? (
-                        <Badge className="bg-emerald-500">Liquidado em Caixa</Badge>
+                        <Badge className="bg-emerald-500">Liquidado</Badge>
                       ) : red.status === 'approved' ? (
                         <Badge className="bg-primary">Aprovado (Processando)</Badge>
                       ) : red.status === 'rejected' ? (
@@ -842,7 +851,7 @@ export default function InvestorDashboard() {
                   </Select>
                   <p className="text-xs text-emerald-700">
                     O sistema irá calcular automaticamente a quantidade máxima de cotas que o valor
-                    líquido pode comprar. O troco será depositado no seu saldo em caixa.
+                    líquido pode comprar. O troco será depositado na sua conta bancária.
                   </p>
                 </div>
               )}
@@ -953,7 +962,7 @@ export default function InvestorDashboard() {
                         </span>
                       </div>
                       <div className="flex justify-between items-center text-emerald-100 pt-2 border-t border-emerald-500/50">
-                        <span>Troco (Depositado no Caixa)</span>
+                        <span>Troco (Depositado na sua Conta)</span>
                         <span className="font-mono">
                           {formatCurrency(
                             redemptionMath.netValue -
@@ -978,7 +987,8 @@ export default function InvestorDashboard() {
 
                   {redemptionType !== 'reinvestir' && (
                     <p className="text-xs text-muted-foreground mt-1 text-right">
-                      O valor será creditado no seu Saldo Disponível (Caixa) na aprovação.
+                      O valor será creditado diretamente na sua conta bancária cadastrada na
+                      aprovação.
                     </p>
                   )}
                 </div>
