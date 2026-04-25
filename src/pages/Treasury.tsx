@@ -84,7 +84,7 @@ export default function Treasury() {
   const fetchTransactions = async () => {
     setLoading(true)
     try {
-      const [{ data: invs }, { data: ops }, { data: manuals }, { data: reds }] = await Promise.all([
+      const [{ data: invs }, { data: ops }, { data: manuals }] = await Promise.all([
         supabase.from('investments').select('id, total_value, transfer_date, created_at, status'),
         supabase
           .from('credit_operations')
@@ -92,10 +92,6 @@ export default function Treasury() {
             'id, requested_value, liquidation_value, issue_date, liquidation_date, status, sacado',
           ),
         supabase.from('treasury_transactions').select('*'),
-        supabase
-          .from('investment_redemptions')
-          .select('id, net_value, requested_quotas, updated_at, status, investments(unit_price)')
-          .eq('status', 'paid'),
       ])
 
       const allTx: any[] = []
@@ -113,36 +109,6 @@ export default function Treasury() {
             is_escrow: true,
           }),
         )
-      reds?.forEach((r) => {
-        const unitPrice = r.investments?.unit_price || 1000
-        const principal = r.requested_quotas * unitPrice
-        const yieldAmt = r.net_value - principal
-
-        if (principal > 0) {
-          allTx.push({
-            id: `red-cap-${r.id}`,
-            rawId: r.id,
-            date: r.updated_at?.split('T')[0] || r.created_at?.split('T')[0] || today,
-            description: 'Devolução de Capital - Resgate',
-            category: 'Devolução de Capital',
-            type: 'out',
-            amount: Number(principal),
-            is_escrow: true,
-          })
-        }
-        if (yieldAmt > 0) {
-          allTx.push({
-            id: `red-yld-${r.id}`,
-            rawId: r.id,
-            date: r.updated_at?.split('T')[0] || r.created_at?.split('T')[0] || today,
-            description: 'Distribuição de Lucros/Juros - Resgate',
-            category: 'Distribuição de Lucros/Juros',
-            type: 'out',
-            amount: Number(yieldAmt),
-            is_escrow: true,
-          })
-        }
-      })
       ops?.forEach((o) => {
         if (['pago', 'liquidado'].includes(o.status))
           allTx.push({
@@ -169,6 +135,7 @@ export default function Treasury() {
         allTx.push({
           id: `man-${m.id}`,
           rawId: m.id,
+          referenceId: m.reference_id,
           date: m.date,
           description: m.description,
           category: m.category,
@@ -411,11 +378,11 @@ export default function Treasury() {
                               <Pencil className="h-4 w-4 text-muted-foreground hover:text-primary" />
                             </Button>
                           )}
-                          {tx.id.startsWith('red-') && (
+                          {tx.referenceId && tx.description.includes('Resgate') && (
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => generateReceipt(tx.rawId)}
+                              onClick={() => generateReceipt(tx.referenceId)}
                               title="Comprovante de Resgate"
                             >
                               <Download className="h-4 w-4 text-muted-foreground hover:text-primary" />
