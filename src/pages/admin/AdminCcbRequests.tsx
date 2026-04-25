@@ -332,6 +332,12 @@ export default function AdminCcbRequests() {
                         <Loader2 className="animate-spin h-6 w-6 mx-auto" />
                       </TableCell>
                     </TableRow>
+                  ) : requests.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center py-10 text-muted-foreground">
+                        Nenhuma solicitação encontrada.
+                      </TableCell>
+                    </TableRow>
                   ) : (
                     requests.map((req) => (
                       <TableRow key={req.id}>
@@ -393,6 +399,12 @@ export default function AdminCcbRequests() {
                     <TableRow>
                       <TableCell colSpan={4} className="text-center py-8">
                         <Loader2 className="animate-spin h-6 w-6 mx-auto" />
+                      </TableCell>
+                    </TableRow>
+                  ) : activeOps.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center py-10 text-muted-foreground">
+                        Nenhuma operação ativa encontrada.
                       </TableCell>
                     </TableRow>
                   ) : (

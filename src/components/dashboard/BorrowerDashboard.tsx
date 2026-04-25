@@ -208,7 +208,7 @@ export default function BorrowerDashboard() {
         </div>
 
         {/* Timeline da Última Solicitação */}
-        {latestOp && (
+        {latestOp ? (
           <Card className="shadow-sm border-primary/10">
             <CardHeader className="pb-4 border-b bg-muted/5">
               <CardTitle className="text-lg flex items-center gap-2">
@@ -274,7 +274,25 @@ export default function BorrowerDashboard() {
               )}
             </CardContent>
           </Card>
-        )}
+        ) : !loading ? (
+          <Card className="shadow-sm border-dashed bg-muted/10">
+            <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+              <FileText className="h-12 w-12 text-muted-foreground/30 mb-4" />
+              <h3 className="text-lg font-semibold">Nenhuma operação encontrada</h3>
+              <p className="text-muted-foreground text-sm mt-1 max-w-sm">
+                Você ainda não possui operações de crédito ativas. Inicie uma nova solicitação para
+                acompanhar seu status aqui.
+              </p>
+              <Button
+                variant="outline"
+                className="mt-6"
+                onClick={() => document.querySelector<HTMLButtonElement>('[value="new"]')?.click()}
+              >
+                Nova Solicitação
+              </Button>
+            </CardContent>
+          </Card>
+        ) : null}
       </div>
 
       <Tabs defaultValue="new" className="w-full">
