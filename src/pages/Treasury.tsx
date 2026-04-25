@@ -30,6 +30,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import { NewTransactionDialog } from '@/components/Treasury/NewTransactionDialog'
 
 export default function Treasury() {
   const [transactions, setTransactions] = useState<any[]>([])
@@ -39,14 +40,6 @@ export default function Treasury() {
   const [filterType, setFilterType] = useState('all')
   const [filterEscrow, setFilterEscrow] = useState(false)
   const [isNewEntryOpen, setIsNewEntryOpen] = useState(false)
-  const [newEntry, setNewEntry] = useState({
-    type: 'in',
-    amount: '',
-    description: '',
-    category: 'Receitas Diversas',
-    date: new Date().toISOString().split('T')[0],
-    is_escrow: false,
-  })
 
   useEffect(() => {
     fetchTransactions()
@@ -187,32 +180,6 @@ export default function Treasury() {
     setFilteredTx(res)
   }, [transactions, filterType, filterEscrow])
 
-  const handleCreateEntry = async () => {
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      const { error } = await supabase.from('treasury_transactions').insert({
-        ...newEntry,
-        amount: Number(newEntry.amount),
-        created_by: user?.id,
-      })
-      if (error) throw error
-      toast.success('Lançamento registrado com sucesso!')
-      setIsNewEntryOpen(false)
-      setNewEntry({
-        type: 'in',
-        amount: '',
-        description: '',
-        category: 'Receitas Diversas',
-        date: new Date().toISOString().split('T')[0],
-        is_escrow: false,
-      })
-    } catch (err: any) {
-      toast.error(err.message)
-    }
-  }
-
   const formatC = (v: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 
@@ -246,82 +213,14 @@ export default function Treasury() {
           >
             <FileSpreadsheet className="w-4 h-4 mr-2" /> Exportar CSV
           </Button>
-          <Dialog open={isNewEntryOpen} onOpenChange={setIsNewEntryOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-primary">
-                <Plus className="w-4 h-4 mr-2" /> Novo Lançamento
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Novo Lançamento Manual</DialogTitle>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Tipo</Label>
-                    <Select
-                      value={newEntry.type}
-                      onValueChange={(v) => setNewEntry({ ...newEntry, type: v })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="in">Entrada (+)</SelectItem>
-                        <SelectItem value="out">Saída (-)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Data</Label>
-                    <Input
-                      type="date"
-                      value={newEntry.date}
-                      onChange={(e) => setNewEntry({ ...newEntry, date: e.target.value })}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Valor (R$)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={newEntry.amount}
-                    onChange={(e) => setNewEntry({ ...newEntry, amount: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Descrição</Label>
-                  <Input
-                    value={newEntry.description}
-                    onChange={(e) => setNewEntry({ ...newEntry, description: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Categoria</Label>
-                  <Input
-                    value={newEntry.category}
-                    onChange={(e) => setNewEntry({ ...newEntry, category: e.target.value })}
-                    placeholder="Ex: Taxas Bancárias, Impostos"
-                  />
-                </div>
-                <div className="flex items-center space-x-2 pt-2">
-                  <Checkbox
-                    id="escrow"
-                    checked={newEntry.is_escrow}
-                    onCheckedChange={(c) => setNewEntry({ ...newEntry, is_escrow: !!c })}
-                  />
-                  <Label htmlFor="escrow" className="cursor-pointer">
-                    Vincular ao Saldo Escrow (Terceiros)
-                  </Label>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button onClick={handleCreateEntry}>Registrar</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <Button className="bg-primary" onClick={() => setIsNewEntryOpen(true)}>
+            <Plus className="w-4 h-4 mr-2" /> Novo Lançamento
+          </Button>
+          <NewTransactionDialog
+            open={isNewEntryOpen}
+            onOpenChange={setIsNewEntryOpen}
+            onSuccess={fetchTransactions}
+          />
         </div>
       </div>
 
