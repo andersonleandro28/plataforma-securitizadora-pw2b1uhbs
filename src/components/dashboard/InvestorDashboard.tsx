@@ -13,6 +13,9 @@ import {
   History,
   FileSignature,
   Trash2,
+  List,
+  Download,
+  Percent,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
@@ -42,6 +45,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
 
 const chartConfig = {
@@ -76,6 +80,45 @@ const PendingSignatureBanner = ({
   </Alert>
 )
 
+const calculateInvestmentMetrics = (inv: any) => {
+  const prod = inv.investment_products || {}
+  const unitPrice = inv.unit_price || prod.quota_value || 1000
+  const activeQuotas = inv.quotas - (inv.redeemed_quotas || 0)
+  const principal = activeQuotas * unitPrice
+
+  const startDate = new Date(inv.transfer_date || inv.created_at)
+  const today = new Date()
+  const daysElapsed = Math.max(0, (today.getTime() - startDate.getTime()) / (1000 * 3600 * 24))
+
+  const rateMatch = prod.rate?.match(/(\d+[.,]\d+|\d+)/)
+  const numericRate = rateMatch ? parseFloat(rateMatch[1].replace(',', '.')) : 10
+  const annualRate = numericRate / 100
+
+  const yieldAmount =
+    principal > 0 ? principal * Math.pow(1 + annualRate, daysElapsed / 365) - principal : 0
+
+  let irRate = 0.225
+  if (daysElapsed > 720) irRate = 0.15
+  else if (daysElapsed > 360) irRate = 0.175
+  else if (daysElapsed > 180) irRate = 0.2
+
+  const estimatedIR = yieldAmount * irRate
+  const netYield = yieldAmount - estimatedIR
+  const netValue = principal + netYield
+
+  return {
+    principal,
+    yieldAmount,
+    estimatedIR,
+    netYield,
+    netValue,
+    daysElapsed,
+    annualRate,
+    activeQuotas,
+    unitPrice,
+  }
+}
+
 export default function InvestorDashboard() {
   const { profile, user } = useAuth()
   const navigate = useNavigate()
@@ -84,16 +127,19 @@ export default function InvestorDashboard() {
   const [myRedemptions, setMyRedemptions] = useState<any[]>([])
 
   const [redemptionInv, setRedemptionInv] = useState<any>(null)
+  const [redemptionType, setRedemptionType] = useState<'total' | 'capital' | 'rendimentos'>('total')
   const [redeemQuotas, setRedeemQuotas] = useState<number>(1)
   const [savingRedemption, setSavingRedemption] = useState(false)
 
+  const [detailsInv, setDetailsInv] = useState<any>(null)
+
   const [metrics, setMetrics] = useState({
     totalInvested: 0,
+    totalPatrimony: 0,
     grossYield: 0,
     estimatedIR: 0,
     netYield: 0,
     yieldPercentage: 0,
-    nextAmortization: 0,
     nextAmortizationDate: '',
     topSeries: 'Nenhuma',
     topIndexer: '-',
@@ -108,12 +154,7 @@ export default function InvestorDashboard() {
     }
 
     try {
-      const [subsRes, investmentsRes, redemptionsRes, profileRes] = await Promise.all([
-        supabase
-          .from('debenture_subscriptions')
-          .select('*, debenture_series(rate, indexer, maturity_date, debentures(issuer_name))')
-          .eq('document_number', profile.document_number)
-          .neq('status', 'Excluído'),
+      const [investmentsRes, redemptionsRes, profileRes] = await Promise.all([
         supabase
           .from('investments')
           .select('*, investment_products(*), debenture_subscriptions(*)')
@@ -133,59 +174,52 @@ export default function InvestorDashboard() {
       let totalInvested = 0
       let totalGrossYield = 0
       let totalEstimatedIR = 0
-      let nextAmortization = 0
-      let nextAmortizationDate: Date | null = null
+      let totalNetYield = 0
       let maxInvestment = 0
       let topSeries = 'Nenhuma'
       let topIndexer = '-'
-      const today = new Date()
 
-      subsRes.data?.forEach((sub: any) => {
-        const amount = Number(sub.total_amount)
-        totalInvested += amount
-        const rate = Number(sub.debenture_series?.rate || 0)
-        const subDate = new Date(sub.subscription_date || sub.created_at)
-        const days = Math.max(0, (today.getTime() - subDate.getTime()) / (1000 * 3600 * 24))
-        const grossYield = amount * Math.pow(1 + rate / 100, days / 365) - amount
-        totalGrossYield += grossYield
+      const activeInvs =
+        investmentsRes.data?.filter(
+          (i) =>
+            !['cancelled', 'rejected', 'Excluído'].includes(i.status) && i.status !== 'resgatado',
+        ) || []
 
-        let irRate = 0.225
-        if (days > 720) irRate = 0.15
-        else if (days > 360) irRate = 0.175
-        else if (days > 180) irRate = 0.2
-        totalEstimatedIR += grossYield * irRate
+      activeInvs.forEach((inv) => {
+        if (inv.status === 'approved') {
+          const m = calculateInvestmentMetrics(inv)
+          totalInvested += m.principal
+          totalGrossYield += m.yieldAmount
+          totalEstimatedIR += m.estimatedIR
+          totalNetYield += m.netYield
 
-        if (amount > maxInvestment) {
-          maxInvestment = amount
-          topSeries = sub.debenture_series?.debentures?.issuer_name || 'Série'
-          topIndexer = `${sub.debenture_series?.indexer} + ${rate}% a.a.`
-        }
-        const matDate = sub.debenture_series?.maturity_date
-          ? new Date(sub.debenture_series.maturity_date)
-          : null
-        if (matDate && matDate > today) {
-          if (!nextAmortizationDate || matDate < nextAmortizationDate) {
-            nextAmortizationDate = matDate
-            nextAmortization = amount + grossYield
+          if (m.principal > maxInvestment) {
+            maxInvestment = m.principal
+            topSeries = inv.investment_products?.title || 'Série'
+            topIndexer = inv.investment_products?.rate || '-'
           }
         }
       })
 
-      const netYield = totalGrossYield - totalEstimatedIR
-      const yieldPercentage = totalInvested > 0 ? (totalGrossYield / totalInvested) * 100 : 0
+      const totalPatrimony = totalInvested + totalNetYield
+      const yieldPercentage = totalInvested > 0 ? (totalNetYield / totalInvested) * 100 : 0
+
+      // Chart mock progression
       const chartData = []
       for (let i = 5; i >= 0; i--) {
         const d = new Date()
         d.setMonth(d.getMonth() - i)
         let monthYield = 0
-        subsRes.data?.forEach((sub: any) => {
-          const subDate = new Date(sub.subscription_date || sub.created_at)
-          if (subDate <= d) {
-            const days = Math.max(0, (d.getTime() - subDate.getTime()) / (1000 * 3600 * 24))
-            const rate = Number(sub.debenture_series?.rate || 0)
-            const amount = Number(sub.total_amount)
-            const gYield = amount * Math.pow(1 + rate / 100, days / 365) - amount
-            monthYield += gYield * 0.8
+        activeInvs.forEach((inv: any) => {
+          if (inv.status === 'approved') {
+            const subDate = new Date(inv.transfer_date || inv.created_at)
+            if (subDate <= d) {
+              const days = Math.max(0, (d.getTime() - subDate.getTime()) / (1000 * 3600 * 24))
+              const rateMatch = inv.investment_products?.rate?.match(/(\d+[.,]\d+|\d+)/)
+              const numRate = rateMatch ? parseFloat(rateMatch[1].replace(',', '.')) / 100 : 0.1
+              const amount = inv.quotas * (inv.unit_price || 1000)
+              monthYield += (amount * Math.pow(1 + numRate, days / 365) - amount) * 0.8
+            }
           }
         })
         chartData.push({
@@ -196,14 +230,12 @@ export default function InvestorDashboard() {
 
       setMetrics({
         totalInvested,
+        totalPatrimony,
         grossYield: totalGrossYield,
         estimatedIR: totalEstimatedIR,
-        netYield,
+        netYield: totalNetYield,
         yieldPercentage,
-        nextAmortization,
-        nextAmortizationDate: nextAmortizationDate
-          ? nextAmortizationDate.toLocaleDateString('pt-BR')
-          : '',
+        nextAmortizationDate: '',
         topSeries,
         topIndexer,
         chartData,
@@ -232,20 +264,8 @@ export default function InvestorDashboard() {
       )
       .subscribe()
 
-    const channel2 = supabase
-      .channel(`subs-changes-${user.id}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'debenture_subscriptions' },
-        () => {
-          fetchDashboardData()
-        },
-      )
-      .subscribe()
-
     return () => {
       supabase.removeChannel(channel1)
-      supabase.removeChannel(channel2)
     }
   }, [fetchDashboardData, user])
 
@@ -256,47 +276,66 @@ export default function InvestorDashboard() {
     const prod = inv.investment_products
     if (!prod) return
 
-    const monthsElapsed =
-      (new Date().getTime() - new Date(inv.created_at).getTime()) / (1000 * 3600 * 24 * 30)
-
-    if (monthsElapsed < (prod.min_grace_period_months || 0)) {
-      return toast.error(
-        `Período de carência não atingido. É necessário aguardar no mínimo ${prod.min_grace_period_months} meses.`,
-      )
-    }
-
     if (!prod.allow_early_redemption) {
       return toast.info(
         'Este produto não permite resgate antecipado. A liquidação ocorrerá automaticamente no vencimento.',
       )
     }
 
-    const availableQuotas = inv.quotas - (inv.redeemed_quotas || 0)
-    setRedeemQuotas(availableQuotas)
+    setRedemptionType('total')
     setRedemptionInv(inv)
   }
+
+  useEffect(() => {
+    if (!redemptionInv) return
+    const m = calculateInvestmentMetrics(redemptionInv)
+
+    if (redemptionType === 'total') {
+      setRedeemQuotas(m.activeQuotas)
+    } else if (redemptionType === 'rendimentos') {
+      const quotasForYield = Math.floor(m.netYield / m.unitPrice)
+      setRedeemQuotas(quotasForYield)
+    } else {
+      setRedeemQuotas(1)
+    }
+  }, [redemptionType, redemptionInv])
+
+  const gracePeriodMet = useMemo(() => {
+    if (!redemptionInv) return true
+    const m = calculateInvestmentMetrics(redemptionInv)
+    const monthsElapsed = m.daysElapsed / 30
+    return monthsElapsed >= (redemptionInv.investment_products?.min_grace_period_months || 0)
+  }, [redemptionInv])
 
   const redemptionMath = useMemo(() => {
     if (!redemptionInv) return null
     const prod = redemptionInv.investment_products
-    const principal = redeemQuotas * redemptionInv.unit_price
-    const daysElapsed = Math.max(
-      0,
-      (new Date().getTime() - new Date(redemptionInv.created_at).getTime()) / (1000 * 3600 * 24),
-    )
+    const m = calculateInvestmentMetrics(redemptionInv)
 
-    const rateMatch = prod.rate?.match(/(\d+[.,]\d+|\d+)/)
-    const numericRate = rateMatch ? parseFloat(rateMatch[1].replace(',', '.')) : 10
-    const annualRate = numericRate / 100
-    const yieldAmount = principal * Math.pow(1 + annualRate, daysElapsed / 365) - principal
+    // Proportional calculation based on quotas to redeem
+    const proportion = redeemQuotas / m.activeQuotas
+    const principalToRedeem = m.principal * proportion
+    const yieldToRedeem = m.yieldAmount * proportion
 
-    const penalty = principal * ((prod.early_redemption_penalty_pct || 0) / 100)
-    const discount = yieldAmount * ((prod.early_redemption_discount_pct || 0) / 100)
+    let penalty = 0
+    let discount = 0
 
-    const netValue = principal + yieldAmount - penalty - discount
+    if (!gracePeriodMet) {
+      penalty = principalToRedeem * ((prod.early_redemption_penalty_pct || 0) / 100)
+      discount = yieldToRedeem * ((prod.early_redemption_discount_pct || 0) / 100)
+    }
 
-    return { principal, yieldAmount, penalty, discount, netValue, gross: principal + yieldAmount }
-  }, [redemptionInv, redeemQuotas])
+    const netValue = principalToRedeem + yieldToRedeem - penalty - discount
+
+    return {
+      principal: principalToRedeem,
+      yieldAmount: yieldToRedeem,
+      penalty,
+      discount,
+      netValue,
+      gross: principalToRedeem + yieldToRedeem,
+    }
+  }, [redemptionInv, redeemQuotas, gracePeriodMet])
 
   const handleConfirmRedemption = async () => {
     if (!redemptionInv || !redemptionMath || !user) return
@@ -322,6 +361,46 @@ export default function InvestorDashboard() {
       toast.error(err.message || 'Erro ao processar o resgate.')
     } finally {
       setSavingRedemption(false)
+    }
+  }
+
+  const generateMonthExtract = (inv: any) => {
+    if (!inv) return []
+    const m = calculateInvestmentMetrics(inv)
+    const startDate = new Date(inv.transfer_date || inv.created_at)
+    const today = new Date()
+    const extract = []
+    let currentBalance = m.principal
+    const monthlyRate = Math.pow(1 + m.annualRate, 1 / 12) - 1
+
+    let d = new Date(startDate)
+    d.setMonth(d.getMonth() + 1)
+
+    while (d <= today) {
+      const monthYield = currentBalance * monthlyRate
+      currentBalance += monthYield
+      extract.push({
+        month: format(d, 'MMM/yyyy'),
+        yield: monthYield,
+        balance: currentBalance,
+      })
+      d.setMonth(d.getMonth() + 1)
+    }
+    return extract
+  }
+
+  const generateReceipt = async (redemptionId: string) => {
+    try {
+      toast.info('Gerando comprovante...')
+      const { data, error } = await supabase.functions.invoke('generate-redemption-receipt', {
+        body: { redemptionId },
+      })
+      if (error) throw error
+      if (data?.url) {
+        window.open(data.url, '_blank')
+      }
+    } catch (err: any) {
+      toast.error('Erro ao gerar comprovante.')
     }
   }
 
@@ -366,85 +445,71 @@ export default function InvestorDashboard() {
         )}
 
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Painel do Investidor</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Dashboard de Rendimentos</h1>
         <p className="text-muted-foreground">
-          Acompanhamento do seu portfólio, rendimentos reais e histórico de movimentações.
+          Acompanhamento consolidado da sua carteira, rentabilidade e posição de liquidez.
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
-        <Card>
+      <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-4">
+        <Card className="bg-primary text-primary-foreground">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Saldo Disponível (Caixa)</CardTitle>
-            <Wallet className="h-4 w-4 text-primary" />
+            <CardTitle className="text-sm font-medium text-primary-foreground/80">
+              Patrimônio Total
+            </CardTitle>
+            <TrendingUp className="h-4 w-4" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-primary">
-              {formatCurrency(metrics.walletBalance)}
+            <div className="text-2xl font-bold font-mono">
+              {formatCurrency(metrics.totalPatrimony)}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Livre para saque ou aporte</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Patrimônio Investido</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(metrics.totalInvested)}</div>
-            <p className="text-xs text-emerald-500 mt-1">
-              +{metrics.yieldPercentage.toFixed(2)}% bruto
+            <p className="text-xs text-primary-foreground/70 mt-1">
+              Aportes + Rendimentos Acumulados
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Rendimento Líquido</CardTitle>
+            <CardTitle className="text-sm font-medium">Rendimento Acumulado</CardTitle>
             <Receipt className="h-4 w-4 text-emerald-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-emerald-600">
+            <div className="text-2xl font-bold text-emerald-600 font-mono">
               +{formatCurrency(metrics.netYield)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              IR Retido:{' '}
+              IR Retido Provisório:{' '}
               <span className="text-destructive">-{formatCurrency(metrics.estimatedIR)}</span>
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Próxima Amortização</CardTitle>
-            <CalendarDays className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Yield Médio da Carteira</CardTitle>
+            <Percent className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {metrics.nextAmortization > 0 ? formatCurrency(metrics.nextAmortization) : '-'}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1 truncate">
-              {metrics.nextAmortizationDate
-                ? `Previsto p/ ${metrics.nextAmortizationDate}`
-                : 'Sem previsão'}
-            </p>
+            <div className="text-2xl font-bold">{metrics.yieldPercentage.toFixed(2)}%</div>
+            <p className="text-xs text-emerald-500 mt-1">Sobre o principal investido</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Maior Posição</CardTitle>
-            <PieChart className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Saldo Disponível (Caixa)</CardTitle>
+            <Wallet className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-lg font-bold text-primary truncate" title={metrics.topSeries}>
-              {metrics.topSeries}
+            <div className="text-2xl font-bold text-primary font-mono">
+              {formatCurrency(metrics.walletBalance)}
             </div>
-            <p className="text-xs text-muted-foreground mt-1 truncate">Ref: {metrics.topIndexer}</p>
+            <p className="text-xs text-muted-foreground mt-1">Livre para saque ou novo aporte</p>
           </CardContent>
         </Card>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Evolução do Rendimento</CardTitle>
+          <CardTitle>Evolução Patrimonial</CardTitle>
         </CardHeader>
         <CardContent className="h-[300px]">
           {metrics.chartData.length > 0 && metrics.totalInvested > 0 ? (
@@ -488,26 +553,31 @@ export default function InvestorDashboard() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" /> Meus Aportes Ativos
+            <PieChart className="h-5 w-5" /> Composição da Carteira (Ativos Granulares)
           </CardTitle>
+          <CardDescription>
+            Detalhamento por produto de investimento e posição atualizada de resgate.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Produto</TableHead>
-                <TableHead>Cotas</TableHead>
-                <TableHead>Valor Total</TableHead>
-                <TableHead>Data</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>Produto / Série</TableHead>
+                <TableHead>Aportado</TableHead>
+                <TableHead>Data Início</TableHead>
+                <TableHead>Rend. Bruto</TableHead>
+                <TableHead>Rend. Líquido</TableHead>
+                <TableHead>Imposto Prov.</TableHead>
+                <TableHead className="font-bold">Valor Atual</TableHead>
                 <TableHead className="text-right">Ação</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {activeInvestments.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
-                    Nenhuma solicitação ou investimento ativo.
+                  <TableCell colSpan={8} className="text-center py-6 text-muted-foreground">
+                    Nenhum aporte ativo no momento.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -516,32 +586,30 @@ export default function InvestorDashboard() {
                   const displayDate = sub?.subscription_date
                     ? sub.subscription_date
                     : inv.created_at
-                  const displayQuotas = sub ? sub.quantity : inv.quotas
-                  const displayValue = sub ? sub.total_amount : inv.total_value
+                  const m = inv.status === 'approved' ? calculateInvestmentMetrics(inv) : null
 
                   return (
                     <TableRow key={inv.id}>
                       <TableCell className="font-medium">
                         {inv.investment_products?.title}
                       </TableCell>
-                      <TableCell>
-                        {displayQuotas - (inv.redeemed_quotas || 0)}{' '}
-                        <span className="text-xs text-muted-foreground">de {displayQuotas}</span>
-                      </TableCell>
-                      <TableCell className="font-mono text-primary font-medium">
-                        {formatCurrency(displayValue)}
+                      <TableCell className="font-mono text-primary">
+                        {formatCurrency(m ? m.principal : inv.total_value)}
                       </TableCell>
                       <TableCell className="text-sm">
                         {displayDate ? format(new Date(displayDate), 'dd/MM/yyyy') : '-'}
                       </TableCell>
-                      <TableCell>
-                        {inv.status === 'approved' ? (
-                          <Badge className="bg-emerald-500">Aprovado</Badge>
-                        ) : inv.status === 'awaiting_review' ? (
-                          <Badge className="bg-amber-500">Em Conferência</Badge>
-                        ) : (
-                          <Badge variant="outline">Aguardando Depósito</Badge>
-                        )}
+                      <TableCell className="text-emerald-600 font-mono">
+                        {m ? `+${formatCurrency(m.yieldAmount)}` : '-'}
+                      </TableCell>
+                      <TableCell className="font-bold text-emerald-600 font-mono">
+                        {m ? `+${formatCurrency(m.netYield)}` : '-'}
+                      </TableCell>
+                      <TableCell className="text-destructive font-mono text-xs">
+                        {m ? `-${formatCurrency(m.estimatedIR)}` : '-'}
+                      </TableCell>
+                      <TableCell className="font-bold font-mono">
+                        {m ? formatCurrency(m.netValue) : '-'}
                       </TableCell>
                       <TableCell className="text-right space-x-2">
                         {inv.status === 'pending_transfer' && (
@@ -550,15 +618,24 @@ export default function InvestorDashboard() {
                             onClick={() => navigate(`/investments/checkout/${inv.id}`)}
                             className="gap-2"
                           >
-                            Enviar Comprovante <ArrowRight className="h-3 w-3" />
+                            Enviar PIX <ArrowRight className="h-3 w-3" />
                           </Button>
                         )}
-                        {inv.status === 'approved' &&
-                          displayQuotas > (inv.redeemed_quotas || 0) && (
-                            <Button size="sm" variant="outline" onClick={() => openRedemption(inv)}>
+                        {inv.status === 'approved' && (
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              onClick={() => setDetailsInv(inv)}
+                              title="Extrato Detalhado"
+                            >
+                              <List className="h-4 w-4" />
+                            </Button>
+                            <Button size="sm" variant="default" onClick={() => openRedemption(inv)}>
                               <ArrowDownToLine className="h-4 w-4 mr-1" /> Resgatar
                             </Button>
-                          )}
+                          </div>
+                        )}
                       </TableCell>
                     </TableRow>
                   )
@@ -572,61 +649,11 @@ export default function InvestorDashboard() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Trash2 className="h-5 w-5 text-destructive" /> Histórico de Cancelados / Excluídos
+            <History className="h-5 w-5" /> Histórico de Resgates e Tesouraria
           </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Produto</TableHead>
-                <TableHead>Cotas</TableHead>
-                <TableHead>Valor Total</TableHead>
-                <TableHead>Data Exclusão</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {myInvestments.filter((i) => i.status === 'Excluído' || i.status === 'cancelled')
-                .length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-6 text-muted-foreground">
-                    Nenhum investimento cancelado ou excluído.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                myInvestments
-                  .filter((i) => i.status === 'Excluído' || i.status === 'cancelled')
-                  .map((inv) => (
-                    <TableRow key={inv.id}>
-                      <TableCell className="font-medium text-muted-foreground">
-                        {inv.investment_products?.title}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">{inv.quotas}</TableCell>
-                      <TableCell className="font-mono text-muted-foreground">
-                        {formatCurrency(inv.total_value)}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {inv.updated_at
-                          ? format(new Date(inv.updated_at), 'dd/MM/yyyy HH:mm')
-                          : '-'}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">Excluído</Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <History className="h-5 w-5" /> Histórico de Resgates Concluídos
-          </CardTitle>
+          <CardDescription>
+            Acompanhe o processamento das suas solicitações de resgate de capital e rendimentos.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
@@ -637,12 +664,13 @@ export default function InvestorDashboard() {
                 <TableHead>Valor Líquido</TableHead>
                 <TableHead>Data Solicitação</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead className="text-right">Comprovante</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {myRedemptions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-6 text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
                     Nenhum resgate solicitado.
                   </TableCell>
                 </TableRow>
@@ -653,7 +681,7 @@ export default function InvestorDashboard() {
                       {red.investments?.investment_products?.title}
                     </TableCell>
                     <TableCell>{red.requested_quotas}</TableCell>
-                    <TableCell className="font-mono font-medium text-emerald-600">
+                    <TableCell className="font-mono font-bold text-emerald-600">
                       {formatCurrency(red.net_value)}
                     </TableCell>
                     <TableCell className="text-sm">
@@ -661,7 +689,7 @@ export default function InvestorDashboard() {
                     </TableCell>
                     <TableCell>
                       {red.status === 'paid' ? (
-                        <Badge className="bg-emerald-500">Creditado em Caixa</Badge>
+                        <Badge className="bg-emerald-500">Liquidado em Caixa</Badge>
                       ) : red.status === 'approved' ? (
                         <Badge className="bg-primary">Aprovado (Processando)</Badge>
                       ) : red.status === 'rejected' ? (
@@ -675,6 +703,18 @@ export default function InvestorDashboard() {
                         </Badge>
                       )}
                     </TableCell>
+                    <TableCell className="text-right">
+                      {red.status === 'paid' && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => generateReceipt(red.id)}
+                          title="Baixar Comprovante PDF"
+                        >
+                          <Download className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -684,41 +724,72 @@ export default function InvestorDashboard() {
       </Card>
 
       <Dialog open={!!redemptionInv} onOpenChange={(v) => !v && setRedemptionInv(null)}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[550px]">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ArrowDownToLine className="h-5 w-5 text-primary" /> Resgate de Investimento
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <ArrowDownToLine className="h-5 w-5 text-primary" /> Módulo de Resgate e Liquidez
             </DialogTitle>
             <DialogDescription>{redemptionInv?.investment_products?.title}</DialogDescription>
           </DialogHeader>
 
           {redemptionInv && redemptionMath && (
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 py-2">
+              {!gracePeriodMet && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Período de Carência Ativo</AlertTitle>
+                  <AlertDescription>
+                    O período mínimo de {redemptionInv.investment_products?.min_grace_period_months}{' '}
+                    meses não foi atingido. O resgate antecipado sofrerá aplicação de deságio e
+                    penalidades.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <Tabs
+                value={redemptionType}
+                onValueChange={(v: any) => setRedemptionType(v)}
+                className="w-full"
+              >
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="total">Resgate Total</TabsTrigger>
+                  <TabsTrigger value="capital">Parcial (Cotas)</TabsTrigger>
+                  <TabsTrigger value="rendimentos">Apenas Rendimentos</TabsTrigger>
+                </TabsList>
+              </Tabs>
+
               <div className="space-y-2">
                 <Label>Quantidade de Cotas a Resgatar</Label>
                 <div className="flex gap-4 items-center">
                   <Input
                     type="number"
                     min={1}
-                    max={redemptionInv.quotas - (redemptionInv.redeemed_quotas || 0)}
+                    max={calculateInvestmentMetrics(redemptionInv).activeQuotas}
                     value={redeemQuotas}
+                    disabled={redemptionType !== 'capital'}
                     onChange={(e) => setRedeemQuotas(Number(e.target.value))}
-                    className="w-24 text-lg text-center"
+                    className="w-32 text-lg text-center"
                   />
                   <span className="text-sm text-muted-foreground">
-                    Máximo disponível: {redemptionInv.quotas - (redemptionInv.redeemed_quotas || 0)}{' '}
+                    Máximo disponível: {calculateInvestmentMetrics(redemptionInv).activeQuotas}{' '}
                     cotas
                   </span>
                 </div>
+                {redemptionType === 'rendimentos' && redeemQuotas === 0 && (
+                  <p className="text-sm text-destructive font-medium mt-1">
+                    O rendimento líquido acumulado não atinge o valor de 1 cota mínima para resgate
+                    avulso.
+                  </p>
+                )}
               </div>
 
               <div className="bg-muted/20 border rounded-lg p-4 space-y-3 mt-4">
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Valor Principal</span>
+                  <span className="text-muted-foreground">Valor Principal (Capital)</span>
                   <span className="font-mono">{formatCurrency(redemptionMath.principal)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Rendimento Bruto Acumulado (Est.)</span>
+                  <span className="text-muted-foreground">Rendimento Acumulado (Bruto)</span>
                   <span className="font-mono text-emerald-600">
                     +{formatCurrency(redemptionMath.yieldAmount)}
                   </span>
@@ -728,8 +799,7 @@ export default function InvestorDashboard() {
                   <>
                     <div className="border-t my-2 border-dashed"></div>
                     <div className="text-xs text-amber-600 mb-1 flex items-center gap-1">
-                      <AlertCircle className="h-3 w-3" /> Resgate Antecipado - Penalidades
-                      Aplicáveis
+                      <AlertCircle className="h-3 w-3" /> Resgate Antecipado - Penalidades Aplicadas
                     </div>
                     {redemptionMath.penalty > 0 && (
                       <div className="flex justify-between text-sm text-destructive">
@@ -743,7 +813,7 @@ export default function InvestorDashboard() {
                     {redemptionMath.discount > 0 && (
                       <div className="flex justify-between text-sm text-destructive">
                         <span>
-                          Desconto de Rendimento (
+                          Desconto Deságio de Rendimento (
                           {redemptionInv.investment_products.early_redemption_discount_pct}%)
                         </span>
                         <span className="font-mono">
@@ -757,10 +827,13 @@ export default function InvestorDashboard() {
                 <div className="border-t pt-2 mt-2">
                   <div className="flex justify-between font-bold text-lg">
                     <span>Valor Líquido a Receber</span>
-                    <span className="text-primary font-mono">
+                    <span className="text-primary font-mono text-xl">
                       {formatCurrency(redemptionMath.netValue)}
                     </span>
                   </div>
+                  <p className="text-xs text-muted-foreground mt-1 text-right">
+                    O valor será creditado no seu Saldo Disponível (Caixa) na aprovação.
+                  </p>
                 </div>
               </div>
             </div>
@@ -779,7 +852,8 @@ export default function InvestorDashboard() {
               disabled={
                 savingRedemption ||
                 !redeemQuotas ||
-                redeemQuotas > redemptionInv?.quotas - (redemptionInv?.redeemed_quotas || 0)
+                redeemQuotas === 0 ||
+                redeemQuotas > calculateInvestmentMetrics(redemptionInv).activeQuotas
               }
             >
               {savingRedemption ? (
@@ -787,9 +861,50 @@ export default function InvestorDashboard() {
               ) : (
                 <ArrowDownToLine className="h-4 w-4 mr-2" />
               )}
-              Confirmar Solicitação
+              Confirmar Solicitação de Resgate
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!detailsInv} onOpenChange={(v) => !v && setDetailsInv(null)}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Extrato Detalhado de Rentabilidade</DialogTitle>
+            <DialogDescription>{detailsInv?.investment_products?.title}</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[50vh] overflow-y-auto mt-2 pr-2">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Mês / Ano</TableHead>
+                  <TableHead className="text-right">Rend. Mês</TableHead>
+                  <TableHead className="text-right">Saldo Acumulado</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {detailsInv && generateMonthExtract(detailsInv).length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center text-muted-foreground py-4">
+                      Ainda não completou 1 mês de investimento.
+                    </TableCell>
+                  </TableRow>
+                )}
+                {detailsInv &&
+                  generateMonthExtract(detailsInv).map((row, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="font-medium text-sm">{row.month}</TableCell>
+                      <TableCell className="text-right text-emerald-600 font-mono text-sm">
+                        +{formatCurrency(row.yield)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono font-bold text-sm">
+                        {formatCurrency(row.balance)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+              </TableBody>
+            </Table>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -40,6 +40,7 @@ import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { NewTransactionDialog } from '@/components/Treasury/NewTransactionDialog'
 import { EditTransactionDialog } from '@/components/Treasury/EditTransactionDialog'
+import { Download } from 'lucide-react'
 
 export default function Treasury() {
   const [transactions, setTransactions] = useState<any[]>([])
@@ -88,7 +89,7 @@ export default function Treasury() {
         supabase.from('treasury_transactions').select('*'),
         supabase
           .from('investment_redemptions')
-          .select('id, net_value, updated_at, status')
+          .select('id, net_value, requested_quotas, updated_at, status, investments(unit_price)')
           .eq('status', 'paid'),
       ])
 
@@ -107,17 +108,36 @@ export default function Treasury() {
             is_escrow: true,
           }),
         )
-      reds?.forEach((r) =>
-        allTx.push({
-          id: `red-${r.id}`,
-          date: r.updated_at?.split('T')[0],
-          description: 'Resgate de Investimento',
-          category: 'Resgate',
-          type: 'out',
-          amount: Number(r.net_value),
-          is_escrow: true,
-        }),
-      )
+      reds?.forEach((r) => {
+        const unitPrice = r.investments?.unit_price || 1000
+        const principal = r.requested_quotas * unitPrice
+        const yieldAmt = r.net_value - principal
+
+        if (principal > 0) {
+          allTx.push({
+            id: `red-cap-${r.id}`,
+            rawId: r.id,
+            date: r.updated_at?.split('T')[0] || r.created_at?.split('T')[0] || today,
+            description: 'Devolução de Capital - Resgate',
+            category: 'Devolução de Capital',
+            type: 'out',
+            amount: Number(principal),
+            is_escrow: true,
+          })
+        }
+        if (yieldAmt > 0) {
+          allTx.push({
+            id: `red-yld-${r.id}`,
+            rawId: r.id,
+            date: r.updated_at?.split('T')[0] || r.created_at?.split('T')[0] || today,
+            description: 'Distribuição de Lucros/Juros - Resgate',
+            category: 'Distribuição de Lucros/Juros',
+            type: 'out',
+            amount: Number(yieldAmt),
+            is_escrow: true,
+          })
+        }
+      })
       ops?.forEach((o) => {
         if (['pago', 'liquidado'].includes(o.status))
           allTx.push({
@@ -194,6 +214,19 @@ export default function Treasury() {
 
   const formatC = (v: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
+
+  const generateReceipt = async (redemptionId: string) => {
+    try {
+      toast.info('Gerando comprovante...')
+      const { data, error } = await supabase.functions.invoke('generate-redemption-receipt', {
+        body: { redemptionId },
+      })
+      if (error) throw error
+      if (data?.url) window.open(data.url, '_blank')
+    } catch (err) {
+      toast.error('Erro ao gerar comprovante.')
+    }
+  }
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up">
@@ -362,16 +395,28 @@ export default function Treasury() {
                         {formatC(tx.progressiveBalance)}
                       </TableCell>
                       <TableCell>
-                        {tx.id.startsWith('man-') && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setEditingTx(tx)}
-                            title="Editar Lançamento"
-                          >
-                            <Pencil className="h-4 w-4 text-muted-foreground hover:text-primary" />
-                          </Button>
-                        )}
+                        <div className="flex justify-end gap-1">
+                          {tx.id.startsWith('man-') && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setEditingTx(tx)}
+                              title="Editar Lançamento"
+                            >
+                              <Pencil className="h-4 w-4 text-muted-foreground hover:text-primary" />
+                            </Button>
+                          )}
+                          {tx.id.startsWith('red-') && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => generateReceipt(tx.rawId)}
+                              title="Comprovante de Resgate"
+                            >
+                              <Download className="h-4 w-4 text-muted-foreground hover:text-primary" />
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
