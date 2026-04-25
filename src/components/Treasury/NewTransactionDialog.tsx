@@ -59,8 +59,41 @@ export function NewTransactionDialog({ open, onOpenChange, onSuccess }: any) {
   }, [open])
 
   const fetchCategories = async () => {
-    const { data } = await supabase.from('transaction_categories').select('*').order('name')
-    if (data) setCategories(data)
+    try {
+      const { data, error } = await supabase
+        .from('transaction_categories')
+        .select('*')
+        .order('name')
+      if (error) throw error
+
+      const defaults = [
+        { id: 'default-1', name: 'Tarifa Bancária (TED/PIX/Transferências)', type: 'out' },
+        { id: 'default-2', name: 'Cesta de Serviços Bancários', type: 'out' },
+        { id: 'default-3', name: 'Tarifa de Emissão de Boletos', type: 'out' },
+        { id: 'default-4', name: 'Multa', type: 'out' },
+        { id: 'default-5', name: 'Juros', type: 'out' },
+      ]
+
+      if (data && data.length > 0) {
+        const merged = [...data]
+        defaults.forEach((def) => {
+          if (!merged.find((c) => c.name.toLowerCase() === def.name.toLowerCase())) {
+            merged.push(def)
+          }
+        })
+        setCategories(merged.sort((a, b) => a.name.localeCompare(b.name)))
+      } else {
+        setCategories(defaults)
+      }
+    } catch (e) {
+      setCategories([
+        { id: 'default-1', name: 'Tarifa Bancária (TED/PIX/Transferências)', type: 'out' },
+        { id: 'default-2', name: 'Cesta de Serviços Bancários', type: 'out' },
+        { id: 'default-3', name: 'Tarifa de Emissão de Boletos', type: 'out' },
+        { id: 'default-4', name: 'Multa', type: 'out' },
+        { id: 'default-5', name: 'Juros', type: 'out' },
+      ])
+    }
   }
 
   const handleAddCategory = async () => {
@@ -91,7 +124,7 @@ export function NewTransactionDialog({ open, onOpenChange, onSuccess }: any) {
 
   const handleSave = async () => {
     if (!newEntry.categoryId || !newEntry.amount || !newEntry.description) {
-      toast.error('Preencha todos os campos obrigatórios.')
+      toast.error('Preencha todos os campos obrigatórios (Valor, Descrição e Categoria).')
       return
     }
 
@@ -100,16 +133,38 @@ export function NewTransactionDialog({ open, onOpenChange, onSuccess }: any) {
       const {
         data: { user },
       } = await supabase.auth.getUser()
-      const { error } = await supabase.from('treasury_transactions').insert({
+
+      let finalCategoryId = newEntry.categoryId
+
+      if (finalCategoryId.startsWith('default-')) {
+        const { data: newCat, error: catErr } = await supabase
+          .from('transaction_categories')
+          .insert({ name: newEntry.categoryName, type: newEntry.type })
+          .select()
+          .single()
+
+        if (!catErr && newCat) {
+          finalCategoryId = newCat.id
+        } else {
+          finalCategoryId = ''
+        }
+      }
+
+      const payload: any = {
         type: newEntry.type,
         amount: Number(newEntry.amount),
         description: newEntry.description,
         date: newEntry.date,
         is_escrow: newEntry.is_escrow,
         category: newEntry.categoryName,
-        category_id: newEntry.categoryId,
         created_by: user?.id,
-      })
+      }
+
+      if (finalCategoryId) {
+        payload.category_id = finalCategoryId
+      }
+
+      const { error } = await supabase.from('treasury_transactions').insert(payload)
 
       if (error) throw error
 
@@ -178,13 +233,33 @@ export function NewTransactionDialog({ open, onOpenChange, onSuccess }: any) {
 
           <div className="space-y-2">
             <Label>Categoria</Label>
-            <PopoverPrimitive.Root open={popoverOpen} onOpenChange={setPopoverOpen}>
+            <PopoverPrimitive.Root
+              modal={true}
+              open={popoverOpen}
+              onOpenChange={(open) => {
+                if (!open) {
+                  setIsAddingCat(false)
+                  setNewCatName('')
+                }
+                setPopoverOpen(open)
+              }}
+            >
               <PopoverPrimitive.Trigger asChild>
                 <Button
                   variant="outline"
                   role="combobox"
                   aria-expanded={popoverOpen}
                   className="w-full justify-between font-normal"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    setPopoverOpen(!popoverOpen)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      setPopoverOpen(!popoverOpen)
+                    }
+                  }}
                 >
                   <span className="truncate">
                     {newEntry.categoryName || 'Selecione uma categoria...'}
@@ -194,9 +269,12 @@ export function NewTransactionDialog({ open, onOpenChange, onSuccess }: any) {
               </PopoverPrimitive.Trigger>
               <PopoverPrimitive.Portal>
                 <PopoverPrimitive.Content
-                  className="z-50 w-[var(--radix-popover-trigger-width)] rounded-md border bg-popover p-1 text-popover-foreground shadow-md outline-none animate-in fade-in-0 zoom-in-95"
+                  className="z-[100] w-[var(--radix-popover-trigger-width)] rounded-md border bg-popover p-1 text-popover-foreground shadow-md outline-none animate-in fade-in-0 zoom-in-95"
                   align="start"
                   sideOffset={4}
+                  onKeyDown={(e) => {
+                    e.stopPropagation()
+                  }}
                 >
                   {!isAddingCat ? (
                     <div className="flex flex-col gap-1">
@@ -213,13 +291,15 @@ export function NewTransactionDialog({ open, onOpenChange, onSuccess }: any) {
                           .filter((c) => c.name.toLowerCase().includes(searchCat.toLowerCase()))
                           .map((cat) => (
                             <Button
+                              type="button"
                               key={cat.id}
                               variant="ghost"
                               className={cn(
                                 'justify-start font-normal h-8 px-2',
                                 newEntry.categoryId === cat.id && 'bg-accent',
                               )}
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.preventDefault()
                                 setNewEntry({
                                   ...newEntry,
                                   categoryId: cat.id,
@@ -247,9 +327,13 @@ export function NewTransactionDialog({ open, onOpenChange, onSuccess }: any) {
                       </div>
                       <div className="h-px bg-border my-1" />
                       <Button
+                        type="button"
                         variant="ghost"
                         className="justify-start text-primary h-9 px-2"
-                        onClick={() => setIsAddingCat(true)}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          setIsAddingCat(true)
+                        }}
                       >
                         <Plus className="mr-2 h-4 w-4" /> + Cadastrar Nova Categoria
                       </Button>
@@ -268,17 +352,25 @@ export function NewTransactionDialog({ open, onOpenChange, onSuccess }: any) {
                       />
                       <div className="flex justify-end gap-2 mt-1">
                         <Button
+                          type="button"
                           size="sm"
                           variant="ghost"
                           className="h-8"
-                          onClick={() => setIsAddingCat(false)}
+                          onClick={(e) => {
+                            e.preventDefault()
+                            setIsAddingCat(false)
+                          }}
                         >
                           Cancelar
                         </Button>
                         <Button
+                          type="button"
                           size="sm"
                           className="h-8"
-                          onClick={handleAddCategory}
+                          onClick={(e) => {
+                            e.preventDefault()
+                            handleAddCategory()
+                          }}
                           disabled={loading || !newCatName.trim()}
                         >
                           {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Salvar'}
