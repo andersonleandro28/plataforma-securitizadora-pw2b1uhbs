@@ -1,5 +1,13 @@
 import { useState, useEffect } from 'react'
-import { Wallet, ArrowDownRight, ArrowUpRight, Lock, Plus, FileSpreadsheet } from 'lucide-react'
+import {
+  Wallet,
+  ArrowDownRight,
+  ArrowUpRight,
+  Lock,
+  Plus,
+  FileSpreadsheet,
+  Pencil,
+} from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -31,6 +39,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { NewTransactionDialog } from '@/components/Treasury/NewTransactionDialog'
+import { EditTransactionDialog } from '@/components/Treasury/EditTransactionDialog'
 
 export default function Treasury() {
   const [transactions, setTransactions] = useState<any[]>([])
@@ -40,6 +49,7 @@ export default function Treasury() {
   const [filterType, setFilterType] = useState('all')
   const [filterEscrow, setFilterEscrow] = useState(false)
   const [isNewEntryOpen, setIsNewEntryOpen] = useState(false)
+  const [editingTx, setEditingTx] = useState<any>(null)
 
   useEffect(() => {
     fetchTransactions()
@@ -133,9 +143,11 @@ export default function Treasury() {
       manuals?.forEach((m) =>
         allTx.push({
           id: `man-${m.id}`,
+          rawId: m.id,
           date: m.date,
           description: m.description,
           category: m.category,
+          categoryId: m.category_id,
           type: m.type,
           amount: Number(m.amount),
           is_escrow: m.is_escrow,
@@ -302,6 +314,7 @@ export default function Treasury() {
                   <TableHead>Tipo</TableHead>
                   <TableHead className="text-right">Valor</TableHead>
                   <TableHead className="text-right">Saldo Progressivo</TableHead>
+                  <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -348,6 +361,18 @@ export default function Treasury() {
                       <TableCell className="text-right font-mono font-medium">
                         {formatC(tx.progressiveBalance)}
                       </TableCell>
+                      <TableCell>
+                        {tx.id.startsWith('man-') && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setEditingTx(tx)}
+                            title="Editar Lançamento"
+                          >
+                            <Pencil className="h-4 w-4 text-muted-foreground hover:text-primary" />
+                          </Button>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))
                 )}
@@ -356,6 +381,16 @@ export default function Treasury() {
           </div>
         </CardContent>
       </Card>
+
+      <EditTransactionDialog
+        open={!!editingTx}
+        onOpenChange={(op: boolean) => !op && setEditingTx(null)}
+        transaction={editingTx}
+        onSuccess={() => {
+          setEditingTx(null)
+          fetchTransactions()
+        }}
+      />
     </div>
   )
 }
