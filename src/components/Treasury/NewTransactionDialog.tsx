@@ -234,7 +234,6 @@ export function NewTransactionDialog({ open, onOpenChange, onSuccess }: any) {
           <div className="space-y-2">
             <Label>Categoria</Label>
             <PopoverPrimitive.Root
-              modal={true}
               open={popoverOpen}
               onOpenChange={(open) => {
                 if (!open) {
@@ -250,16 +249,6 @@ export function NewTransactionDialog({ open, onOpenChange, onSuccess }: any) {
                   role="combobox"
                   aria-expanded={popoverOpen}
                   className="w-full justify-between font-normal"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    setPopoverOpen(!popoverOpen)
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      setPopoverOpen(!popoverOpen)
-                    }
-                  }}
                 >
                   <span className="truncate">
                     {newEntry.categoryName || 'Selecione uma categoria...'}
@@ -269,12 +258,9 @@ export function NewTransactionDialog({ open, onOpenChange, onSuccess }: any) {
               </PopoverPrimitive.Trigger>
               <PopoverPrimitive.Portal>
                 <PopoverPrimitive.Content
-                  className="z-[100] w-[var(--radix-popover-trigger-width)] rounded-md border bg-popover p-1 text-popover-foreground shadow-md outline-none animate-in fade-in-0 zoom-in-95"
+                  className="z-[9999] w-[var(--radix-popover-trigger-width)] rounded-md border bg-popover p-1 text-popover-foreground shadow-md outline-none animate-in fade-in-0 zoom-in-95"
                   align="start"
                   sideOffset={4}
-                  onKeyDown={(e) => {
-                    e.stopPropagation()
-                  }}
                 >
                   {!isAddingCat ? (
                     <div className="flex flex-col gap-1">
