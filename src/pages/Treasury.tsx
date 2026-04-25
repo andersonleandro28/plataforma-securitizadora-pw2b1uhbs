@@ -70,6 +70,11 @@ export default function Treasury() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () =>
         fetchTransactions(),
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'investment_redemptions' },
+        () => fetchTransactions(),
+      )
       .subscribe()
     return () => {
       supabase.removeChannel(channel)
