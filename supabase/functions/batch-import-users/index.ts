@@ -11,8 +11,9 @@ Deno.serve(async (req: Request) => {
     const { users } = await req.json()
 
     if (!users || !Array.isArray(users)) {
-      return new Response(JSON.stringify({ error: 'Lista de usuários inválida' }), { 
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      return new Response(JSON.stringify({ error: 'Lista de usuários inválida' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
@@ -24,24 +25,27 @@ Deno.serve(async (req: Request) => {
 
     for (const u of users) {
       const password = u.document_number.replace(/\D/g, '')
-      
+
       const { data, error } = await adminClient.auth.admin.createUser({
         email: u.email,
         password: password,
         email_confirm: true,
-        user_metadata: { name: u.full_name }
+        user_metadata: { name: u.full_name },
       })
 
       if (data.user) {
         // Trigger handle_new_user executes, but we must update the specific roles and constraints
-        await adminClient.from('profiles').update({
-          full_name: u.full_name,
-          document_number: password,
-          role: u.role,
-          is_investor: u.role === 'investor',
-          is_borrower: u.role === 'borrower',
-          requires_password_change: true
-        }).eq('id', data.user.id)
+        await adminClient
+          .from('profiles')
+          .update({
+            full_name: u.full_name,
+            document_number: password,
+            role: u.role,
+            is_investor: u.role === 'investor',
+            is_borrower: u.role === 'borrower',
+            requires_password_change: true,
+          })
+          .eq('id', data.user.id)
 
         results.push({ email: u.email, success: true })
       } else {
@@ -49,12 +53,16 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    return new Response(JSON.stringify({ success: true, results }), { 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    return new Response(JSON.stringify({ success: true, results }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (error) {
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Erro interno' }), { 
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-    })
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Erro interno' }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      },
+    )
   }
 })

@@ -51,15 +51,33 @@ export default function CcbPurchases() {
 
   const fetchPurchases = async () => {
     setLoading(true)
-    const { data: p } = await supabase
+
+    const { data: p, error: errP } = await supabase
       .from('recebiveis_ccb')
-      .select('*, ccb_solicitacoes(*, profiles(*))')
+      .select(`
+        *,
+        ccb_solicitacoes (
+          *,
+          profiles!ccb_solicitacoes_user_id_fkey (*)
+        )
+      `)
       .order('created_at', { ascending: false })
-    const { data: c } = await supabase
+
+    if (errP) {
+      console.error('Erro ao buscar recebíveis:', errP)
+      toast.error('Erro ao buscar operações: ' + errP.message)
+    }
+
+    const { data: c, error: errC } = await supabase
       .from('ccb_solicitacoes')
-      .select('*, profiles(*)')
+      .select(`
+        *,
+        profiles!ccb_solicitacoes_user_id_fkey (*)
+      `)
       .in('status', [
         'pendente',
+        'em_triagem',
+        'pendencia_documental',
         'em_analise',
         'aprovado',
         'aceite_tomador',
@@ -69,8 +87,15 @@ export default function CcbPurchases() {
         'liquidado',
         'aprovada_bdigital',
         'comprada_bdigital',
+        'ativa',
       ])
       .order('created_at', { ascending: false })
+
+    if (errC) {
+      console.error('Erro ao buscar solicitações:', errC)
+      toast.error('Erro ao carregar lista de tomadores: ' + errC.message)
+    }
+
     setPurchases(p || [])
     setCcbs(c || [])
     setLoading(false)
@@ -246,6 +271,13 @@ export default function CcbPurchases() {
 
   const m = calculateMetrics()
 
+  const totalAdquisitions = purchases.reduce((acc, p) => acc + Number(p.acquisition_value || 0), 0)
+  const totalReceivable = purchases.reduce(
+    (acc, p) => acc + Number(p.boleto_count || 0) * Number(p.boleto_unit_value || 0),
+    0,
+  )
+  const totalProfit = purchases.reduce((acc, p) => acc + Number(p.gross_profit || 0), 0)
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-10">
       <div className="flex justify-between items-end">
@@ -258,6 +290,45 @@ export default function CcbPurchases() {
         <Button onClick={openCreate} className="gap-2">
           <Plus className="w-4 h-4" /> Registrar Compra
         </Button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total Aquisições
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              R$ {totalAdquisitions.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total a Receber
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-600">
+              R$ {totalReceivable.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Lucro Bruto Projetado
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-emerald-600">
+              R$ {totalProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
