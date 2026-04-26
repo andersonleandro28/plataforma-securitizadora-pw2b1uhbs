@@ -103,6 +103,7 @@ export default function AdminCcbRequests() {
   }
 
   const renderDocs = (req: any) => {
+    if (!req) return []
     const p = req.docs_paths || {}
     const items = []
     if (req.pdf_file_path)
@@ -159,16 +160,14 @@ export default function AdminCcbRequests() {
               status: 'aberta',
             }
           })
-          await supabase
-            .from('operacoes_antecipacao')
-            .insert({
-              ccb_id: manageId,
-              user_id: req.user_id,
-              net_value: req.requested_value,
-              installments: inst,
-              partner_bank: 'BDIGITAL',
-              status: 'ativa',
-            })
+          await supabase.from('operacoes_antecipacao').insert({
+            ccb_id: manageId,
+            user_id: req.user_id,
+            net_value: req.requested_value,
+            installments: inst,
+            partner_bank: 'BDIGITAL',
+            status: 'ativa',
+          })
         }
       }
       toast.success('Solicitação atualizada.')
@@ -301,7 +300,7 @@ export default function AdminCcbRequests() {
               <div>
                 <span className="text-xs text-muted-foreground block">Valor</span>
                 <span className="font-bold">
-                  R$ {Number(docsModal?.requested_value).toLocaleString('pt-BR')}
+                  R$ {Number(docsModal?.requested_value || 0).toLocaleString('pt-BR')}
                 </span>
               </div>
               <div>
