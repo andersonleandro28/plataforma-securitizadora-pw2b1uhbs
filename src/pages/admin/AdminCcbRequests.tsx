@@ -78,7 +78,7 @@ export default function AdminCcbRequests() {
         .order('created_at', { ascending: false }),
       supabase
         .from('operacoes_antecipacao')
-        .select('*, ccb_solicitacoes(*), profiles!user_id(full_name, document_number)')
+        .select('*, ccb_solicitacoes(*, profiles(full_name, document_number))')
         .order('created_at', { ascending: false }),
       supabase.from('config_ccb').select('*').single(),
     ])
@@ -581,7 +581,7 @@ export default function AdminCcbRequests() {
                         <TableCell className="font-medium font-mono text-muted-foreground">
                           #{op.ccb_id?.split('-')[0].toUpperCase()}
                         </TableCell>
-                        <TableCell>{op.profiles?.full_name}</TableCell>
+                        <TableCell>{op.ccb_solicitacoes?.profiles?.full_name}</TableCell>
                         <TableCell className="font-bold text-primary">
                           R$ {Number(op.net_value).toLocaleString('pt-BR')}
                         </TableCell>
