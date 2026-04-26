@@ -58,7 +58,19 @@ export default function CcbPurchases() {
     const { data: c } = await supabase
       .from('ccb_solicitacoes')
       .select('*, profiles(*)')
-      .in('status', ['aprovado', 'aprovada_bdigital', 'pendente', 'comprada_bdigital'])
+      .in('status', [
+        'pendente',
+        'em_analise',
+        'aprovado',
+        'aceite_tomador',
+        'aguardando_formalizacao',
+        'formalizado',
+        'aguardando_liquidacao',
+        'liquidado',
+        'aprovada_bdigital',
+        'comprada_bdigital',
+      ])
+      .order('created_at', { ascending: false })
     setPurchases(p || [])
     setCcbs(c || [])
     setLoading(false)
@@ -267,7 +279,9 @@ export default function CcbPurchases() {
                     {new Date(p.created_at).toLocaleDateString('pt-BR')}
                   </TableCell>
                   <TableCell className="font-medium">
-                    {p.ccb_solicitacoes?.profiles?.full_name || 'Desconhecido'}
+                    {p.ccb_solicitacoes?.profiles?.full_name ||
+                      p.ccb_solicitacoes?.profiles?.pj_company_name ||
+                      'Desconhecido'}
                   </TableCell>
                   <TableCell>
                     {p.boleto_count}x R$ {p.boleto_unit_value}
@@ -323,7 +337,12 @@ export default function CcbPurchases() {
                   <SelectContent>
                     {ccbs.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
-                        {c.profiles?.full_name} - R$ {c.requested_value}
+                        {c.profiles?.full_name || c.profiles?.pj_company_name || 'Desconhecido'} -
+                        R${' '}
+                        {Number(c.requested_value).toLocaleString('pt-BR', {
+                          minimumFractionDigits: 2,
+                        })}{' '}
+                        ({String(c.status).replace(/_/g, ' ').toUpperCase()})
                       </SelectItem>
                     ))}
                   </SelectContent>
