@@ -49,6 +49,7 @@ export default function AdminCcbRequests() {
   const [requests, setRequests] = useState<any[]>([])
   const [activeOps, setActiveOps] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [ccbConfig, setCcbConfig] = useState<any>(null)
 
   const [manageId, setManageId] = useState<string | null>(null)
   const [docsModal, setDocsModal] = useState<any>(null)
@@ -69,7 +70,7 @@ export default function AdminCcbRequests() {
 
   const fetchData = async () => {
     setLoading(true)
-    const [{ data: reqs }, { data: ops }] = await Promise.all([
+    const [{ data: reqs }, { data: ops }, { data: cfg }] = await Promise.all([
       supabase
         .from('ccb_solicitacoes')
         .select('*, profiles(full_name, email)')
@@ -79,12 +80,14 @@ export default function AdminCcbRequests() {
         .from('operacoes_antecipacao')
         .select('*, ccb_solicitacoes(*), profiles!user_id(full_name, document_number)')
         .order('created_at', { ascending: false }),
+      supabase.from('config_ccb').select('*').single(),
     ])
     if (reqs) setRequests(reqs)
     if (ops) {
       setActiveOps(ops)
       if (manageOp) setManageOp(ops.find((o) => o.id === manageOp.id) || null)
     }
+    if (cfg) setCcbConfig(cfg)
     setLoading(false)
   }
 
@@ -245,57 +248,161 @@ export default function AdminCcbRequests() {
     }
   }
 
+  const calculatePmtDetails = (ratePercent: number, fee: number, modal: any, cfg: any) => {
+    if (!modal || !cfg)
+      return { pmt: 0, cet: 0, totalIof: 0, iofFixo: 0, iofDiario: 0, schedule: [] }
+    const pv = modal.requested_value
+    const n = modal.term_months
+    const rate = ratePercent / 100
+
+    let pmt = pv / n
+    if (rate > 0) pmt = (pv * rate * Math.pow(1 + rate, n)) / (Math.pow(1 + rate, n) - 1)
+
+    const iofFixedRate = Number(cfg.iof_rate) || 0.38
+    const iofDaily30 = Number(cfg.iof_daily_rate_30) || 0.0041
+    const iofDailyAfter = Number(cfg.iof_daily_rate_after) || 0.00274
+
+    const iofFixo = pv * (iofFixedRate / 100)
+
+    let saldo = pv
+    let totalIofDiario = 0
+    const schedule = []
+
+    for (let i = 1; i <= n; i++) {
+      const juros = saldo * rate
+      const amortizacao = rate > 0 ? pmt - juros : pv / n
+
+      const days = i * 30
+      const days1to30 = Math.min(days, 30)
+      const daysAfter = Math.max(0, days - 30)
+
+      const iofDiarioParcela =
+        amortizacao * (days1to30 * (iofDaily30 / 100) + daysAfter * (iofDailyAfter / 100))
+      totalIofDiario += iofDiarioParcela
+
+      saldo -= amortizacao
+      schedule.push({
+        month: i,
+        amortizacao,
+        juros,
+        iof_diario: iofDiarioParcela,
+        pmt_base: pmt,
+        saldo_devedor: Math.max(0, saldo),
+      })
+    }
+
+    const totalIof = iofFixo + totalIofDiario
+    const parcelaFinal = pmt + totalIof / n + fee / n
+
+    let low = 0.0
+    let high = 1.0
+    let r = 0.0
+    for (let i = 0; i < 50; i++) {
+      r = (low + high) / 2
+      const currentPv = (parcelaFinal * (1 - Math.pow(1 + r, -n))) / r
+      if (currentPv > pv) low = r
+      else high = r
+    }
+    const cet = (Math.pow(1 + r, 12) - 1) * 100
+
+    return { pmt: parcelaFinal, cet, totalIof, iofFixo, iofDiario: totalIofDiario, schedule }
+  }
+
+  const findRateForPmt = (targetPmt: number, fee: number, modal: any, cfg: any) => {
+    if (!modal || !cfg) return { rate: 0, cet: 0 }
+    let lowRate = 0.0001
+    let highRate = 100.0
+    let bestRate = 0.0001
+    let cet = 0
+
+    for (let i = 0; i < 50; i++) {
+      const midRate = (lowRate + highRate) / 2
+      const res = calculatePmtDetails(midRate, fee, modal, cfg)
+      if (res.pmt > targetPmt) {
+        highRate = midRate
+      } else {
+        lowRate = midRate
+      }
+      bestRate = midRate
+      cet = res.cet
+    }
+    return { rate: bestRate, cet }
+  }
+
+  const handleRateChange = (val: string) => {
+    setAdjRate(val)
+    if (val === '' || val === '.') return
+    const rateNum = Number(val)
+    if (!isNaN(rateNum)) {
+      const feeNum = Number(adjFee) || 0
+      const res = calculatePmtDetails(rateNum, feeNum, adjustModal, ccbConfig)
+      setAdjPmt(res.pmt.toFixed(2))
+      setAdjCet(res.cet)
+    }
+  }
+
+  const handlePmtChange = (val: string) => {
+    setAdjPmt(val)
+    if (val === '' || val === '.') return
+    const pmtNum = Number(val)
+    if (!isNaN(pmtNum)) {
+      const feeNum = Number(adjFee) || 0
+      const res = findRateForPmt(pmtNum, feeNum, adjustModal, ccbConfig)
+      setAdjRate(res.rate.toFixed(2))
+      setAdjCet(res.cet)
+    }
+  }
+
+  const handleFeeChange = (val: string) => {
+    setAdjFee(val)
+    if (val === '' || val === '.') return
+    const feeNum = Number(val)
+    if (!isNaN(feeNum)) {
+      const rateNum = Number(adjRate) || 0
+      const res = calculatePmtDetails(rateNum, feeNum, adjustModal, ccbConfig)
+      setAdjPmt(res.pmt.toFixed(2))
+      setAdjCet(res.cet)
+    }
+  }
+
   const openAdjust = (req: any) => {
     const sim = req.operation_data?.simulation || {}
     setAdjustModal(req)
-    setAdjRate(sim.interest_rate_monthly || 2.5)
-    setAdjFee(sim.fixed_cost || 0)
-    setAdjPmt(sim.installment_value || req.requested_value / req.term_months)
+
+    const rate = sim.interest_rate_monthly || 2.5
+    const fee = sim.fixed_cost || 0
+    const pmt = sim.installment_value || req.requested_value / req.term_months
+
+    setAdjRate(rate.toString())
+    setAdjFee(fee.toString())
+    setAdjPmt(pmt.toString())
     setAdjFirstDue(
       sim.first_due_date ||
         new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     )
-  }
 
-  const calculateCET = (VP: number, PMT: number, N: number) => {
-    if (VP <= 0 || PMT <= 0 || N <= 0) return 0
-    let guess = 0.05
-    for (let i = 0; i < 20; i++) {
-      let f = VP
-      let df = 0
-      for (let j = 1; j <= N; j++) {
-        f -= PMT / Math.pow(1 + guess, j)
-        df += (j * PMT) / Math.pow(1 + guess, j + 1)
-      }
-      let newGuess = guess - f / df
-      if (Math.abs(newGuess - guess) < 0.00001) {
-        guess = newGuess
-        break
-      }
-      guess = newGuess
-    }
-    return isNaN(guess) ? 0 : guess * 100
+    const res = calculatePmtDetails(Number(rate), Number(fee), req, ccbConfig)
+    setAdjCet(res.cet)
   }
-
-  useEffect(() => {
-    if (!adjustModal) return
-    const VP = adjustModal.requested_value - Number(adjFee)
-    const PMT = Number(adjPmt)
-    const N = adjustModal.term_months
-    const cet = calculateCET(VP, PMT, N)
-    setAdjCet(cet)
-  }, [adjRate, adjFee, adjPmt, adjustModal])
 
   const handleSaveAdjustment = async () => {
     try {
       const originalSimulation = adjustModal.operation_data?.simulation || {}
+      const rateNum = Number(adjRate) || 0
+      const feeNum = Number(adjFee) || 0
+      const calcDetails = calculatePmtDetails(rateNum, feeNum, adjustModal, ccbConfig)
+
       const newSimulation = {
         ...originalSimulation,
-        interest_rate_monthly: Number(adjRate),
-        fixed_cost: Number(adjFee),
+        interest_rate_monthly: rateNum,
+        fixed_cost: feeNum,
         installment_value: Number(adjPmt),
         first_due_date: adjFirstDue,
-        cet: adjCet,
+        cet: calcDetails.cet,
+        iof_fixo: calcDetails.iofFixo,
+        iof_diario: calcDetails.iofDiario,
+        total_iof: calcDetails.totalIof,
+        schedule: calcDetails.schedule,
       }
 
       const newOpData = {
@@ -616,7 +723,7 @@ export default function AdminCcbRequests() {
                   type="number"
                   step="0.01"
                   value={adjRate}
-                  onChange={(e) => setAdjRate(e.target.value)}
+                  onChange={(e) => handleRateChange(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
@@ -625,7 +732,7 @@ export default function AdminCcbRequests() {
                   type="number"
                   step="0.01"
                   value={adjFee}
-                  onChange={(e) => setAdjFee(e.target.value)}
+                  onChange={(e) => handleFeeChange(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
@@ -634,7 +741,7 @@ export default function AdminCcbRequests() {
                   type="number"
                   step="0.01"
                   value={adjPmt}
-                  onChange={(e) => setAdjPmt(e.target.value)}
+                  onChange={(e) => handlePmtChange(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
