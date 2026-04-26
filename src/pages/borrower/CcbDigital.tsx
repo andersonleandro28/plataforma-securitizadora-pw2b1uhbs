@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Download,
   UploadCloud,
+  Loader2,
 } from 'lucide-react'
 import { CcbWizard } from '@/components/ccb/CcbWizard'
 import { supabase } from '@/lib/supabase/client'
@@ -23,6 +24,14 @@ import {
 } from '@/components/ui/accordion'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
 
 export default function CcbDigital() {
   const { user } = useAuth()
@@ -31,6 +40,8 @@ export default function CcbDigital() {
   const [activeOps, setActiveOps] = useState<any[]>([])
   const [uploading, setUploading] = useState<string | null>(null)
 
+  const [reviewModal, setReviewModal] = useState<any>(null)
+
   const fetchData = async () => {
     if (!user) return
     const [{ data: reqs }, { data: ops }] = await Promise.all([
@@ -38,6 +49,7 @@ export default function CcbDigital() {
         .from('ccb_solicitacoes')
         .select('*')
         .eq('user_id', user.id)
+        .is('deleted_at', null)
         .order('created_at', { ascending: false }),
       supabase
         .from('operacoes_antecipacao')
@@ -61,6 +73,10 @@ export default function CcbDigital() {
         return <Badge variant="destructive">Rejeitada</Badge>
       case 'em_analise':
         return <Badge className="bg-amber-500">Em Análise BDIGITAL</Badge>
+      case 'proposta_ajustada':
+        return <Badge className="bg-blue-500">Proposta Ajustada (Ação Necessária)</Badge>
+      case 'aceite_tomador':
+        return <Badge className="bg-indigo-500">Aceito (Aguardando Emissão)</Badge>
       default:
         return <Badge variant="secondary">Pendente Envio</Badge>
     }
@@ -101,6 +117,21 @@ export default function CcbDigital() {
       if (data) window.open(data.signedUrl, '_blank')
     } catch (e) {
       toast.error('Erro ao baixar documento')
+    }
+  }
+
+  const handleAcceptProposal = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('ccb_solicitacoes')
+        .update({ status: 'aceite_tomador' })
+        .eq('id', id)
+      if (error) throw error
+      toast.success('Proposta aceita! O comitê dará prosseguimento à sua solicitação.')
+      setReviewModal(null)
+      fetchData()
+    } catch (e: any) {
+      toast.error('Erro ao aceitar proposta: ' + e.message)
     }
   }
 
@@ -193,21 +224,33 @@ export default function CcbDigital() {
                             </p>
                             <p className="text-sm text-muted-foreground">{req.term_months} meses</p>
                           </div>
-                          <div className="flex justify-between items-center pt-4 border-t text-sm">
-                            <span className="text-muted-foreground">
-                              {new Date(req.created_at).toLocaleDateString('pt-BR')}
+                          <div className="flex flex-col gap-2 pt-4 border-t text-sm">
+                            <span className="text-muted-foreground mb-1">
+                              Data: {new Date(req.created_at).toLocaleDateString('pt-BR')}
                             </span>
-                            {req.pdf_file_path && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8 gap-1 text-[#00C2E0] border-[#00C2E0]/30 hover:bg-[#00C2E0]/10"
-                                onClick={() => downloadFile(req.pdf_file_path)}
-                                title="Visualizar o espelho do contrato"
-                              >
-                                <FileText className="h-4 w-4" /> PDF Espelho
-                              </Button>
-                            )}
+                            <div className="flex flex-wrap items-center gap-2">
+                              {req.pdf_file_path && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 gap-1 text-[#00C2E0] border-[#00C2E0]/30 hover:bg-[#00C2E0]/10 flex-1"
+                                  onClick={() => downloadFile(req.pdf_file_path)}
+                                  title="Visualizar o espelho do contrato"
+                                >
+                                  <FileText className="h-4 w-4" /> PDF
+                                </Button>
+                              )}
+                              {req.status === 'proposta_ajustada' && (
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  className="h-8 bg-blue-600 hover:bg-blue-700 text-white border-0 flex-1"
+                                  onClick={() => setReviewModal(req)}
+                                >
+                                  Analisar Nova Proposta
+                                </Button>
+                              )}
+                            </div>
                           </div>
                         </CardContent>
                       </Card>
@@ -360,6 +403,58 @@ export default function CcbDigital() {
           )}
         </TabsContent>
       </Tabs>
+
+      <Dialog open={!!reviewModal} onOpenChange={(v) => !v && setReviewModal(null)}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Nova Proposta de Crédito</DialogTitle>
+            <DialogDescription>
+              O comitê revisou sua solicitação e ajustou as seguintes condições. Verifique e
+              confirme se estiver de acordo.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4 p-4 bg-muted rounded-md text-sm border shadow-inner">
+              <div>
+                <span className="text-muted-foreground block mb-1">Taxa de Juros</span>
+                <span className="font-bold text-base">
+                  {reviewModal?.operation_data?.simulation?.interest_rate_monthly}% a.m.
+                </span>
+              </div>
+              <div>
+                <span className="text-muted-foreground block mb-1">Tarifa de Emissão</span>
+                <span className="font-bold text-base">
+                  R${' '}
+                  {Number(reviewModal?.operation_data?.simulation?.fixed_cost || 0).toLocaleString(
+                    'pt-BR',
+                  )}
+                </span>
+              </div>
+              <div>
+                <span className="text-muted-foreground block mb-1">Valor da Parcela</span>
+                <span className="font-bold text-base">
+                  R${' '}
+                  {Number(
+                    reviewModal?.operation_data?.simulation?.installment_value || 0,
+                  ).toLocaleString('pt-BR')}
+                </span>
+              </div>
+              <div>
+                <span className="text-muted-foreground block mb-1">Custo Efetivo Total (CET)</span>
+                <span className="font-bold text-base text-primary">
+                  {Number(reviewModal?.operation_data?.simulation?.cet || 0).toFixed(2)}% a.m.
+                </span>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReviewModal(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={() => handleAcceptProposal(reviewModal.id)}>Aceitar Condições</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

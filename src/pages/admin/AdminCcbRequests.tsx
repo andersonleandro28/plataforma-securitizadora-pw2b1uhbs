@@ -31,9 +31,21 @@ import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { Loader2, FileText, Settings, Download, UploadCloud, CheckCircle2 } from 'lucide-react'
+import {
+  Loader2,
+  FileText,
+  Settings,
+  Download,
+  UploadCloud,
+  CheckCircle2,
+  Trash2,
+  Calculator,
+  Edit,
+} from 'lucide-react'
+import { useAuth } from '@/hooks/use-auth'
 
 export default function AdminCcbRequests() {
+  const { user } = useAuth()
   const [requests, setRequests] = useState<any[]>([])
   const [activeOps, setActiveOps] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -47,12 +59,21 @@ export default function AdminCcbRequests() {
   const [manageOp, setManageOp] = useState<any>(null)
   const [uploadingBoleto, setUploadingBoleto] = useState<string | null>(null)
 
+  // Mesa de Negociação (Adjust)
+  const [adjustModal, setAdjustModal] = useState<any>(null)
+  const [adjRate, setAdjRate] = useState('')
+  const [adjFee, setAdjFee] = useState('')
+  const [adjPmt, setAdjPmt] = useState('')
+  const [adjFirstDue, setAdjFirstDue] = useState('')
+  const [adjCet, setAdjCet] = useState(0)
+
   const fetchData = async () => {
     setLoading(true)
     const [{ data: reqs }, { data: ops }] = await Promise.all([
       supabase
         .from('ccb_solicitacoes')
         .select('*, profiles(full_name, email)')
+        .is('deleted_at', null)
         .order('created_at', { ascending: false }),
       supabase
         .from('operacoes_antecipacao')
@@ -121,49 +142,6 @@ export default function AdminCcbRequests() {
         path: paths.spouse_id_back,
         bucket: 'ccb_conjuges_docs',
       })
-    if (paths.spouse_selfie)
-      items.push({
-        label: 'Selfie Cônjuge',
-        path: paths.spouse_selfie,
-        bucket: 'ccb_conjuges_docs',
-      })
-    if (paths.spouse_address)
-      items.push({
-        label: 'Residência Cônjuge',
-        path: paths.spouse_address,
-        bucket: 'ccb_conjuges_docs',
-      })
-
-    if (paths.guarantor_id_front)
-      items.push({
-        label: 'RG/CPF Avalista (Frente)',
-        path: paths.guarantor_id_front,
-        bucket: 'ccb_avalistas_docs',
-      })
-    if (paths.guarantor_id_back)
-      items.push({
-        label: 'RG/CPF Avalista (Verso)',
-        path: paths.guarantor_id_back,
-        bucket: 'ccb_avalistas_docs',
-      })
-    if (paths.guarantor_selfie)
-      items.push({
-        label: 'Selfie Avalista',
-        path: paths.guarantor_selfie,
-        bucket: 'ccb_avalistas_docs',
-      })
-    if (paths.guarantor_address)
-      items.push({
-        label: 'Residência Avalista',
-        path: paths.guarantor_address,
-        bucket: 'ccb_avalistas_docs',
-      })
-    if (paths.guarantor_income)
-      items.push({
-        label: 'Renda Avalista',
-        path: paths.guarantor_income,
-        bucket: 'ccb_avalistas_docs',
-      })
 
     if (paths.vehicle_doc)
       items.push({
@@ -171,17 +149,6 @@ export default function AdminCcbRequests() {
         path: paths.vehicle_doc,
         bucket: 'ccb-docs',
       })
-
-    if (paths.bankExtracts && Array.isArray(paths.bankExtracts)) {
-      paths.bankExtracts.forEach((b: string, i: number) =>
-        items.push({ label: `Extrato Bancário ${i + 1}`, path: b, bucket: 'ccb-docs' }),
-      )
-    }
-    if (paths.additionalDocs && Array.isArray(paths.additionalDocs)) {
-      paths.additionalDocs.forEach((b: string, i: number) =>
-        items.push({ label: `Documento Adicional ${i + 1}`, path: b, bucket: 'ccb-docs' }),
-      )
-    }
 
     if (req.bdigital_response_file)
       items.push({
@@ -263,37 +230,105 @@ export default function AdminCcbRequests() {
     }
   }
 
-  const handleUploadBoleto = async (opId: string, instId: string, file: File) => {
-    if (!file) return
-    setUploadingBoleto(instId)
+  const handleDelete = async (id: string) => {
+    if (!confirm('Deseja realmente excluir esta solicitação? Esta ação a removerá da sua fila.'))
+      return
     try {
-      const path = `boletos/${opId}/${instId}_${Date.now()}.pdf`
-      await supabase.storage.from('ccb-docs').upload(path, file)
-      const op = activeOps.find((o) => o.id === opId)
-      const newInst = op.installments.map((i: any) =>
-        i.id === instId ? { ...i, boleto_url: path } : i,
-      )
-      await supabase.from('operacoes_antecipacao').update({ installments: newInst }).eq('id', opId)
-      toast.success('Boleto enviado com sucesso.')
+      await supabase
+        .from('ccb_solicitacoes')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', id)
+      toast.success('Solicitação excluída com sucesso.')
       fetchData()
     } catch (e: any) {
       toast.error('Erro: ' + e.message)
-    } finally {
-      setUploadingBoleto(null)
     }
   }
 
-  const handleApproveReceipt = async (opId: string, instId: string) => {
+  const openAdjust = (req: any) => {
+    const sim = req.operation_data?.simulation || {}
+    setAdjustModal(req)
+    setAdjRate(sim.interest_rate_monthly || 2.5)
+    setAdjFee(sim.fixed_cost || 0)
+    setAdjPmt(sim.installment_value || req.requested_value / req.term_months)
+    setAdjFirstDue(
+      sim.first_due_date ||
+        new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    )
+  }
+
+  const calculateCET = (VP: number, PMT: number, N: number) => {
+    if (VP <= 0 || PMT <= 0 || N <= 0) return 0
+    let guess = 0.05
+    for (let i = 0; i < 20; i++) {
+      let f = VP
+      let df = 0
+      for (let j = 1; j <= N; j++) {
+        f -= PMT / Math.pow(1 + guess, j)
+        df += (j * PMT) / Math.pow(1 + guess, j + 1)
+      }
+      let newGuess = guess - f / df
+      if (Math.abs(newGuess - guess) < 0.00001) {
+        guess = newGuess
+        break
+      }
+      guess = newGuess
+    }
+    return isNaN(guess) ? 0 : guess * 100
+  }
+
+  useEffect(() => {
+    if (!adjustModal) return
+    const VP = adjustModal.requested_value - Number(adjFee)
+    const PMT = Number(adjPmt)
+    const N = adjustModal.term_months
+    const cet = calculateCET(VP, PMT, N)
+    setAdjCet(cet)
+  }, [adjRate, adjFee, adjPmt, adjustModal])
+
+  const handleSaveAdjustment = async () => {
     try {
-      const op = activeOps.find((o) => o.id === opId)
-      const newInst = op.installments.map((i: any) =>
-        i.id === instId ? { ...i, status: 'paga' } : i,
-      )
-      await supabase.from('operacoes_antecipacao').update({ installments: newInst }).eq('id', opId)
-      toast.success('Pagamento liquidado com sucesso.')
+      const originalSimulation = adjustModal.operation_data?.simulation || {}
+      const newSimulation = {
+        ...originalSimulation,
+        interest_rate_monthly: Number(adjRate),
+        fixed_cost: Number(adjFee),
+        installment_value: Number(adjPmt),
+        first_due_date: adjFirstDue,
+        cet: adjCet,
+      }
+
+      const newOpData = {
+        ...adjustModal.operation_data,
+        simulation: newSimulation,
+        original_simulation: originalSimulation,
+      }
+
+      await supabase
+        .from('ccb_solicitacoes')
+        .update({
+          operation_data: newOpData,
+          status: 'proposta_ajustada',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', adjustModal.id)
+
+      await supabase.from('audit_logs').insert({
+        entity_type: 'ccb_solicitacoes',
+        entity_id: adjustModal.id,
+        action: 'proposal_adjusted',
+        details: { original: originalSimulation, adjusted: newSimulation, admin_id: user?.id },
+      })
+
+      await supabase.functions.invoke('notify-ccb-adjustment', {
+        body: { ccb_id: adjustModal.id, user_id: adjustModal.user_id, newSimulation },
+      })
+
+      toast.success('Proposta ajustada e notificação enviada ao cliente!')
+      setAdjustModal(null)
       fetchData()
     } catch (e: any) {
-      toast.error('Erro: ' + e.message)
+      toast.error('Erro ao ajustar: ' + e.message)
     }
   }
 
@@ -302,25 +337,26 @@ export default function AdminCcbRequests() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Gestão de CCB (BDIGITAL)</h1>
         <p className="text-muted-foreground">
-          Analise as simulações solicitadas e gerencie o fluxo de operações.
+          Analise as simulações solicitadas, ajuste as condições na mesa de negociação e gerencie o
+          fluxo de operações.
         </p>
       </div>
       <Tabs defaultValue="solicitacoes" className="w-full">
         <TabsList className="mb-4">
-          <TabsTrigger value="solicitacoes">Simulações Pendentes</TabsTrigger>
+          <TabsTrigger value="solicitacoes">Solicitações de Crédito</TabsTrigger>
           <TabsTrigger value="ativas">Operações CCB Ativas</TabsTrigger>
         </TabsList>
         <TabsContent value="solicitacoes">
           <Card>
             <CardHeader>
-              <CardTitle>Solicitações de Emissão</CardTitle>
+              <CardTitle>Fila de Simulações</CardTitle>
             </CardHeader>
             <CardContent>
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Tomador</TableHead>
-                    <TableHead>Valor</TableHead>
+                    <TableHead>Valor Solicitado</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
@@ -351,13 +387,30 @@ export default function AdminCcbRequests() {
                           R$ {Number(req.requested_value).toLocaleString('pt-BR')}
                         </TableCell>
                         <TableCell>
-                          <Badge className={req.status === 'aprovada' ? 'bg-emerald-500' : ''}>
-                            {req.status}
+                          <Badge
+                            className={
+                              req.status === 'aprovada'
+                                ? 'bg-emerald-500'
+                                : req.status === 'proposta_ajustada'
+                                  ? 'bg-blue-500'
+                                  : req.status === 'aceite_tomador'
+                                    ? 'bg-indigo-500'
+                                    : ''
+                            }
+                          >
+                            {req.status === 'proposta_ajustada'
+                              ? 'Aguardando Aceite'
+                              : req.status === 'aceite_tomador'
+                                ? 'Aceito pelo Tomador'
+                                : req.status}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right space-x-2">
                           <Button variant="outline" size="sm" onClick={() => setDocsModal(req)}>
                             <FileText className="h-4 w-4 mr-1" /> Detalhes
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => openAdjust(req)}>
+                            <Edit className="h-4 w-4 mr-1" /> Ajustar
                           </Button>
                           <Button
                             variant="secondary"
@@ -369,6 +422,14 @@ export default function AdminCcbRequests() {
                             }}
                           >
                             <Settings className="h-4 w-4 mr-1" /> Gerir
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDelete(req.id)}
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -433,12 +494,25 @@ export default function AdminCcbRequests() {
       </Tabs>
 
       <Dialog open={!!docsModal} onOpenChange={(v) => !v && setDocsModal(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Detalhes da Solicitação</DialogTitle>
+            <DialogTitle>Espelhamento de Solicitação</DialogTitle>
+            <DialogDescription>Visão detalhada conforme submetido pelo tomador.</DialogDescription>
           </DialogHeader>
           <div className="space-y-6 py-4 max-h-[70vh] overflow-y-auto pr-4">
             <div className="grid grid-cols-2 gap-4 text-sm bg-muted/30 p-4 rounded-md border">
+              <div>
+                <span className="font-semibold text-muted-foreground block mb-1">
+                  Valor Solicitado
+                </span>
+                <span className="font-bold text-lg">
+                  R$ {Number(docsModal?.requested_value || 0).toLocaleString('pt-BR')}
+                </span>
+              </div>
+              <div>
+                <span className="font-semibold text-muted-foreground block mb-1">Prazo</span>
+                <span className="font-bold text-lg">{docsModal?.term_months} meses</span>
+              </div>
               <div>
                 <span className="font-semibold text-muted-foreground block mb-1">
                   Tipo de Crédito
@@ -452,6 +526,45 @@ export default function AdminCcbRequests() {
                 {docsModal?.guarantees_data?.guaranteeType?.toUpperCase() || 'Não informado'}
               </div>
             </div>
+
+            <div className="bg-primary/5 p-4 rounded-md border border-primary/20 space-y-3">
+              <h4 className="font-semibold text-primary flex items-center gap-2">
+                <Calculator className="h-4 w-4" /> Condições e Simulação
+              </h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground block">Taxa Juros</span>
+                  <span className="font-medium">
+                    {docsModal?.operation_data?.simulation?.interest_rate_monthly || 0}% a.m.
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">Tarifa Emissão</span>
+                  <span className="font-medium">
+                    R${' '}
+                    {Number(docsModal?.operation_data?.simulation?.fixed_cost || 0).toLocaleString(
+                      'pt-BR',
+                    )}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">Valor Parcela</span>
+                  <span className="font-medium">
+                    R${' '}
+                    {Number(
+                      docsModal?.operation_data?.simulation?.installment_value || 0,
+                    ).toLocaleString('pt-BR')}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">Custo Efetivo (CET)</span>
+                  <span className="font-medium">
+                    {Number(docsModal?.operation_data?.simulation?.cet || 0).toFixed(2)}% a.m.
+                  </span>
+                </div>
+              </div>
+            </div>
+
             {docsModal?.bankData && (
               <div className="text-sm bg-muted/10 p-3 rounded-md border">
                 <span className="font-semibold block mb-1">Dados Bancários para Crédito</span>
@@ -462,6 +575,7 @@ export default function AdminCcbRequests() {
                 PIX: {docsModal.bankData.pix_key || '-'}
               </div>
             )}
+
             <div className="space-y-3">
               <h4 className="font-semibold text-sm">Arquivos Anexados</h4>
               {docsModal &&
@@ -485,6 +599,71 @@ export default function AdminCcbRequests() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={!!adjustModal} onOpenChange={(v) => !v && setAdjustModal(null)}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Mesa de Negociação (Ajustar Proposta)</DialogTitle>
+            <DialogDescription>
+              Altere as condições comerciais da proposta original. O CET será recalculado
+              automaticamente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Taxa de Juros Mensal (%)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={adjRate}
+                  onChange={(e) => setAdjRate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Tarifa de Emissão (R$)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={adjFee}
+                  onChange={(e) => setAdjFee(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Valor da Parcela (R$)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={adjPmt}
+                  onChange={(e) => setAdjPmt(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>1º Vencimento</Label>
+                <Input
+                  type="date"
+                  value={adjFirstDue}
+                  onChange={(e) => setAdjFirstDue(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-md flex items-center justify-between">
+              <span className="font-medium text-emerald-700 dark:text-emerald-400">
+                CET Recalculado (aprox.):
+              </span>
+              <span className="text-xl font-bold text-emerald-700 dark:text-emerald-400">
+                {adjCet.toFixed(2)}% a.m.
+              </span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAdjustModal(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveAdjustment}>Salvar e Notificar Cliente</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!manageId} onOpenChange={(v) => !v && setManageId(null)}>
         <DialogContent>
           <DialogHeader>
@@ -500,7 +679,9 @@ export default function AdminCcbRequests() {
                 <SelectContent>
                   <SelectItem value="pendente">Pendente</SelectItem>
                   <SelectItem value="em_analise">Enviado BDIGITAL</SelectItem>
-                  <SelectItem value="aprovada">Aprovada</SelectItem>
+                  <SelectItem value="proposta_ajustada">Aguardando Aceite (Cliente)</SelectItem>
+                  <SelectItem value="aceite_tomador">Aceito pelo Cliente</SelectItem>
+                  <SelectItem value="aprovada">Aprovada (Gerar Operação Ativa)</SelectItem>
                   <SelectItem value="rejeitada">Rejeitada</SelectItem>
                 </SelectContent>
               </Select>
