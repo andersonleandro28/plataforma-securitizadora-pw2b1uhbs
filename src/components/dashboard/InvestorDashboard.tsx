@@ -643,10 +643,7 @@ export default function InvestorDashboard() {
                 </TableRow>
               ) : (
                 activeInvestments.map((inv) => {
-                  const sub = inv.debenture_subscriptions?.find((s: any) => s.status !== 'Excluído')
-                  const displayDate = sub?.subscription_date
-                    ? sub.subscription_date
-                    : inv.created_at
+                  const displayDate = inv.transfer_date || inv.created_at
                   const m = inv.status === 'approved' ? calculateInvestmentMetrics(inv) : null
 
                   return (
