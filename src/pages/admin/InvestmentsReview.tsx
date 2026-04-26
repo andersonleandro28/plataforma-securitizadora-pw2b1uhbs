@@ -190,6 +190,14 @@ export default function InvestmentsReview() {
 
   const handleSaveDates = async () => {
     if (!selectedInv) return
+
+    const selectedDate = new Date(datesForm.transfer_date + 'T12:00:00Z')
+    const today = new Date()
+    today.setUTCHours(23, 59, 59, 999)
+    if (selectedDate > today) {
+      return toast.error('A data do aporte não pode ser posterior à data atual.')
+    }
+
     try {
       const { error } = await supabase
         .from('investments')
@@ -203,12 +211,13 @@ export default function InvestmentsReview() {
         action: 'admin_updated_dates',
         details: {
           admin_id: user?.id,
+          message: `Data do Aporte ID ${selectedInv.id} alterada de ${selectedInv.transfer_date || 'N/A'} para ${datesForm.transfer_date} por ${user?.email}`,
           old_transfer_date: selectedInv.transfer_date,
           new_transfer_date: datesForm.transfer_date,
         },
       })
 
-      toast.success('Datas atualizadas (Migração/Ajuste).')
+      toast.success('Data atualizada com sucesso. Sincronização em cascata concluída.')
       setEditOpen(false)
       fetchData()
     } catch (err: any) {
@@ -667,6 +676,48 @@ export default function InvestmentsReview() {
             <Button onClick={handleConfirmApproval} disabled={processing}>
               {processing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Confirmar e Liquidar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Data do Aporte</DialogTitle>
+            <DialogDescription>
+              Altere a data de transferência para recálculo retroativo. Esta ação atualizará as
+              subscrições, a tesouraria e o dashboard do investidor em cascata.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label>Data de Transferência (Competência)</Label>
+              <Input
+                type="date"
+                max={new Date().toISOString().split('T')[0]}
+                value={datesForm.transfer_date}
+                onChange={(e) => setDatesForm({ transfer_date: e.target.value })}
+              />
+            </div>
+            {datesForm.transfer_date && datesForm.transfer_date !== selectedInv?.transfer_date && (
+              <Alert className="bg-amber-50 border-amber-200 mt-4">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <AlertTitle className="text-amber-800">Sincronização em Cascata</AlertTitle>
+                <AlertDescription className="text-amber-700 text-xs mt-1">
+                  O recálculo pro rata die será aplicado automaticamente desde a nova data até a
+                  presente. A alteração refletirá na Tesouraria e no Dashboard do Investidor de
+                  forma idêntica.
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveDates} disabled={!datesForm.transfer_date}>
+              <CheckCircle className="w-4 h-4 mr-2" /> Salvar Sincronização
             </Button>
           </DialogFooter>
         </DialogContent>
