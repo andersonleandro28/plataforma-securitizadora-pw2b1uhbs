@@ -68,33 +68,45 @@ export default function CcbPurchases() {
       toast.error('Erro ao buscar operações: ' + errP.message)
     }
 
-    const { data: c, error: errC } = await supabase
+    const { data: cRaw, error: errC } = await supabase
       .from('ccb_solicitacoes')
       .select(`
         *,
         profiles!ccb_solicitacoes_user_id_fkey (*)
       `)
-      .in('status', [
-        'pendente',
-        'em_triagem',
-        'pendencia_documental',
-        'em_analise',
-        'aprovado',
-        'aceite_tomador',
-        'aguardando_formalizacao',
-        'formalizado',
-        'aguardando_liquidacao',
-        'liquidado',
-        'aprovada_bdigital',
-        'comprada_bdigital',
-        'ativa',
-      ])
       .order('created_at', { ascending: false })
 
     if (errC) {
       console.error('Erro ao buscar solicitações:', errC)
       toast.error('Erro ao carregar lista de tomadores: ' + errC.message)
     }
+
+    // Log de debug solicitado
+    console.log('Retorno bruto Supabase (ccb_solicitacoes):', cRaw)
+
+    // Filtro case-insensitive para os status
+    // O seletor deve buscar propostas com status 'aprovado', 'aprovada' ou 'aceite_tomador'
+    const allowedStatuses = [
+      'aprovado',
+      'aprovada',
+      'aceite_tomador',
+      'aguardando_formalizacao',
+      'formalizado',
+      'aguardando_liquidacao',
+      'liquidado',
+      'aprovada_bdigital',
+      'comprada_bdigital',
+      'ativa',
+    ]
+
+    const c = (cRaw || []).filter((item) => {
+      const statusLower = String(item.status || '').toLowerCase()
+      return (
+        allowedStatuses.includes(statusLower) ||
+        statusLower.includes('aprovad') ||
+        statusLower.includes('aceite')
+      )
+    })
 
     setPurchases(p || [])
     setCcbs(c || [])
@@ -141,9 +153,14 @@ export default function CcbPurchases() {
     if (!form.ccb_id || !form.acquisition_value || !form.boleto_count || !form.boleto_unit_value) {
       return toast.error('Preencha todos os campos')
     }
+
+    const selectedCcb = ccbs.find((c) => c.id === form.ccb_id)
+    const tomador_id = selectedCcb?.user_id
+
     const { acq, profit, tir, prov } = calculateMetrics()
-    const payload = {
+    const payload: any = {
       ccb_id: form.ccb_id,
+      tomador_id: tomador_id,
       acquisition_value: acq,
       boleto_count: Number(form.boleto_count),
       boleto_unit_value: Number(form.boleto_unit_value),
@@ -406,16 +423,19 @@ export default function CcbPurchases() {
                     <SelectValue placeholder="Selecione a operação..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {ccbs.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.profiles?.full_name || c.profiles?.pj_company_name || 'Desconhecido'} -
-                        R${' '}
-                        {Number(c.requested_value).toLocaleString('pt-BR', {
-                          minimumFractionDigits: 2,
-                        })}{' '}
-                        ({String(c.status).replace(/_/g, ' ').toUpperCase()})
-                      </SelectItem>
-                    ))}
+                    {ccbs.map((c) => {
+                      const tomadorName = c.profiles?.full_name || c.profiles?.pj_company_name
+                      const displayName = tomadorName ? tomadorName : `Tomador ID: ${c.user_id}`
+                      return (
+                        <SelectItem key={c.id} value={c.id}>
+                          {displayName} - R${' '}
+                          {Number(c.requested_value).toLocaleString('pt-BR', {
+                            minimumFractionDigits: 2,
+                          })}{' '}
+                          ({String(c.status).replace(/_/g, ' ').toUpperCase()})
+                        </SelectItem>
+                      )
+                    })}
                   </SelectContent>
                 </Select>
               </div>
