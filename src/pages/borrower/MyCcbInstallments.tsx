@@ -262,26 +262,46 @@ export default function MyCcbInstallments() {
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-col whitespace-nowrap">
-                                <span
-                                  className={
-                                    isOverdue ? 'line-through text-muted-foreground text-xs' : ''
-                                  }
-                                >
-                                  R${' '}
-                                  {Number(b.unit_value).toLocaleString('pt-BR', {
-                                    minimumFractionDigits: 2,
-                                  })}
-                                </span>
-                                {isOverdue && (
+                                {b.status === 'Pago' ? (
                                   <span
-                                    title={`Principal: R$ ${calc.baseValue.toFixed(2)} + Multa: R$ ${calc.penalty.toFixed(2)} + Juros: R$ ${calc.interest.toFixed(2)}`}
-                                    className="text-rose-600 font-bold"
+                                    className="text-emerald-600 font-bold"
+                                    title={`Pago em ${b.payment_date ? new Date(b.payment_date).toLocaleDateString('pt-BR') : '-'}`}
                                   >
                                     R${' '}
-                                    {calc.total.toLocaleString('pt-BR', {
+                                    {(
+                                      Number(b.unit_value) +
+                                      Number(b.interest_applied || 0) +
+                                      Number(b.penalty_applied || 0)
+                                    ).toLocaleString('pt-BR', {
                                       minimumFractionDigits: 2,
                                     })}
                                   </span>
+                                ) : (
+                                  <>
+                                    <span
+                                      className={
+                                        isOverdue
+                                          ? 'line-through text-muted-foreground text-xs'
+                                          : ''
+                                      }
+                                    >
+                                      R${' '}
+                                      {Number(b.unit_value).toLocaleString('pt-BR', {
+                                        minimumFractionDigits: 2,
+                                      })}
+                                    </span>
+                                    {isOverdue && (
+                                      <span
+                                        title={`Principal: R$ ${calc.baseValue.toFixed(2)} + Multa: R$ ${calc.penalty.toFixed(2)} + Juros: R$ ${calc.interest.toFixed(2)}`}
+                                        className="text-rose-600 font-bold"
+                                      >
+                                        R${' '}
+                                        {calc.total.toLocaleString('pt-BR', {
+                                          minimumFractionDigits: 2,
+                                        })}
+                                      </span>
+                                    )}
+                                  </>
                                 )}
                               </div>
                             </TableCell>

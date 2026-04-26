@@ -29,7 +29,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { toast } from 'sonner'
-import { Plus, Trash2, Edit, Upload, FileText } from 'lucide-react'
+import { Plus, Trash2, Edit, Upload, FileText, List, CheckCircle } from 'lucide-react'
 
 export default function CcbPurchases() {
   const { user } = useAuth()
@@ -38,6 +38,17 @@ export default function CcbPurchases() {
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+
+  const [installmentsOpen, setInstallmentsOpen] = useState(false)
+  const [selectedPurchase, setSelectedPurchase] = useState<any>(null)
+
+  const [liquidationOpen, setLiquidationOpen] = useState(false)
+  const [liquidationForm, setLiquidationForm] = useState({
+    idx: -1,
+    payment_date: '',
+    interest: '',
+    penalty: '',
+  })
 
   const [form, setForm] = useState({
     ccb_id: '',
@@ -81,11 +92,7 @@ export default function CcbPurchases() {
       toast.error('Erro ao carregar lista de tomadores: ' + errC.message)
     }
 
-    // Log de debug solicitado
-    console.log('Retorno bruto Supabase (ccb_solicitacoes):', cRaw)
-
     // Filtro case-insensitive para os status
-    // O seletor deve buscar propostas com status 'aprovado', 'aprovada' ou 'aceite_tomador'
     const allowedStatuses = [
       'aprovado',
       'aprovada',
@@ -247,6 +254,11 @@ export default function CcbPurchases() {
     setOpen(true)
   }
 
+  const openInstallments = (p: any) => {
+    setSelectedPurchase(p)
+    setInstallmentsOpen(true)
+  }
+
   const handleBoletoChange = (idx: number, field: string, val: any) => {
     const newB = [...boletos]
     newB[idx] = { ...newB[idx], [field]: val }
@@ -258,7 +270,6 @@ export default function CcbPurchases() {
     if (!file) return
     const toastId = toast.loading('Enviando...')
     const filePath = `boletos/${editingId || 'novo'}/${idx}_${Date.now()}.pdf`
-    // Upload para o bucket correto: boletos_ccb
     const { error } = await supabase.storage
       .from('boletos_ccb')
       .upload(filePath, file, { upsert: true })
@@ -285,8 +296,6 @@ export default function CcbPurchases() {
       window.open(url, '_blank')
     }
   }
-
-  const m = calculateMetrics()
 
   const totalAdquisitions = purchases.reduce((acc, p) => acc + Number(p.acquisition_value || 0), 0)
   const totalReceivable = purchases.reduce(
@@ -378,10 +387,28 @@ export default function CcbPurchases() {
                     + R$ {Number(p.gross_profit).toLocaleString('pt-BR')}
                   </TableCell>
                   <TableCell className="text-right pr-4 space-x-2">
-                    <Button variant="outline" size="icon" onClick={() => openEdit(p)}>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => openInstallments(p)}
+                      title="Ver Parcelas"
+                    >
+                      <List className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => openEdit(p)}
+                      title="Editar"
+                    >
                       <Edit className="w-4 h-4" />
                     </Button>
-                    <Button variant="destructive" size="icon" onClick={() => handleDelete(p.id)}>
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      onClick={() => handleDelete(p.id)}
+                      title="Excluir"
+                    >
                       <Trash2 className="w-4 h-4" />
                     </Button>
                   </TableCell>
@@ -548,6 +575,183 @@ export default function CcbPurchases() {
               Cancelar
             </Button>
             <Button onClick={handleSubmit}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Ver Parcelas */}
+      <Dialog open={installmentsOpen} onOpenChange={setInstallmentsOpen}>
+        <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>
+              Parcelas - CCB #{selectedPurchase?.ccb_id?.substring(0, 8).toUpperCase()}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="overflow-y-auto flex-1">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>#</TableHead>
+                  <TableHead>Vencimento</TableHead>
+                  <TableHead>Valor Nominal</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Ação</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {selectedPurchase?.boletos?.map((b: any, i: number) => (
+                  <TableRow key={i}>
+                    <TableCell>{i + 1}</TableCell>
+                    <TableCell>{new Date(b.due_date).toLocaleDateString('pt-BR')}</TableCell>
+                    <TableCell>
+                      R${' '}
+                      {Number(b.unit_value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </TableCell>
+                    <TableCell>
+                      {b.status === 'Pago' ? (
+                        <span className="text-emerald-600 font-medium text-sm flex items-center gap-1">
+                          <CheckCircle className="w-3 h-3" /> Pago
+                        </span>
+                      ) : (
+                        <span className="text-amber-600 font-medium text-sm">
+                          {b.status || 'Pendente'}
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {b.status !== 'Pago' && (
+                        <Button
+                          size="sm"
+                          className="bg-emerald-600 hover:bg-emerald-700"
+                          onClick={() => {
+                            setLiquidationForm({
+                              idx: i,
+                              payment_date: new Date().toISOString().substring(0, 10),
+                              interest: '',
+                              penalty: '',
+                            })
+                            setLiquidationOpen(true)
+                          }}
+                        >
+                          Dar Baixa
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Dar Baixa */}
+      <Dialog open={liquidationOpen} onOpenChange={setLiquidationOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Liquidar Parcela {liquidationForm.idx + 1}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="bg-muted p-3 rounded text-sm flex justify-between">
+              <span>Valor Nominal:</span>
+              <span className="font-bold">
+                R${' '}
+                {Number(
+                  selectedPurchase?.boletos?.[liquidationForm.idx]?.unit_value || 0,
+                ).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Data do Pagamento</Label>
+              <Input
+                type="date"
+                value={liquidationForm.payment_date}
+                onChange={(e) =>
+                  setLiquidationForm({ ...liquidationForm, payment_date: e.target.value })
+                }
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Juros Cobrados (R$)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={liquidationForm.interest}
+                  onChange={(e) =>
+                    setLiquidationForm({ ...liquidationForm, interest: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Multa Cobrada (R$)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={liquidationForm.penalty}
+                  onChange={(e) =>
+                    setLiquidationForm({ ...liquidationForm, penalty: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 border-t flex justify-between items-center text-lg font-bold">
+              <span>Total Recebido:</span>
+              <span className="text-emerald-600">
+                R${' '}
+                {(
+                  Number(selectedPurchase?.boletos?.[liquidationForm.idx]?.unit_value || 0) +
+                  Number(liquidationForm.interest || 0) +
+                  Number(liquidationForm.penalty || 0)
+                ).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLiquidationOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={async () => {
+                const boletos = [...selectedPurchase.boletos]
+                const b = boletos[liquidationForm.idx]
+                b.status = 'Pago'
+                b.payment_date = liquidationForm.payment_date
+                b.interest_applied = Number(liquidationForm.interest || 0)
+                b.penalty_applied = Number(liquidationForm.penalty || 0)
+
+                const { error } = await supabase
+                  .from('recebiveis_ccb')
+                  .update({ boletos })
+                  .eq('id', selectedPurchase.id)
+                if (error) return toast.error('Erro ao baixar parcela: ' + error.message)
+
+                if (b.interest_applied > 0 || b.penalty_applied > 0) {
+                  await supabase.from('audit_logs').insert({
+                    entity_type: 'recebiveis_ccb',
+                    entity_id: selectedPurchase.id,
+                    action: 'admin_liquidated_installment',
+                    details: {
+                      message: `Juros ajustados para R$ ${b.interest_applied} e Multa para R$ ${b.penalty_applied} por ${user?.email} em ${new Date().toLocaleString('pt-BR')}`,
+                      admin: user?.id,
+                      installment_idx: liquidationForm.idx,
+                    },
+                  })
+                }
+
+                toast.success('Parcela liquidada!')
+                setLiquidationOpen(false)
+                setSelectedPurchase({ ...selectedPurchase, boletos })
+                fetchPurchases()
+              }}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              Confirmar Recebimento
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
