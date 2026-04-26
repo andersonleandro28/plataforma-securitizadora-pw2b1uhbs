@@ -21,6 +21,7 @@
     "docusign-envelope": 9,
     "docusign-callback": 7,
     "generate-redemption-receipt": 3,
-    "generate-subscription-term": 1
+    "generate-subscription-term": 1,
+    "notify-ccb-adjustment": 1
   }
 }
