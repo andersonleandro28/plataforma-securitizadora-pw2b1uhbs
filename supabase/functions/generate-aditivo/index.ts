@@ -5,18 +5,10 @@ import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib'
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, x-supabase-client-platform, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, x-supabase-client-platform, apikey, content-type',
 }
 
-function generatePixPayload(
-  key: string,
-  amount: number,
-  name: string,
-  city: string,
-  txid: string,
-  description: string,
-) {
+function generatePixPayload(key: string, amount: number, name: string, city: string, txid: string, description: string) {
   const formatLength = (id: string, value: string) => {
     const len = value.length.toString().padStart(2, '0')
     return `${id}${len}${value}`
@@ -24,7 +16,7 @@ function generatePixPayload(
 
   let payload = ''
   payload += formatLength('00', '01')
-
+  
   let accountInfo = ''
   accountInfo += formatLength('00', 'br.gov.bcb.pix')
   accountInfo += formatLength('01', key)
@@ -32,25 +24,25 @@ function generatePixPayload(
     accountInfo += formatLength('02', description.substring(0, 40))
   }
   payload += formatLength('26', accountInfo)
-
+  
   payload += formatLength('52', '0000')
   payload += formatLength('53', '986')
-
+  
   if (amount > 0) {
     payload += formatLength('54', amount.toFixed(2))
   }
-
+  
   payload += formatLength('58', 'BR')
   payload += formatLength('59', name.substring(0, 25).trim() || 'Merchant')
   payload += formatLength('60', city.substring(0, 15).trim() || 'City')
-
+  
   let additionalData = ''
   additionalData += formatLength('05', txid.substring(0, 25) || '***')
   payload += formatLength('62', additionalData)
-
+  
   payload += '6304'
-
-  let crc = 0xffff
+  
+  let crc = 0xFFFF
   for (let i = 0; i < payload.length; i++) {
     crc ^= payload.charCodeAt(i) << 8
     for (let j = 0; j < 8; j++) {
@@ -60,22 +52,13 @@ function generatePixPayload(
         crc = crc << 1
       }
     }
-    crc &= 0xffff
+    crc &= 0xFFFF
   }
-
+  
   return payload + crc.toString(16).toUpperCase().padStart(4, '0')
 }
 
-function drawTextWrap(
-  text: string,
-  x: number,
-  y: number,
-  maxWidth: number,
-  font: any,
-  size: number,
-  page: any,
-  lineHeight: number = 1.5,
-) {
+function drawTextWrap(text: string, x: number, y: number, maxWidth: number, font: any, size: number, page: any, lineHeight: number = 1.5) {
   // Sanitize text to avoid WinAnsi encoding errors and split explicitly by newline
   const sanitized = text
     .replace(/\t/g, ' ')
@@ -128,14 +111,12 @@ Deno.serve(async (req: Request) => {
     const authHeader = req.headers.get('Authorization')!
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-
+    
     const client = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
+      global: { headers: { Authorization: authHeader } }
     })
-
-    const {
-      data: { user },
-    } = await client.auth.getUser()
+    
+    const { data: { user } } = await client.auth.getUser()
 
     // Service role for administrative inserts
     const supabase = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '')
@@ -149,25 +130,20 @@ Deno.serve(async (req: Request) => {
 
     // 1. VALIDAÇÃO DE DADOS (PRE-FLIGHT)
     if (opError || !op) {
-      console.error(`Erro: Dados da operação não encontrados para o ID ${operationId}`)
-      throw new Error(`Erro: Dados da operação não encontrados para o ID ${operationId}`)
+        console.error(`Erro: Dados da operação não encontrados para o ID ${operationId}`);
+        throw new Error(`Erro: Dados da operação não encontrados para o ID ${operationId}`);
     }
 
     if (!op.face_value || !op.document_number || !op.sacado) {
-      console.error(
-        `Erro: Dados da operação incompletos ou itens do borderô ausentes (ID: ${operationId})`,
-      )
-      throw new Error(`Erro: Dados da operação incompletos ou itens do borderô ausentes.`)
+        console.error(`Erro: Dados da operação incompletos ou itens do borderô ausentes (ID: ${operationId})`);
+        throw new Error(`Erro: Dados da operação incompletos ou itens do borderô ausentes.`);
     }
 
     // Fetch versions
-    const { data: versionsData } = await supabase
-      .from('contract_versions')
-      .select('version_number')
-      .eq('operation_id', operationId)
+    const { data: versionsData } = await supabase.from('contract_versions').select('version_number').eq('operation_id', operationId)
     let nextVersion = 1
     if (versionsData && versionsData.length > 0) {
-      nextVersion = Math.max(...versionsData.map((v) => v.version_number)) + 1
+      nextVersion = Math.max(...versionsData.map(v => v.version_number)) + 1
     }
 
     // Generate PDF
@@ -178,7 +154,7 @@ Deno.serve(async (req: Request) => {
     const size = 11
 
     const margin = 50
-    const maxWidth = 595.28 - margin * 2
+    const maxWidth = 595.28 - (margin * 2)
     let currentY = 841.89 - margin
 
     // [CABEÇALHO]
@@ -194,56 +170,37 @@ Deno.serve(async (req: Request) => {
     // [QUALIFICAÇÃO DO CEDENTE]
     page.drawText('[QUALIFICAÇÃO DO CEDENTE]', { x: margin, y: currentY, font: fontBold, size })
     currentY -= 20
-
+    
     // 4. MAPEAMENTO DE CAMPOS (PLACEHOLDERS)
     const prof = Array.isArray(op.profiles) ? op.profiles[0] : op.profiles
     const cedenteNome = prof?.pj_company_name || prof?.full_name || op.cedente || 'N/A'
     const cedenteDoc = prof?.document_number || 'N/A'
     const cedenteEnd = `${prof?.address_street || ''}, ${prof?.address_number || ''} - ${prof?.address_city || ''}/${prof?.address_state || ''}`
 
-    currentY = drawTextWrap(
-      `Razão Social / Nome: ${cedenteNome} | CNPJ/CPF: ${cedenteDoc}`,
-      margin,
-      currentY,
-      maxWidth,
-      font,
-      size,
-      page,
-    )
+    currentY = drawTextWrap(`Razão Social / Nome: ${cedenteNome} | CNPJ/CPF: ${cedenteDoc}`, margin, currentY, maxWidth, font, size, page)
     currentY = drawTextWrap(`Endereço: ${cedenteEnd}`, margin, currentY, maxWidth, font, size, page)
     currentY -= 15
 
     // [CLÁUSULA PRIMEIRA]
-    page.drawText('[CLÁUSULA PRIMEIRA - DO OBJETO]', {
-      x: margin,
-      y: currentY,
-      font: fontBold,
-      size,
-    })
+    page.drawText('[CLÁUSULA PRIMEIRA - DO OBJETO]', { x: margin, y: currentY, font: fontBold, size })
     currentY -= 20
-    const clausula1 =
-      'O CEDENTE, pela presente e na melhor forma de direito, CEDE e TRANSFERE à SECURITIZADORA, de forma irrevogável e irretratável, os Direitos Creditórios abaixo relacionados, originados de operações comerciais legítimas.'
+    const clausula1 = 'O CEDENTE, pela presente e na melhor forma de direito, CEDE e TRANSFERE à SECURITIZADORA, de forma irrevogável e irretratável, os Direitos Creditórios abaixo relacionados, originados de operações comerciais legítimas.'
     currentY = drawTextWrap(clausula1, margin, currentY, maxWidth, font, size, page)
     currentY -= 15
 
     // [CLÁUSULA SEGUNDA]
     // 4. ITERAÇÃO DE RECEBÍVEIS
-    page.drawText('[CLÁUSULA SEGUNDA - RELAÇÃO DE TÍTULOS]', {
-      x: margin,
-      y: currentY,
-      font: fontBold,
-      size,
-    })
+    page.drawText('[CLÁUSULA SEGUNDA - RELAÇÃO DE TÍTULOS]', { x: margin, y: currentY, font: fontBold, size })
     currentY -= 20
     const tableHeader = 'Espécie | Nº Título | Sacado/Devedor | Vencimento | Valor de Face'
     page.drawText(tableHeader, { x: margin, y: currentY, font: fontBold, size: 10 })
     currentY -= 15
-
+    
     const titulos = [op] // Array fallback based on schema design for operations/receivables
     for (const titulo of titulos) {
-      const row = `${(titulo.receivable_type || '').toUpperCase()} | ${titulo.document_number} | ${(titulo.sacado || '').substring(0, 25)} | ${new Date(titulo.due_date).toLocaleDateString('pt-BR')} | R$ ${titulo.face_value.toFixed(2)}`
-      page.drawText(row, { x: margin, y: currentY, font, size: 10 })
-      currentY -= 15
+        const row = `${(titulo.receivable_type || '').toUpperCase()} | ${titulo.document_number} | ${(titulo.sacado || '').substring(0,25)} | ${new Date(titulo.due_date).toLocaleDateString('pt-BR')} | R$ ${titulo.face_value.toFixed(2)}`
+        page.drawText(row, { x: margin, y: currentY, font, size: 10 })
+        currentY -= 15
     }
     currentY -= 15
 
@@ -258,251 +215,109 @@ Deno.serve(async (req: Request) => {
     const bankAccount = bankAccounts?.[0]
 
     // [CLÁUSULA TERCEIRA]
-    page.drawText('[CLÁUSULA TERCEIRA - CONDIÇÕES FINANCEIRAS E LIQUIDAÇÃO]', {
-      x: margin,
-      y: currentY,
-      font: fontBold,
-      size,
-    })
+    page.drawText('[CLÁUSULA TERCEIRA - CONDIÇÕES FINANCEIRAS E LIQUIDAÇÃO]', { x: margin, y: currentY, font: fontBold, size })
     currentY -= 20
-
+    
     const calcArr = op.operation_calculations
-    const calc = Array.isArray(calcArr) ? calcArr[0] : calcArr || {}
+    const calc = Array.isArray(calcArr) ? calcArr[0] : (calcArr || {})
     const totalDescontos = calc?.total_discounts || 0
     const valorLiquido = calc?.net_value || op.face_value
 
-    currentY = drawTextWrap(
-      `Valor de Face Total: R$ ${op.face_value.toFixed(2)}`,
-      margin,
-      currentY,
-      maxWidth,
-      font,
-      size,
-      page,
-    )
-    currentY = drawTextWrap(
-      `Total de Descontos (Deságio/Taxas/IOF): R$ ${totalDescontos.toFixed(2)}`,
-      margin,
-      currentY,
-      maxWidth,
-      font,
-      size,
-      page,
-    )
-    currentY = drawTextWrap(
-      `Valor Líquido a ser Pago: R$ ${valorLiquido.toFixed(2)}`,
-      margin,
-      currentY,
-      maxWidth,
-      font,
-      size,
-      page,
-    )
-
+    currentY = drawTextWrap(`Valor de Face Total: R$ ${op.face_value.toFixed(2)}`, margin, currentY, maxWidth, font, size, page)
+    currentY = drawTextWrap(`Total de Descontos (Deságio/Taxas/IOF): R$ ${totalDescontos.toFixed(2)}`, margin, currentY, maxWidth, font, size, page)
+    currentY = drawTextWrap(`Valor Líquido a ser Pago: R$ ${valorLiquido.toFixed(2)}`, margin, currentY, maxWidth, font, size, page)
+    
     currentY -= 15
-    page.drawText('Dados para Pagamento/Liquidação:', {
-      x: margin,
-      y: currentY,
-      font: fontBold,
-      size: 11,
-    })
+    page.drawText('Dados para Pagamento/Liquidação:', { x: margin, y: currentY, font: fontBold, size: 11 })
     currentY -= 20
 
     let generatedPixKey = null
 
     if (bankAccount) {
-      const formatedValue = new Intl.NumberFormat('pt-BR', {
-        style: 'currency',
-        currency: 'BRL',
-      }).format(valorLiquido)
-      const dueDate = op.due_date
-        ? new Date(op.due_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
-        : opDate
+      const formatedValue = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorLiquido)
+      const dueDate = op.due_date ? new Date(op.due_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : opDate
 
-      currentY = drawTextWrap(
-        `Titular: ${bankAccount.owner_name} | CPF/CNPJ: ${bankAccount.owner_document}`,
-        margin,
-        currentY,
-        maxWidth,
-        font,
-        size,
-        page,
-      )
-      currentY = drawTextWrap(
-        `Banco: ${bankAccount.bank_code || ''} - ${bankAccount.bank_name}`,
-        margin,
-        currentY,
-        maxWidth,
-        font,
-        size,
-        page,
-      )
-      currentY = drawTextWrap(
-        `Agência: ${bankAccount.branch || '-'} | Conta: ${bankAccount.account_number || '-'}`,
-        margin,
-        currentY,
-        maxWidth,
-        font,
-        size,
-        page,
-      )
-
+      currentY = drawTextWrap(`Titular: ${bankAccount.owner_name} | CPF/CNPJ: ${bankAccount.owner_document}`, margin, currentY, maxWidth, font, size, page)
+      currentY = drawTextWrap(`Banco: ${bankAccount.bank_code || ''} - ${bankAccount.bank_name}`, margin, currentY, maxWidth, font, size, page)
+      currentY = drawTextWrap(`Agência: ${bankAccount.branch || '-'} | Conta: ${bankAccount.account_number || '-'}`, margin, currentY, maxWidth, font, size, page)
+      
       if (bankAccount.pix_key) {
-        currentY = drawTextWrap(
-          `PIX Chave: ${bankAccount.pix_key}`,
-          margin,
-          currentY,
-          maxWidth,
-          font,
-          size,
-          page,
-        )
+        currentY = drawTextWrap(`PIX Chave: ${bankAccount.pix_key}`, margin, currentY, maxWidth, font, size, page)
         currentY -= 10
-
+        
         const txid = op.id.substring(0, 25).replace(/[^a-zA-Z0-9]/g, '')
-        const pixPayload = generatePixPayload(
-          bankAccount.pix_key,
-          valorLiquido,
-          'Plataforma',
-          'Cidade',
-          txid,
-          `Cessao ${op.id.substring(0, 8)}`,
-        )
+        const pixPayload = generatePixPayload(bankAccount.pix_key, valorLiquido, 'Plataforma', 'Cidade', txid, `Cessao ${op.id.substring(0,8)}`)
         generatedPixKey = bankAccount.pix_key
-
+        
         try {
-          const qrRes = await fetch(
-            `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixPayload)}`,
-          )
+          const qrRes = await fetch(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixPayload)}`)
           if (qrRes.ok) {
             const qrBytes = await qrRes.arrayBuffer()
             const qrImage = await pdfDoc.embedPng(qrBytes)
-
+            
             if (currentY - 120 < margin) {
-              page.drawText('QR Code gerado na próxima página.', {
-                x: margin,
-                y: currentY,
-                font,
-                size: 10,
-              })
-              currentY -= 20
+               page.drawText('QR Code gerado na próxima página.', { x: margin, y: currentY, font, size: 10 })
+               currentY -= 20
             } else {
-              page.drawText('QR Code para Pagamento (copie/escanieie):', {
-                x: margin,
-                y: currentY,
-                font,
-                size: 10,
-              })
-              currentY -= 105
-              page.drawImage(qrImage, { x: margin, y: currentY, width: 100, height: 100 })
-              currentY -= 20
-
-              page.drawText(`Valor: ${formatedValue} | Vencimento: ${dueDate}`, {
-                x: margin,
-                y: currentY,
-                font,
-                size: 10,
-              })
-              currentY -= 15
-              page.drawText(`Pague via PIX escaneando o QR acima ou transferindo para os dados.`, {
-                x: margin,
-                y: currentY,
-                font,
-                size: 9,
-                color: rgb(0.3, 0.3, 0.3),
-              })
-              currentY -= 15
+               page.drawText('QR Code para Pagamento (copie/escanieie):', { x: margin, y: currentY, font, size: 10 })
+               currentY -= 105
+               page.drawImage(qrImage, { x: margin, y: currentY, width: 100, height: 100 })
+               currentY -= 20
+               
+               page.drawText(`Valor: ${formatedValue} | Vencimento: ${dueDate}`, { x: margin, y: currentY, font, size: 10 })
+               currentY -= 15
+               page.drawText(`Pague via PIX escaneando o QR acima ou transferindo para os dados.`, { x: margin, y: currentY, font, size: 9, color: rgb(0.3, 0.3, 0.3) })
+               currentY -= 15
             }
           }
         } catch (e) {
-          console.error('Error generating QR code:', e)
+            console.error('Error generating QR code:', e)
         }
       } else {
-        currentY = drawTextWrap(
-          `Aviso: Configure PIX no perfil para gerar QR Code automático. Transfira para a conta acima.`,
-          margin,
-          currentY,
-          maxWidth,
-          fontBold,
-          size,
-          page,
-        )
+         currentY = drawTextWrap(`Aviso: Configure PIX no perfil para gerar QR Code automático. Transfira para a conta acima.`, margin, currentY, maxWidth, fontBold, size, page)
       }
     } else {
-      currentY = drawTextWrap(
-        `Dados bancários pendentes. Contate o tomador. [Espaço para preenchimento manual do Admin]`,
-        margin,
-        currentY,
-        maxWidth,
-        fontBold,
-        size,
-        page,
-      )
+      currentY = drawTextWrap(`Dados bancários pendentes. Contate o tomador. [Espaço para preenchimento manual do Admin]`, margin, currentY, maxWidth, fontBold, size, page)
     }
 
     currentY -= 40
 
     // Assinaturas
-    page.drawLine({
-      start: { x: margin, y: currentY },
-      end: { x: margin + 200, y: currentY },
-      thickness: 1,
-    })
-    page.drawLine({
-      start: { x: margin + 250, y: currentY },
-      end: { x: margin + 450, y: currentY },
-      thickness: 1,
-    })
+    page.drawLine({ start: { x: margin, y: currentY }, end: { x: margin + 200, y: currentY }, thickness: 1 })
+    page.drawLine({ start: { x: margin + 250, y: currentY }, end: { x: margin + 450, y: currentY }, thickness: 1 })
     currentY -= 15
     page.drawText('Assinatura do Cedente', { x: margin, y: currentY, font, size: 9 })
     page.drawText('Assinatura da Securitizadora', { x: margin + 250, y: currentY, font, size: 9 })
 
     // Rodapé
     const hash = crypto.randomUUID()
-    page.drawText(`Hash de Integridade: ${hash}`, {
-      x: margin,
-      y: 30,
-      font,
-      size: 8,
-      color: rgb(0.5, 0.5, 0.5),
-    })
-    page.drawText(`Página 1 de 1`, {
-      x: 595.28 - margin - 50,
-      y: 30,
-      font,
-      size: 8,
-      color: rgb(0.5, 0.5, 0.5),
-    })
+    page.drawText(`Hash de Integridade: ${hash}`, { x: margin, y: 30, font, size: 8, color: rgb(0.5, 0.5, 0.5) })
+    page.drawText(`Página 1 de 1`, { x: 595.28 - margin - 50, y: 30, font, size: 8, color: rgb(0.5, 0.5, 0.5) })
 
     // 2. CORREÇÃO DO STREAM DE GERAÇÃO (AWAIT e finalização de buffer)
     const pdfBytes = await pdfDoc.save()
-
+    
     if (pdfBytes.byteLength === 0) {
-      console.error(
-        `Erro crítico: O buffer do PDF gerado possui 0 bytes. Processo abortado. ID: ${operationId}`,
-      )
-      throw new Error('Falha na geração do arquivo PDF: O buffer retornado está vazio.')
+      console.error(`Erro crítico: O buffer do PDF gerado possui 0 bytes. Processo abortado. ID: ${operationId}`);
+      throw new Error('Falha na geração do arquivo PDF: O buffer retornado está vazio.');
     }
 
-    const fileName = `Aditivo_Cessao_${op.id.substring(0, 8)}_v${nextVersion}.pdf`
+    const fileName = `Aditivo_Cessao_${op.id.substring(0,8)}_v${nextVersion}.pdf`
     const filePath = `${op.id}/${fileName}`
 
     // Ensure we create a Blob so Supabase Storage accurately tracks the bytes across runtimes
-    const pdfBlob = new Blob(
-      [pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength)],
-      { type: 'application/pdf' },
-    )
+    const pdfBlob = new Blob([pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength)], { type: 'application/pdf' });
 
     const { error: uploadError } = await supabase.storage
       .from('operation-docs')
       .upload(filePath, pdfBlob, {
         contentType: 'application/pdf',
-        upsert: true,
+        upsert: true
       })
 
     if (uploadError) {
-      console.error(`Upload error:`, uploadError)
-      throw new Error(`Erro ao salvar no storage: ${uploadError.message}`)
+      console.error(`Upload error:`, uploadError);
+      throw new Error(`Erro ao salvar no storage: ${uploadError.message}`);
     }
 
     // 3. VALIDAÇÃO DE PERSISTÊNCIA NO STORAGE (Tamanho > 0 bytes)
@@ -510,13 +325,13 @@ Deno.serve(async (req: Request) => {
       .from('operation-docs')
       .list(op.id, {
         limit: 1,
-        search: fileName,
+        search: fileName
       })
 
     if (listError) {
       console.error('Erro ao verificar tamanho do arquivo:', listError)
     } else {
-      const uploadedFile = listData?.find((f) => f.name === fileName)
+      const uploadedFile = listData?.find(f => f.name === fileName)
       if (!uploadedFile || (uploadedFile.metadata && uploadedFile.metadata.size === 0)) {
         console.error(`Erro de persistência: O arquivo no storage possui 0 KB. ID: ${operationId}`)
         throw new Error('Falha na persistência do arquivo')
@@ -527,24 +342,24 @@ Deno.serve(async (req: Request) => {
 
     // Record Contract Version
     const { error: versionError } = await supabase.from('contract_versions').insert({
-      operation_id: op.id,
-      version_number: nextVersion,
-      file_path: filePath,
-      file_name: fileName,
-      reason: activeReason,
-      created_by: user?.id,
+        operation_id: op.id,
+        version_number: nextVersion,
+        file_path: filePath,
+        file_name: fileName,
+        reason: activeReason,
+        created_by: user?.id
     })
 
     if (versionError) throw versionError
 
     // Insert to operation_documents for legacy support
     await supabase.from('operation_documents').insert({
-      operation_id: op.id,
-      file_name: fileName,
-      file_path: filePath,
-      file_size: pdfBytes.byteLength,
-      file_type: 'application/pdf',
-      category: `Aditivo Contratual v${nextVersion}`,
+        operation_id: op.id,
+        file_name: fileName,
+        file_path: filePath,
+        file_size: pdfBytes.byteLength,
+        file_type: 'application/pdf',
+        category: `Aditivo Contratual v${nextVersion}`,
     })
 
     if (op.status === 'aprovado' || op.status === 'aguardando_formalizacao') {
@@ -555,50 +370,48 @@ Deno.serve(async (req: Request) => {
         old_status: op.status,
         new_status: newStatus,
         changed_by: user?.id,
-        internal_observation: `Status atualizado automaticamente após geração do aditivo${bankAccount ? ' com dados bancários' : ''}.`,
+        internal_observation: `Status atualizado automaticamente após geração do aditivo${bankAccount ? ' com dados bancários' : ''}.`
       })
     }
 
     if (bankAccount) {
-      const details: any = {
-        message: `Aditivo ID ${op.id}: Dados bancários inseridos de usuário ${op.borrower_id}.`,
-      }
+      const details: any = { message: `Aditivo ID ${op.id}: Dados bancários inseridos de usuário ${op.borrower_id}.` }
       if (generatedPixKey) {
-        details.message = `Aditivo ID ${op.id}: QR PIX gerado com chave ${generatedPixKey}.`
+         details.message = `Aditivo ID ${op.id}: QR PIX gerado com chave ${generatedPixKey}.`
       }
       await supabase.from('audit_logs').insert({
         entity_type: 'credit_operations',
         entity_id: op.id,
         action: 'bank_data_included_in_aditivo',
-        details: details,
+        details: details
       })
     }
 
     const resendApiKey = Deno.env.get('RESEND_API_KEY')
     if (resendApiKey && prof?.email) {
       // Create Base64 string directly from Uint8Array for the attachment
-      let binary = ''
-      const len = pdfBytes.byteLength
+      let binary = '';
+      const len = pdfBytes.byteLength;
       for (let i = 0; i < len; i++) {
-        binary += String.fromCharCode(pdfBytes[i])
+          binary += String.fromCharCode(pdfBytes[i]);
       }
-      const base64Pdf = btoa(binary)
+      const base64Pdf = btoa(binary);
 
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${resendApiKey}`,
+          'Authorization': `Bearer ${resendApiKey}`
         },
         body: JSON.stringify({
           from: 'Plataforma Securitizadora <contato@seaconnection.api.br>',
           to: [prof.email],
-          subject: `Aditivo Contratual Gerado - Operação #${op.id.substring(0, 8).toUpperCase()}`,
+          subject: `Aditivo Contratual Gerado - Operação #${op.id.substring(0,8).toUpperCase()}`,
           html: `
             <div style="font-family: sans-serif; color: #333;">
               <h2>Aditivo Contratual Gerado</h2>
               <p>Olá,</p>
-              <p>O aditivo contratual referente à operação <strong>#${op.id.substring(0, 8).toUpperCase()}</strong> foi gerado e encontra-se em anexo.</p>
+              <p>O aditivo contratual referente à operação <strong>#${op.id.substring(0,8).toUpperCase()}</strong> foi gerado e encontra-se em anexo.</p>
               <p>Os dados bancários vinculados à operação foram incluídos no aditivo. ${generatedPixKey ? 'Um QR Code PIX automático foi gerado no documento para facilitar o pagamento.' : ''}</p>
               <p>Este documento também está disponível na sua conta da plataforma para conferência e liquidação.</p>
               <br/>
@@ -609,11 +422,11 @@ Deno.serve(async (req: Request) => {
             {
               filename: fileName,
               content: base64Pdf,
-            },
-          ],
-        }),
+            }
+          ]
+        })
       })
-
+      
       if (!res.ok) {
         console.error('Erro ao enviar email pelo Resend (aditivo):', await res.text())
       }
@@ -621,20 +434,21 @@ Deno.serve(async (req: Request) => {
 
     // Audit Log for Email Dispatch
     await supabase.from('audit_logs').insert({
-      entity_type: 'credit_operations',
-      entity_id: op.id,
-      action: 'email_formalizacao_enviado',
-      details: { email_to: prof?.email, version: nextVersion },
+        entity_type: 'credit_operations',
+        entity_id: op.id,
+        action: 'email_formalizacao_enviado',
+        details: { email_to: prof?.email, version: nextVersion }
     })
 
     return new Response(JSON.stringify({ success: true, filePath }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
+
   } catch (err: any) {
     console.error('Generate Aditivo Error:', err.message)
     return new Response(JSON.stringify({ error: err.message }), {
       status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   }
 })
