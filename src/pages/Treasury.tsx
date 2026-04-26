@@ -40,7 +40,8 @@ import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { NewTransactionDialog } from '@/components/Treasury/NewTransactionDialog'
 import { EditTransactionDialog } from '@/components/Treasury/EditTransactionDialog'
-import { Download } from 'lucide-react'
+import { Download, ExternalLink } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 export default function Treasury() {
   const [transactions, setTransactions] = useState<any[]>([])
@@ -386,6 +387,24 @@ export default function Treasury() {
                               title="Comprovante de Resgate"
                             >
                               <Download className="h-4 w-4 text-muted-foreground hover:text-primary" />
+                            </Button>
+                          )}
+                          {tx.category?.includes('CCB') && tx.referenceId && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              asChild
+                              title="Ver Detalhes da Operação"
+                            >
+                              <Link
+                                to={
+                                  tx.category.includes('Aquisição')
+                                    ? `/admin/ccb-purchases`
+                                    : `/admin/ccb-requests`
+                                }
+                              >
+                                <ExternalLink className="h-4 w-4 text-muted-foreground hover:text-primary" />
+                              </Link>
                             </Button>
                           )}
                         </div>

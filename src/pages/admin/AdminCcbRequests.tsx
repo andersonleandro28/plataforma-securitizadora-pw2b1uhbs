@@ -385,6 +385,32 @@ export default function AdminCcbRequests() {
     setAdjCet(res.cet)
   }
 
+  const handleApproveReceipt = async (opId: string, instId: string) => {
+    try {
+      const op = activeOps.find((o) => o.id === opId)
+      if (!op) return
+
+      const newInstallments = op.installments.map((i: any) => {
+        if (i.id === instId) {
+          return { ...i, status: 'paga', payment_date: new Date().toISOString() }
+        }
+        return i
+      })
+
+      const { error } = await supabase
+        .from('operacoes_antecipacao')
+        .update({ installments: newInstallments })
+        .eq('id', opId)
+
+      if (error) throw error
+
+      toast.success('Parcela liquidada com sucesso! O lançamento foi gerado na Tesouraria.')
+      fetchData()
+    } catch (err: any) {
+      toast.error('Erro ao liquidar: ' + err.message)
+    }
+  }
+
   const handleSaveAdjustment = async () => {
     try {
       const originalSimulation = adjustModal.operation_data?.simulation || {}
