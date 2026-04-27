@@ -25,6 +25,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase/client'
 import { Eye, CheckCircle, XCircle, Search, Loader2 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import { formatDate } from '@/lib/utils'
 
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
@@ -282,7 +283,7 @@ export function AdminLiquidations() {
                   <TableCell className="font-medium text-emerald-600">
                     {formatCurrency(op.operation_calculations?.[0]?.net_value || op.face_value)}
                   </TableCell>
-                  <TableCell>{new Date(op.due_date).toLocaleDateString('pt-BR')}</TableCell>
+                  <TableCell>{formatDate(op.due_date)}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
                       <Button variant="ghost" size="sm" onClick={() => viewReceipt(op)}>

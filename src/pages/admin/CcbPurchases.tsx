@@ -371,9 +371,7 @@ export default function CcbPurchases() {
             <TableBody>
               {purchases.map((p) => (
                 <TableRow key={p.id}>
-                  <TableCell className="pl-4">
-                    {formatDate(p.created_at)}
-                  </TableCell>
+                  <TableCell className="pl-4">{formatDate(p.created_at)}</TableCell>
                   <TableCell className="font-medium">
                     {p.ccb_solicitacoes?.profiles?.full_name ||
                       p.ccb_solicitacoes?.profiles?.pj_company_name ||
@@ -601,9 +599,7 @@ export default function CcbPurchases() {
                 {selectedPurchase?.boletos?.map((b: any, i: number) => (
                   <TableRow key={i}>
                     <TableCell>{i + 1}</TableCell>
-                    <TableCell>
-                      {formatDate(b.due_date)}
-                    </TableCell>
+                    <TableCell>{formatDate(b.due_date)}</TableCell>
                     <TableCell>
                       R${' '}
                       {Number(b.unit_value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}

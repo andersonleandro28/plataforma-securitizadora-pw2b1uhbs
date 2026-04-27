@@ -40,7 +40,7 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 
 export default function Expenses() {
   const { activeRole } = useAuth()
@@ -301,9 +301,7 @@ export default function Expenses() {
                       <TableCell className="font-medium">{e.description}</TableCell>
                       <TableCell>{e.suppliers?.company_name}</TableCell>
                       <TableCell>{e.category}</TableCell>
-                      <TableCell>
-                        {new Date(e.due_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
-                      </TableCell>
+                      <TableCell>{formatDate(e.due_date)}</TableCell>
                       <TableCell>
                         R$ {Number(e.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </TableCell>

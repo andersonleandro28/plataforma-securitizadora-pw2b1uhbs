@@ -429,9 +429,7 @@ export default function InvestmentsReview() {
                       <TableCell className="font-mono">
                         R$ {Number(inv.total_value).toLocaleString('pt-BR')}
                       </TableCell>
-                      <TableCell>
-                        {formatDate(inv.transfer_date)}
-                      </TableCell>
+                      <TableCell>{formatDate(inv.transfer_date)}</TableCell>
                       <TableCell>
                         <Badge variant={inv.status === 'approved' ? 'default' : 'outline'}>
                           {inv.status}
@@ -505,9 +503,7 @@ export default function InvestmentsReview() {
                       <TableCell className="font-mono font-medium text-emerald-600">
                         {formatC(red.net_value)}
                       </TableCell>
-                      <TableCell>
-                        {formatDate(red.updated_at || red.created_at)}
-                      </TableCell>
+                      <TableCell>{formatDate(red.updated_at || red.created_at)}</TableCell>
                       <TableCell className="space-y-1">
                         <div>
                           {red.status === 'paid' ? (

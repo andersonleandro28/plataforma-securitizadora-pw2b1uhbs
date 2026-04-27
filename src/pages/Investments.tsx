@@ -504,7 +504,10 @@ export default function Investments() {
                           Securitizadora.
                         </p>
                         <p>Endereço IP Registrado: Capturado via sistema no momento do aceite.</p>
-                        <p>Data/Hora do Aceite: {new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</p>
+                        <p>
+                          Data/Hora do Aceite:{' '}
+                          {new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
+                        </p>
                       </div>
                     </div>
                   </ScrollArea>

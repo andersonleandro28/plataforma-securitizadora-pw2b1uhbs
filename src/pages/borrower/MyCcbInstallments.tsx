@@ -221,9 +221,7 @@ export default function MyCcbInstallments() {
                     })}
                   </span>
                 </CardTitle>
-                <CardDescription>
-                  Emitido em {formatDate(p.created_at)}
-                </CardDescription>
+                <CardDescription>Emitido em {formatDate(p.created_at)}</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -255,9 +253,7 @@ export default function MyCcbInstallments() {
                                   : 'whitespace-nowrap'
                               }
                             >
-                              {b.due_date
-                                ? formatDate(b.due_date)
-                                : '-'}
+                              {b.due_date ? formatDate(b.due_date) : '-'}
                               {isOverdue && ' (Vencido)'}
                             </TableCell>
                             <TableCell>
