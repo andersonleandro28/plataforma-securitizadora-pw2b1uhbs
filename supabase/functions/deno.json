@@ -1,11 +1,11 @@
 {
   "_versions": {
     "serasa-integration": 18,
-    "send-login-notification": 15,
+    "send-login-notification": 16,
     "invite-user": 19,
     "public-signup": 15,
     "delete-user": 17,
-    "extract-debenture-data": 22,
+    "extract-debenture-data": 23,
     "batch-import-users": 15,
     "calculate-operation": 15,
     "send-operation-email": 17,
@@ -17,11 +17,11 @@
     "admin-create-user": 16,
     "admin-update-user": 16,
     "serve-pdf": 7,
-    "generate-kyc-pdf": 7,
+    "generate-kyc-pdf": 8,
     "docusign-envelope": 9,
     "docusign-callback": 7,
     "generate-redemption-receipt": 4,
-    "generate-subscription-term": 1,
+    "generate-subscription-term": 2,
     "notify-ccb-adjustment": 1
   }
 }
