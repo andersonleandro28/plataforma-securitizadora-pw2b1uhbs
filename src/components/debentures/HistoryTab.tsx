@@ -33,19 +33,13 @@ import { format } from 'date-fns'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { AddSeriesDialog } from './AddSeriesDialog'
+import { formatDate } from '@/lib/utils'
 
 interface HistoryTabProps {
   debentures: any[]
   loading: boolean
   formatCurrency: (val: number) => string
   onRefresh: () => void
-}
-
-const formatDateStr = (dateStr: string | null | undefined) => {
-  if (!dateStr) return '-'
-  const parts = dateStr.split('T')[0].split('-')
-  if (parts.length !== 3) return dateStr
-  return `${parts[2]}/${parts[1]}/${parts[0]}`
 }
 
 export function HistoryTab({ debentures, loading, formatCurrency, onRefresh }: HistoryTabProps) {
@@ -102,7 +96,7 @@ export function HistoryTab({ debentures, loading, formatCurrency, onRefresh }: H
           <h1>Espelho de Escritura de Debêntures</h1>
           <div class="meta">
             <p><strong>Emissor:</strong> ${deb.issuer_name}</p>
-            <p><strong>Data de Emissão:</strong> ${formatDateStr(deb.issue_date)}</p>
+            <p><strong>Data de Emissão:</strong> ${formatDate(deb.issue_date)}</p>
             <p><strong>Volume Total da Emissão:</strong> R$ ${deb.total_volume.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
             <p><strong>Gerado em:</strong> ${format(new Date(), 'dd/MM/yyyy HH:mm')}</p>
           </div>
@@ -117,7 +111,7 @@ export function HistoryTab({ debentures, loading, formatCurrency, onRefresh }: H
                 <div style="display: flex; gap: 20px; margin-bottom: 15px; font-size: 14px;">
                   <div><strong>Indexador:</strong> ${s.indexer} + ${s.rate}% a.a.</div>
                   <div><strong>Volume:</strong> R$ ${s.volume.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                  <div><strong>Vencimento:</strong> ${formatDateStr(s.maturity_date)}</div>
+                  <div><strong>Vencimento:</strong> ${formatDate(s.maturity_date)}</div>
                 </div>
                 
                 <h4 style="margin-bottom: 10px; font-size: 15px;">Subscrições Realizadas</h4>
@@ -145,7 +139,7 @@ export function HistoryTab({ debentures, loading, formatCurrency, onRefresh }: H
                           <td class="right">${sub.quantity}</td>
                           <td class="right">${sub.unit_price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                           <td class="right">${sub.total_amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                          <td>${formatDateStr(sub.subscription_date)}</td>
+                          <td>${formatDate(sub.subscription_date)}</td>
                         </tr>
                       `,
                         )
@@ -221,7 +215,7 @@ export function HistoryTab({ debentures, loading, formatCurrency, onRefresh }: H
                     </TableCell>
                     <TableCell className="font-medium">{deb.issuer_name}</TableCell>
                     <TableCell className="whitespace-nowrap">
-                      {formatDateStr(deb.issue_date)}
+                      {formatDate(deb.issue_date)}
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm">
                       {formatCurrency(deb.total_volume)}
@@ -340,7 +334,7 @@ export function HistoryTab({ debentures, loading, formatCurrency, onRefresh }: H
                                       <TableCell className="text-xs py-2">{s.indexer}</TableCell>
                                       <TableCell className="text-xs py-2">{s.rate}</TableCell>
                                       <TableCell className="text-xs py-2">
-                                        {formatDateStr(s.maturity_date)}
+                                        {formatDate(s.maturity_date)}
                                       </TableCell>
                                       <TableCell className="text-right font-mono text-xs py-2">
                                         {formatCurrency(s.volume)}

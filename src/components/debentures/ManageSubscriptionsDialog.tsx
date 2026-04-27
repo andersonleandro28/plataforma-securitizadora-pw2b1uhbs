@@ -21,19 +21,13 @@ import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/use-auth'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { formatDate, toISODate } from '@/lib/utils'
 
 interface ManageSubscriptionsDialogProps {
   series: any
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: () => void | Promise<void>
-}
-
-const formatDateStr = (dateStr: string | null | undefined) => {
-  if (!dateStr) return '-'
-  const parts = dateStr.split('T')[0].split('-')
-  if (parts.length !== 3) return dateStr
-  return `${parts[2]}/${parts[1]}/${parts[0]}`
 }
 
 export function ManageSubscriptionsDialog({
@@ -63,7 +57,7 @@ export function ManageSubscriptionsDialog({
     setEditForm({
       ...sub,
       // Garante que a data seja tratada diretamente como YYYY-MM-DD
-      subscription_date: sub.subscription_date ? sub.subscription_date.split('T')[0] : '',
+      subscription_date: toISODate(sub.subscription_date),
     })
     setAddingNew(false)
   }
@@ -459,7 +453,7 @@ export function ManageSubscriptionsDialog({
                           R$ {Number(sub.unit_price).toLocaleString('pt-BR')}
                         </TableCell>
                         <TableCell className="text-xs">
-                          {formatDateStr(sub.subscription_date)}
+                          {formatDate(sub.subscription_date)}
                         </TableCell>
                         <TableCell className="text-right space-x-1 whitespace-nowrap">
                           {activeTab === 'ativos' ? (

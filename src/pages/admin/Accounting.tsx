@@ -185,7 +185,7 @@ export default function Accounting() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `DRE_${new Date().toLocaleDateString('en-CA')}.csv`
+    a.download = `DRE_${new Date().toISOString().split('T')[0]}.csv`
     a.click()
   }
 

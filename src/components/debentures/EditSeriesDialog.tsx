@@ -22,6 +22,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/use-auth'
+import { toISODate } from '@/lib/utils'
 
 interface EditSeriesDialogProps {
   series: any
@@ -55,7 +56,7 @@ export function EditSeriesDialog({
         volume: String(series.volume || ''),
         indexer: series.indexer || 'CDI',
         rate: String(series.rate || ''),
-        maturity_date: series.maturity_date ? series.maturity_date.split('T')[0] : '',
+        maturity_date: toISODate(series.maturity_date),
       })
     }
   }, [series, open])
@@ -75,8 +76,7 @@ export function EditSeriesDialog({
 
   const hasYieldImpact =
     Number(formData.rate) !== Number(series?.rate) ||
-    (formData.maturity_date || '') !==
-      (series?.maturity_date ? series.maturity_date.split('T')[0] : '')
+    (formData.maturity_date || '') !== toISODate(series?.maturity_date)
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)

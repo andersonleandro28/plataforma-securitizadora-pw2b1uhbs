@@ -31,6 +31,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { toast } from 'sonner'
 import { useNavigate } from 'react-router-dom'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { formatDate } from '@/lib/utils'
 
 export default function Investments() {
   const { profile, user } = useAuth()
@@ -503,7 +504,7 @@ export default function Investments() {
                           Securitizadora.
                         </p>
                         <p>Endereço IP Registrado: Capturado via sistema no momento do aceite.</p>
-                        <p>Data/Hora do Aceite: {new Date().toLocaleString('pt-BR')}</p>
+                        <p>Data/Hora do Aceite: {new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</p>
                       </div>
                     </div>
                   </ScrollArea>

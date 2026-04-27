@@ -23,6 +23,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { Receipt, AlertCircle, Download, Loader2, Copy } from 'lucide-react'
 import { toast } from 'sonner'
 import { generatePixPayload } from '@/lib/pix'
+import { formatDate } from '@/lib/utils'
 
 export default function MyCcbInstallments() {
   const { user } = useAuth()
@@ -104,13 +105,14 @@ export default function MyCcbInstallments() {
         isOverdue: false,
       }
 
-    const [year, month, day] = dueDate.split('T')[0].split('-').map(Number)
-    const due = new Date(year, month - 1, day).getTime()
+    const dateStr = dueDate.split('T')[0]
+    const due = new Date(dateStr + 'T12:00:00Z')
+    due.setUTCHours(0, 0, 0, 0)
 
-    const today = new Date()
-    const now = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()
+    const now = new Date()
+    now.setUTCHours(0, 0, 0, 0)
 
-    const diffTime = now - due
+    const diffTime = now.getTime() - due.getTime()
     const daysOverdue = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)))
 
     const params = finParams['CCB'] || finParams['global'] || {}
@@ -220,7 +222,7 @@ export default function MyCcbInstallments() {
                   </span>
                 </CardTitle>
                 <CardDescription>
-                  Emitido em {new Date(p.created_at).toLocaleDateString('pt-BR')}
+                  Emitido em {formatDate(p.created_at)}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -254,9 +256,7 @@ export default function MyCcbInstallments() {
                               }
                             >
                               {b.due_date
-                                ? new Date(
-                                    b.due_date.split('T')[0] + 'T12:00:00',
-                                  ).toLocaleDateString('pt-BR')
+                                ? formatDate(b.due_date)
                                 : '-'}
                               {isOverdue && ' (Vencido)'}
                             </TableCell>
@@ -265,7 +265,7 @@ export default function MyCcbInstallments() {
                                 {b.status === 'Pago' ? (
                                   <span
                                     className="text-emerald-600 font-bold"
-                                    title={`Pago em ${b.payment_date ? new Date(b.payment_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '-'}`}
+                                    title={`Pago em ${formatDate(b.payment_date)}`}
                                   >
                                     R${' '}
                                     {(

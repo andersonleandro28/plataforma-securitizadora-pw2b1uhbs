@@ -35,6 +35,7 @@ import {
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/use-auth'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+import { formatDate, toISODate } from '@/lib/utils'
 
 export default function InvestmentsReview() {
   const { user } = useAuth()
@@ -226,7 +227,7 @@ export default function InvestmentsReview() {
   }
 
   const handleOpenApproveModal = (red: any) => {
-    const dateStr = (red.updated_at || red.created_at).split('T')[0]
+    const dateStr = toISODate(red.updated_at || red.created_at)
     const metrics = calculateInvestmentMetricsToDate(red.investments, red.requested_quotas, dateStr)
     setApproveData({ red, metrics })
     setManualTax(metrics.taxAmount.toFixed(2))
@@ -302,7 +303,7 @@ export default function InvestmentsReview() {
 
   const handleOpenEditRedemption = (red: any) => {
     setSelectedRedemption(red)
-    const dateStr = (red.updated_at || red.created_at).split('T')[0]
+    const dateStr = toISODate(red.updated_at || red.created_at)
     setEditRedemptionForm({ effective_date: dateStr })
     setEditRedemptionOpen(true)
   }
@@ -429,11 +430,7 @@ export default function InvestmentsReview() {
                         R$ {Number(inv.total_value).toLocaleString('pt-BR')}
                       </TableCell>
                       <TableCell>
-                        {inv.transfer_date
-                          ? new Date(inv.transfer_date).toLocaleDateString('pt-BR', {
-                              timeZone: 'UTC',
-                            })
-                          : '-'}
+                        {formatDate(inv.transfer_date)}
                       </TableCell>
                       <TableCell>
                         <Badge variant={inv.status === 'approved' ? 'default' : 'outline'}>
@@ -509,11 +506,7 @@ export default function InvestmentsReview() {
                         {formatC(red.net_value)}
                       </TableCell>
                       <TableCell>
-                        {red.updated_at || red.created_at
-                          ? new Date(red.updated_at || red.created_at).toLocaleDateString('pt-BR', {
-                              timeZone: 'UTC',
-                            })
-                          : '-'}
+                        {formatDate(red.updated_at || red.created_at)}
                       </TableCell>
                       <TableCell className="space-y-1">
                         <div>

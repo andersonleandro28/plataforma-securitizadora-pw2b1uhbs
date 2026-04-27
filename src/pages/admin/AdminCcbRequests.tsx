@@ -243,7 +243,7 @@ export default function AdminCcbRequests() {
             return {
               id: crypto.randomUUID(),
               number: i + 1,
-              due_date: d.toLocaleDateString('en-CA'),
+              due_date: d.toISOString().split('T')[0],
               value: v,
               status: 'aberta',
             }

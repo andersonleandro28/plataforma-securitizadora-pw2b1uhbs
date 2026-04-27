@@ -30,6 +30,7 @@ import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { toast } from 'sonner'
 import { Plus, Trash2, Edit, Upload, FileText, List, CheckCircle } from 'lucide-react'
+import { formatDate, toISODate } from '@/lib/utils'
 
 export default function CcbPurchases() {
   const { user } = useAuth()
@@ -133,7 +134,7 @@ export default function CcbPurchases() {
           Array.from({ length: count }).map((_, i) => {
             const d = new Date()
             d.setMonth(d.getMonth() + i + 1)
-            return { due_date: d.toLocaleDateString('en-CA'), unit_value: val, status: 'Pendente' }
+            return { due_date: d.toISOString().split('T')[0], unit_value: val, status: 'Pendente' }
           }),
         )
       } else {
@@ -231,8 +232,8 @@ export default function CcbPurchases() {
       acquisition_value: '',
       boleto_count: '',
       boleto_unit_value: '',
-      created_at: new Date().toLocaleDateString('en-CA'),
-      ccb_created_at: new Date().toLocaleDateString('en-CA'),
+      created_at: new Date().toISOString().split('T')[0],
+      ccb_created_at: new Date().toISOString().split('T')[0],
     })
     setBoletos([])
     setOpen(true)
@@ -245,10 +246,8 @@ export default function CcbPurchases() {
       acquisition_value: String(p.acquisition_value),
       boleto_count: String(p.boleto_count),
       boleto_unit_value: String(p.boleto_unit_value),
-      created_at: p.created_at ? new Date(p.created_at).toLocaleDateString('en-CA') : '',
-      ccb_created_at: p.ccb_solicitacoes?.created_at
-        ? new Date(p.ccb_solicitacoes.created_at).toLocaleDateString('en-CA')
-        : '',
+      created_at: toISODate(p.created_at),
+      ccb_created_at: toISODate(p.ccb_solicitacoes?.created_at),
     })
     setBoletos(p.boletos || [])
     setOpen(true)
@@ -373,7 +372,7 @@ export default function CcbPurchases() {
               {purchases.map((p) => (
                 <TableRow key={p.id}>
                   <TableCell className="pl-4">
-                    {new Date(p.created_at).toLocaleDateString('pt-BR')}
+                    {formatDate(p.created_at)}
                   </TableCell>
                   <TableCell className="font-medium">
                     {p.ccb_solicitacoes?.profiles?.full_name ||
@@ -603,7 +602,7 @@ export default function CcbPurchases() {
                   <TableRow key={i}>
                     <TableCell>{i + 1}</TableCell>
                     <TableCell>
-                      {new Date(b.due_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
+                      {formatDate(b.due_date)}
                     </TableCell>
                     <TableCell>
                       R${' '}
@@ -628,7 +627,7 @@ export default function CcbPurchases() {
                           onClick={() => {
                             setLiquidationForm({
                               idx: i,
-                              payment_date: new Date().toLocaleDateString('en-CA'),
+                              payment_date: new Date().toISOString().split('T')[0],
                               interest: '',
                               penalty: '',
                             })

@@ -20,6 +20,7 @@ import {
 import { Loader2, Save, PlusCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import { formatDate } from '@/lib/utils'
 
 interface AddSeriesDialogProps {
   debenture?: any
@@ -149,7 +150,7 @@ export function AddSeriesDialog({
                 <SelectContent>
                   {debentures.map((d) => (
                     <SelectItem key={d.id} value={d.id}>
-                      {d.issuer_name} ({new Date(d.created_at).toLocaleDateString('pt-BR')})
+                      {d.issuer_name} ({formatDate(d.created_at)})
                     </SelectItem>
                   ))}
                 </SelectContent>
