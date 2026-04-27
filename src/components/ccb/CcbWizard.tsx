@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/table'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { useBorrowerLimit } from '@/hooks/use-borrower-limit'
 
 const InputField = ({ label, value, onChange, className, ...props }: any) => (
   <div className={`space-y-2 ${className || ''}`}>
@@ -166,6 +167,8 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
 
   const [simData, setSimData] = useState({ installment_value: 0, total_to_pay: 0, cet: 0 })
   const [schedule, setSchedule] = useState<any[]>([])
+
+  const { available, loading: limitLoading } = useBorrowerLimit(user?.id)
 
   useEffect(() => {
     if (ccbConfig && opData.requestedValue && opData.termMonths) {
@@ -354,6 +357,14 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
 
   const handleSubmit = async () => {
     if (!user) return
+
+    if (Number(opData.requestedValue) > available) {
+      toast.error(
+        `Limite de crédito excedido. Você possui R$ ${available.toLocaleString('pt-BR')} disponíveis.`,
+      )
+      return
+    }
+
     setLoading(true)
     try {
       const docsPaths: any = {}
@@ -741,11 +752,18 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                   </Select>
                 </div>
                 <div className="space-y-4">
-                  <div className="flex justify-between">
+                  <div className="flex justify-between items-center">
                     <Label>Valor</Label>
-                    <span className="font-bold text-[#00C2E0]">
-                      R$ {Number(opData.requestedValue || 5000).toLocaleString('pt-BR')}
-                    </span>
+                    <div className="text-right">
+                      <span className="font-bold text-[#00C2E0]">
+                        R$ {Number(opData.requestedValue || 5000).toLocaleString('pt-BR')}
+                      </span>
+                      {!limitLoading && (
+                        <div className="text-[10px] text-muted-foreground mt-0.5">
+                          Limite Disp.: R$ {available.toLocaleString('pt-BR')}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <Slider
                     min={5000}

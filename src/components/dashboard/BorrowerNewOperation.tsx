@@ -21,6 +21,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { FileUpload } from '@/components/operations/FileUpload'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
+import { useBorrowerLimit } from '@/hooks/use-borrower-limit'
 import { toast } from 'sonner'
 import { Loader2, Calculator, Send } from 'lucide-react'
 
@@ -34,6 +35,7 @@ export function BorrowerNewOperation({ onSuccess }: { onSuccess?: () => void }) 
   const [simulating, setSimulating] = useState(false)
   const [simulation, setSimulation] = useState<any>(null)
 
+  const { available, loading: limitLoading } = useBorrowerLimit(user?.id)
   const [formData, setFormData] = useState({
     receivableType: '',
     receivableTypeOther: '',
@@ -97,6 +99,12 @@ export function BorrowerNewOperation({ onSuccess }: { onSuccess?: () => void }) 
     if (!files.length) return toast.error('Anexe pelo menos um documento comprobatório')
     if (Number(formData.requestedValue) > Number(formData.faceValue))
       return toast.error('Valor solicitado não pode ser maior que o valor de face')
+
+    if (Number(formData.requestedValue) > available) {
+      return toast.error(
+        `Limite de crédito excedido. Disponível: R$ ${available.toLocaleString('pt-BR')}`,
+      )
+    }
 
     setSubmitting(true)
     try {
@@ -324,7 +332,14 @@ export function BorrowerNewOperation({ onSuccess }: { onSuccess?: () => void }) 
               />
             </div>
             <div className="space-y-2">
-              <Label>Valor Solicitado p/ Antecipação (VS) *</Label>
+              <div className="flex justify-between">
+                <Label>Valor Solicitado p/ Antecipação (VS) *</Label>
+                {!limitLoading && (
+                  <span className="text-[10px] text-muted-foreground">
+                    Disp: R$ {available.toLocaleString('pt-BR')}
+                  </span>
+                )}
+              </div>
               <Input
                 type="number"
                 step="0.01"

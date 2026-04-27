@@ -5,12 +5,13 @@ import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib'
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, x-supabase-client-platform, apikey, content-type',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, x-supabase-client-platform, apikey, content-type',
 }
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  
+
   try {
     const { investmentId, ipAddress } = await req.json()
     if (!investmentId) throw new Error('investmentId is required')
@@ -31,11 +32,18 @@ Deno.serve(async (req: Request) => {
     const page = pdfDoc.addPage([595.28, 841.89])
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
     const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
-    
+
     const margin = 50
     let currentY = 841.89 - margin
 
-    const drawTextWrap = (text: string, x: number, y: number, maxWidth: number, f: any, size: number) => {
+    const drawTextWrap = (
+      text: string,
+      x: number,
+      y: number,
+      maxWidth: number,
+      f: any,
+      size: number,
+    ) => {
       const words = text.split(' ')
       let line = ''
       for (const word of words) {
@@ -56,7 +64,12 @@ Deno.serve(async (req: Request) => {
       return y
     }
 
-    page.drawText('TERMO DE INVESTIMENTO EM DEBÊNTURES', { x: margin, y: currentY, font: fontBold, size: 14 })
+    page.drawText('TERMO DE INVESTIMENTO EM DEBÊNTURES', {
+      x: margin,
+      y: currentY,
+      font: fontBold,
+      size: 14,
+    })
     currentY -= 30
 
     const pu = inv.unit_price
@@ -95,34 +108,46 @@ IP Registrado: ${ipAddress || 'Não identificado'}
 ID Subscrição: ${inv.id}
     `.trim()
 
-    currentY = drawTextWrap(content.replace(/\n/g, ' \n '), margin, currentY, 595.28 - margin * 2, font, 11)
+    currentY = drawTextWrap(
+      content.replace(/\n/g, ' \n '),
+      margin,
+      currentY,
+      595.28 - margin * 2,
+      font,
+      11,
+    )
 
     const pdfBytes = await pdfDoc.save()
-    const fileName = `Termo_Subscricao_${inv.id.substring(0,8)}.pdf`
+    const fileName = `Termo_Subscricao_${inv.id.substring(0, 8)}.pdf`
     const filePath = `${inv.user_id}/${fileName}`
-    
+
     const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' })
-    await supabase.storage.from('investment-docs').upload(filePath, pdfBlob, { contentType: 'application/pdf', upsert: true })
-    
+    await supabase.storage
+      .from('investment-docs')
+      .upload(filePath, pdfBlob, { contentType: 'application/pdf', upsert: true })
+
     const { data: publicUrlData } = supabase.storage.from('investment-docs').getPublicUrl(filePath)
 
-    await supabase.from('investments').update({ contract_url: publicUrlData.publicUrl }).eq('id', investmentId)
+    await supabase
+      .from('investments')
+      .update({ contract_url: publicUrlData.publicUrl })
+      .eq('id', investmentId)
 
     // Send Email
     const resendApiKey = Deno.env.get('RESEND_API_KEY')
     if (resendApiKey && inv.profiles?.email) {
-      let binary = '';
-      const len = pdfBytes.byteLength;
+      let binary = ''
+      const len = pdfBytes.byteLength
       for (let i = 0; i < len; i++) {
-          binary += String.fromCharCode(pdfBytes[i]);
+        binary += String.fromCharCode(pdfBytes[i])
       }
-      const base64Pdf = btoa(binary);
+      const base64Pdf = btoa(binary)
 
       await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${resendApiKey}`
+          Authorization: `Bearer ${resendApiKey}`,
         },
         body: JSON.stringify({
           from: 'Plataforma Securitizadora <contato@seaconnection.api.br>',
@@ -142,15 +167,19 @@ ID Subscrição: ${inv.id}
             {
               filename: fileName,
               content: base64Pdf,
-            }
-          ]
-        })
+            },
+          ],
+        }),
       })
     }
 
-    return new Response(JSON.stringify({ success: true, url: publicUrlData.publicUrl }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-
+    return new Response(JSON.stringify({ success: true, url: publicUrlData.publicUrl }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   }
 })

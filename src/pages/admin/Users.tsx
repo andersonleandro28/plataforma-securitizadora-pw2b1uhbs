@@ -41,6 +41,7 @@ import {
   Key,
   Ban,
   Unlock,
+  Activity,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
@@ -49,6 +50,7 @@ import { ManageRolesDialog } from '@/components/admin/ManageRolesDialog'
 import { UserBankAccountsAdminDialog } from '@/components/admin/UserBankAccountsAdminDialog'
 import { AdminUserFormDialog } from '@/components/admin/AdminUserFormDialog'
 import { AdminChangePasswordDialog } from '@/components/admin/AdminChangePasswordDialog'
+import { AdminUserRiskDialog } from '@/components/admin/AdminUserRiskDialog'
 import { getKycCompletion, exportCsv } from '@/lib/kyc-utils'
 
 export default function Users() {
@@ -66,6 +68,7 @@ export default function Users() {
   const [passwordUser, setPasswordUser] = useState<any>(null)
   const [deletingUser, setDeletingUser] = useState<any>(null)
   const [blockUser, setBlockUser] = useState<any>(null)
+  const [riskUser, setRiskUser] = useState<any>(null)
 
   // Full CRUD Form Dialog State
   const [formOpen, setFormOpen] = useState(false)
@@ -233,6 +236,13 @@ export default function Users() {
         user={passwordUser}
         open={!!passwordUser}
         onOpenChange={(v: boolean) => !v && setPasswordUser(null)}
+      />
+
+      <AdminUserRiskDialog
+        user={riskUser}
+        open={!!riskUser}
+        onOpenChange={(v: boolean) => !v && setRiskUser(null)}
+        onSaved={loadUsers}
       />
 
       <AlertDialog open={!!deletingUser} onOpenChange={(v) => !v && setDeletingUser(null)}>
@@ -467,6 +477,12 @@ export default function Users() {
                               <DropdownMenuItem onClick={() => setPasswordUser(u)}>
                                 <Key className="mr-2 h-4 w-4" /> Redefinir Senha
                               </DropdownMenuItem>
+                              {u.is_borrower && (
+                                <DropdownMenuItem onClick={() => setRiskUser(u)}>
+                                  <Activity className="mr-2 h-4 w-4 text-amber-500" /> Gestão de
+                                  Risco e Limite
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuItem
                                 onClick={() => setBlockUser(u)}
                                 disabled={session?.user?.id === u.id}
