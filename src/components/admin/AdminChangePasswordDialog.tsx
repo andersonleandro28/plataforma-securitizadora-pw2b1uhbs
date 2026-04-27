@@ -11,12 +11,31 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Copy, RefreshCw } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 
 export function AdminChangePasswordDialog({ user, open, onOpenChange }: any) {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+
+  const handleGenerate = () => {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*'
+    let pass = ''
+    for (let i = 0; i < 12; i++) {
+      pass += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    setPassword(pass)
+  }
+
+  const handleCopy = async () => {
+    if (!password) return
+    try {
+      await navigator.clipboard.writeText(password)
+      toast.success('Senha copiada para a área de transferência!')
+    } catch (err) {
+      toast.error('Erro ao copiar a senha.')
+    }
+  }
 
   const handleSave = async () => {
     if (password.length < 6) return toast.error('A senha deve ter pelo menos 6 caracteres.')
@@ -51,12 +70,32 @@ export function AdminChangePasswordDialog({ user, open, onOpenChange }: any) {
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label>Nova Senha Temporária</Label>
-            <Input
-              type="text"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Mínimo de 6 caracteres"
-            />
+            <div className="flex gap-2">
+              <Input
+                type="text"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Mínimo de 6 caracteres"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={handleGenerate}
+                title="Gerar Senha"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={handleCopy}
+                title="Copiar Senha"
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
         <DialogFooter>

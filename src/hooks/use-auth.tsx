@@ -16,7 +16,7 @@ export interface Profile {
   is_investor: boolean
   is_borrower: boolean
   is_blocked?: boolean
-  requires_password_change?: boolean
+  force_password_change?: boolean
   kyc_status?: 'pending' | 'under_review' | 'approved' | 'rejected'
   entity_type?: 'pf' | 'pj'
   document_number?: string

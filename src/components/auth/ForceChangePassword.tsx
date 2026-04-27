@@ -23,8 +23,8 @@ export function ForceChangePassword() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    // If user is authenticated and requires_password_change is true, force the modal open
-    if (user && profile?.requires_password_change) {
+    // If user is authenticated and force_password_change is true, force the modal open
+    if (user && profile?.force_password_change) {
       setOpen(true)
     } else {
       setOpen(false)
@@ -59,13 +59,15 @@ export function ForceChangePassword() {
       if (profile) {
         const { error: profileError } = await supabase
           .from('profiles')
-          .update({ requires_password_change: false })
+          .update({ force_password_change: false })
           .eq('id', profile.id)
 
         if (profileError) throw profileError
       }
 
       setOpen(false)
+      setPassword('')
+      setConfirmPassword('')
       // We manually dispatch an event to refresh the profile in use-auth
       window.dispatchEvent(new CustomEvent('profile-updated'))
     } catch (err: any) {
@@ -81,7 +83,7 @@ export function ForceChangePassword() {
       open={open}
       onOpenChange={(val) => {
         // Force it to remain open if still required
-        if (profile?.requires_password_change) setOpen(true)
+        if (profile?.force_password_change) setOpen(true)
       }}
     >
       <DialogContent
@@ -92,11 +94,11 @@ export function ForceChangePassword() {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShieldAlert className="h-5 w-5 text-warning" />
-            Atualização de Segurança
+            Alteração de Senha Obrigatória
           </DialogTitle>
           <DialogDescription>
-            Por motivos de segurança, você precisa redefinir sua senha para continuar acessando a
-            plataforma.
+            Sua senha foi redefinida pelo administrador. Por motivos de segurança, você precisa
+            definir uma nova senha para continuar acessando a plataforma.
           </DialogDescription>
         </DialogHeader>
 
