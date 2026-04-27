@@ -124,7 +124,7 @@ export default function CcbDigital() {
     try {
       const { error } = await supabase
         .from('ccb_solicitacoes')
-        .update({ status: 'aceite_tomador' })
+        .update({ status: 'aceite_tomador', updated_at: new Date().toISOString() })
         .eq('id', id)
       if (error) throw error
       toast.success('Proposta aceita! O comitê dará prosseguimento à sua solicitação.')
@@ -204,6 +204,23 @@ export default function CcbDigital() {
 
               {requests.length > 0 && (
                 <div className="space-y-4 pt-6">
+                  {requests.some((r) => r.status === 'proposta_ajustada') && (
+                    <div className="bg-blue-50 border border-blue-200 text-blue-800 p-4 rounded-lg flex items-start gap-3 shadow-sm mb-4 animate-fade-in">
+                      <div className="bg-blue-100 p-2 rounded-full mt-0.5">
+                        <FileText className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-sm">Ação Necessária</h4>
+                        <p className="text-sm mt-1">
+                          Sua proposta foi revisada. Confira as novas condições nos cartões abaixo e
+                          clique em{' '}
+                          <strong className="font-semibold">Analisar Nova Proposta</strong> para
+                          prosseguir com a aprovação.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                   <h3 className="text-xl font-bold border-b pb-2">Histórico de Solicitações</h3>
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {requests.map((req) => (
@@ -244,7 +261,7 @@ export default function CcbDigital() {
                                 <Button
                                   variant="default"
                                   size="sm"
-                                  className="h-8 bg-blue-600 hover:bg-blue-700 text-white border-0 flex-1"
+                                  className="h-8 bg-blue-600 hover:bg-blue-700 text-white border-0 flex-1 animate-pulse shadow-blue-500/50 shadow-sm"
                                   onClick={() => setReviewModal(req)}
                                 >
                                   Analisar Nova Proposta
@@ -451,7 +468,12 @@ export default function CcbDigital() {
             <Button variant="outline" onClick={() => setReviewModal(null)}>
               Cancelar
             </Button>
-            <Button onClick={() => handleAcceptProposal(reviewModal.id)}>Aceitar Condições</Button>
+            <Button
+              onClick={() => handleAcceptProposal(reviewModal.id)}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              Aceitar Condições
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

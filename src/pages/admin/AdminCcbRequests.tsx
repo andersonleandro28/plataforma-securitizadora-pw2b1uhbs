@@ -64,6 +64,51 @@ export default function AdminCcbRequests() {
   const [adjPmt, setAdjPmt] = useState('')
   const [adjFirstDue, setAdjFirstDue] = useState('')
   const [adjCet, setAdjCet] = useState(0)
+  const [lastEdited, setLastEdited] = useState<'rate' | 'pmt' | null>(null)
+
+  const calculateRate = (nper: number, pmt: number, pv: number) => {
+    if (pmt * nper <= pv) return 0
+    let low = 0
+    let high = 1
+    let guess = 0.05
+    for (let i = 0; i < 50; i++) {
+      guess = (low + high) / 2
+      const calcPmt = (pv * guess) / (1 - Math.pow(1 + guess, -nper))
+      if (calcPmt > pmt) high = guess
+      else low = guess
+    }
+    return guess * 100
+  }
+
+  const calculatePMT = (pv: number, ratePct: number, nper: number) => {
+    const rate = ratePct / 100
+    if (rate === 0) return pv / nper
+    return (pv * rate) / (1 - Math.pow(1 + rate, -nper))
+  }
+
+  useEffect(() => {
+    if (!adjustModal) return
+    const pv = Number(adjustModal.requested_value || 0)
+    const nper = Number(adjustModal.term_months || 1)
+    const fee = Number(adjFee || 0)
+
+    const timer = setTimeout(() => {
+      let currentPmt = Number(adjPmt)
+      if (lastEdited === 'rate') {
+        const rate = Number(adjRate)
+        currentPmt = calculatePMT(pv, rate, nper)
+        setAdjPmt(currentPmt.toFixed(2))
+      } else if (lastEdited === 'pmt') {
+        const rate = calculateRate(nper, currentPmt, pv)
+        setAdjRate(rate.toFixed(2))
+      }
+
+      const cet = calculateRate(nper, currentPmt, pv - fee)
+      setAdjCet(cet)
+    }, 600)
+
+    return () => clearTimeout(timer)
+  }, [adjRate, adjPmt, adjFee, adjustModal, lastEdited])
 
   const fetchData = async () => {
     setLoading(true)
@@ -84,6 +129,7 @@ export default function AdminCcbRequests() {
     if (cfg) setCcbConfig(cfg)
     setLoading(false)
   }
+
   useEffect(() => {
     fetchData()
   }, [])
@@ -134,6 +180,48 @@ export default function AdminCcbRequests() {
         bucket: 'ccb_conjuges_docs',
       })
     return items
+  }
+
+  const handleSaveAdjust = async () => {
+    if (!adjustModal) return
+    setSaving(true)
+    try {
+      const opData = { ...adjustModal.operation_data }
+      if (!opData.original_simulation) {
+        opData.original_simulation = { ...opData.simulation }
+      }
+      const newSimulation = {
+        ...opData.simulation,
+        interest_rate_monthly: Number(adjRate),
+        installment_value: Number(adjPmt),
+        fixed_cost: Number(adjFee),
+        cet: Number(adjCet),
+      }
+      opData.simulation = newSimulation
+
+      const { error } = await supabase
+        .from('ccb_solicitacoes')
+        .update({
+          status: 'proposta_ajustada',
+          operation_data: opData,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', adjustModal.id)
+
+      if (error) throw error
+
+      await supabase.functions.invoke('notify-ccb-adjustment', {
+        body: { ccb_id: adjustModal.id, user_id: adjustModal.user_id, newSimulation },
+      })
+
+      toast.success('Proposta ajustada e enviada ao cliente.')
+      setAdjustModal(null)
+      fetchData()
+    } catch (e: any) {
+      toast.error('Erro ao ajustar proposta: ' + e.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleUpdate = async () => {
@@ -226,6 +314,26 @@ export default function AdminCcbRequests() {
                       <TableCell className="text-right space-x-2">
                         <Button variant="outline" size="sm" onClick={() => setDocsModal(req)}>
                           <FileText className="h-4 w-4 mr-1" /> Detalhes
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-blue-600 border-blue-600/30 hover:bg-blue-50"
+                          onClick={() => {
+                            setAdjustModal(req)
+                            const sim = req.operation_data?.simulation || {}
+                            setAdjRate(
+                              sim.interest_rate_monthly || ccbConfig?.interest_rate_monthly || '',
+                            )
+                            setAdjFee(sim.fixed_cost || ccbConfig?.fixed_emission_cost || 0)
+                            setAdjPmt(
+                              sim.installment_value || req.requested_value / req.term_months,
+                            )
+                            setAdjCet(sim.cet || 0)
+                            setLastEdited(null)
+                          }}
+                        >
+                          <Edit className="h-4 w-4 mr-1" /> Ajustar
                         </Button>
                         <Button
                           variant="secondary"
@@ -367,6 +475,119 @@ export default function AdminCcbRequests() {
             </Button>
             <Button onClick={handleUpdate} disabled={saving}>
               Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!adjustModal} onOpenChange={(v) => !v && setAdjustModal(null)}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Ajustar Proposta de Crédito</DialogTitle>
+            <DialogDescription>
+              Ajuste a taxa de juros ou o valor da parcela. O sistema calculará o outro
+              automaticamente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4 bg-muted p-4 rounded-lg border">
+              <div>
+                <Label className="text-xs text-muted-foreground uppercase tracking-wider">
+                  Valor Solicitado
+                </Label>
+                <div className="font-semibold text-lg">
+                  R$ {Number(adjustModal?.requested_value || 0).toLocaleString('pt-BR')}
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground uppercase tracking-wider">
+                  Prazo
+                </Label>
+                <div className="font-semibold text-lg">{adjustModal?.term_months} meses</div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Valor da Parcela (R$)</Label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                    <span className="text-muted-foreground">R$</span>
+                  </div>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={adjPmt}
+                    className="pl-10"
+                    onChange={(e) => {
+                      setAdjPmt(e.target.value)
+                      setLastEdited('pmt')
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Taxa de Juros (% a.m.)</Label>
+                <div className="relative">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={adjRate}
+                    className="pr-8"
+                    onChange={(e) => {
+                      setAdjRate(e.target.value)
+                      setLastEdited('rate')
+                    }}
+                  />
+                  <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
+                    <span className="text-muted-foreground">%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Tarifa de Emissão (R$)</Label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                    <span className="text-muted-foreground">R$</span>
+                  </div>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={adjFee}
+                    className="pl-10"
+                    onChange={(e) => setAdjFee(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>CET (% a.m.)</Label>
+                <div className="relative">
+                  <Input
+                    type="number"
+                    readOnly
+                    value={Number(adjCet).toFixed(2)}
+                    className="bg-muted pr-8 font-semibold text-primary"
+                  />
+                  <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
+                    <span className="text-muted-foreground">%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAdjustModal(null)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSaveAdjust}
+              disabled={saving}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              Salvar e Enviar Proposta
             </Button>
           </DialogFooter>
         </DialogContent>
