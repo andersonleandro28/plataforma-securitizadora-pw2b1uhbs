@@ -265,7 +265,7 @@ export default function MyCcbInstallments() {
                                 {b.status === 'Pago' ? (
                                   <span
                                     className="text-emerald-600 font-bold"
-                                    title={`Pago em ${b.payment_date ? new Date(b.payment_date).toLocaleDateString('pt-BR') : '-'}`}
+                                    title={`Pago em ${b.payment_date ? new Date(b.payment_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '-'}`}
                                   >
                                     R${' '}
                                     {(

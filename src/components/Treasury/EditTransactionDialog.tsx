@@ -55,7 +55,7 @@ export function EditTransactionDialog({ open, onOpenChange, transaction, onSucce
       })
       setSearchCat('')
 
-      const txDate = new Date(transaction.date + 'T00:00:00')
+      const txDate = new Date(transaction.date + 'T12:00:00Z')
       const now = new Date()
       setIsClosedPeriod(
         txDate.getFullYear() < now.getFullYear() ||

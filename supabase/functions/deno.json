@@ -10,7 +10,7 @@
     "calculate-operation": 15,
     "send-operation-email": 17,
     "calculate-risk": 14,
-    "generate-aditivo": 23,
+    "generate-aditivo": 24,
     "send-to-signature": 15,
     "signature-webhook": 15,
     "submit-ccb": 24,
@@ -20,7 +20,7 @@
     "generate-kyc-pdf": 7,
     "docusign-envelope": 9,
     "docusign-callback": 7,
-    "generate-redemption-receipt": 3,
+    "generate-redemption-receipt": 4,
     "generate-subscription-term": 1,
     "notify-ccb-adjustment": 1
   }

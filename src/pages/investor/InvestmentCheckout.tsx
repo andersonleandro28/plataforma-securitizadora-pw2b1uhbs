@@ -25,7 +25,7 @@ export default function InvestmentCheckout() {
   const [saving, setSaving] = useState(false)
   const [investment, setInvestment] = useState<any>(null)
 
-  const [transferDate, setTransferDate] = useState(new Date().toISOString().split('T')[0])
+  const [transferDate, setTransferDate] = useState(new Date().toLocaleDateString('en-CA'))
   const [transferValue, setTransferValue] = useState('')
   const [files, setFiles] = useState<File[]>([])
 

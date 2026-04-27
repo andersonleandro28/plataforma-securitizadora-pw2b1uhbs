@@ -430,7 +430,9 @@ export default function InvestmentsReview() {
                       </TableCell>
                       <TableCell>
                         {inv.transfer_date
-                          ? new Date(inv.transfer_date).toLocaleDateString('pt-BR')
+                          ? new Date(inv.transfer_date).toLocaleDateString('pt-BR', {
+                              timeZone: 'UTC',
+                            })
                           : '-'}
                       </TableCell>
                       <TableCell>
@@ -695,7 +697,7 @@ export default function InvestmentsReview() {
               <Label>Data de Transferência (Competência)</Label>
               <Input
                 type="date"
-                max={new Date().toISOString().split('T')[0]}
+                max={new Date().toLocaleDateString('en-CA')}
                 value={datesForm.transfer_date}
                 onChange={(e) => setDatesForm({ transfer_date: e.target.value })}
               />

@@ -154,7 +154,7 @@ export default function Treasury() {
         ownBal = 0,
         inToday = 0,
         outToday = 0
-      const today = new Date().toISOString().split('T')[0]
+      const today = new Date().toLocaleDateString('en-CA')
 
       allTx.forEach((tx) => {
         const val = tx.type === 'in' ? tx.amount : -tx.amount
@@ -163,7 +163,7 @@ export default function Treasury() {
         else ownBal += val
         tx.progressiveBalance = bal
 
-        if (tx.date.startsWith(today)) {
+        if (tx.date && tx.date.startsWith(today)) {
           if (tx.type === 'in') inToday += tx.amount
           else outToday += tx.amount
         }

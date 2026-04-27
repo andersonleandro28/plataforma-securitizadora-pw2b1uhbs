@@ -133,7 +133,7 @@ export default function CcbPurchases() {
           Array.from({ length: count }).map((_, i) => {
             const d = new Date()
             d.setMonth(d.getMonth() + i + 1)
-            return { due_date: d.toISOString().split('T')[0], unit_value: val, status: 'Pendente' }
+            return { due_date: d.toLocaleDateString('en-CA'), unit_value: val, status: 'Pendente' }
           }),
         )
       } else {
@@ -231,8 +231,8 @@ export default function CcbPurchases() {
       acquisition_value: '',
       boleto_count: '',
       boleto_unit_value: '',
-      created_at: new Date().toISOString().substring(0, 10),
-      ccb_created_at: new Date().toISOString().substring(0, 10),
+      created_at: new Date().toLocaleDateString('en-CA'),
+      ccb_created_at: new Date().toLocaleDateString('en-CA'),
     })
     setBoletos([])
     setOpen(true)
@@ -245,9 +245,9 @@ export default function CcbPurchases() {
       acquisition_value: String(p.acquisition_value),
       boleto_count: String(p.boleto_count),
       boleto_unit_value: String(p.boleto_unit_value),
-      created_at: p.created_at ? new Date(p.created_at).toISOString().substring(0, 10) : '',
+      created_at: p.created_at ? new Date(p.created_at).toLocaleDateString('en-CA') : '',
       ccb_created_at: p.ccb_solicitacoes?.created_at
-        ? new Date(p.ccb_solicitacoes.created_at).toISOString().substring(0, 10)
+        ? new Date(p.ccb_solicitacoes.created_at).toLocaleDateString('en-CA')
         : '',
     })
     setBoletos(p.boletos || [])
@@ -602,7 +602,9 @@ export default function CcbPurchases() {
                 {selectedPurchase?.boletos?.map((b: any, i: number) => (
                   <TableRow key={i}>
                     <TableCell>{i + 1}</TableCell>
-                    <TableCell>{new Date(b.due_date).toLocaleDateString('pt-BR')}</TableCell>
+                    <TableCell>
+                      {new Date(b.due_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
+                    </TableCell>
                     <TableCell>
                       R${' '}
                       {Number(b.unit_value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
@@ -626,7 +628,7 @@ export default function CcbPurchases() {
                           onClick={() => {
                             setLiquidationForm({
                               idx: i,
-                              payment_date: new Date().toISOString().substring(0, 10),
+                              payment_date: new Date().toLocaleDateString('en-CA'),
                               interest: '',
                               penalty: '',
                             })

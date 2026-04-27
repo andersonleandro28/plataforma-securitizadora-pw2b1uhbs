@@ -37,7 +37,7 @@ export function NewTransactionDialog({ open, onOpenChange, onSuccess }: any) {
     description: '',
     categoryId: '',
     categoryName: '',
-    date: new Date().toISOString().split('T')[0],
+    date: new Date().toLocaleDateString('en-CA'),
     is_escrow: false,
   })
 
@@ -50,7 +50,7 @@ export function NewTransactionDialog({ open, onOpenChange, onSuccess }: any) {
         description: '',
         categoryId: '',
         categoryName: '',
-        date: new Date().toISOString().split('T')[0],
+        date: new Date().toLocaleDateString('en-CA'),
         is_escrow: false,
       })
       setIsAddingCat(false)
