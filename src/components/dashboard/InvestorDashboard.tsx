@@ -443,18 +443,18 @@ export default function InvestorDashboard() {
     let currentBalance = m.principal
     const monthlyRate = Math.pow(1 + m.annualRate, 1 / 12) - 1
 
-    let d = new Date(startDate)
-    d.setMonth(d.getMonth() + 1)
+    let currentDate = new Date(startDate)
+    currentDate.setMonth(currentDate.getMonth() + 1)
 
-    while (d <= today) {
+    while (currentDate <= today) {
       const monthYield = currentBalance * monthlyRate
       currentBalance += monthYield
       extract.push({
-        month: format(d, 'MMM/yyyy'),
+        month: format(currentDate, 'MMM/yyyy'),
         yield: monthYield,
         balance: currentBalance,
       })
-      d.setMonth(d.getMonth() + 1)
+      currentDate.setMonth(currentDate.getMonth() + 1)
     }
     return extract
   }
