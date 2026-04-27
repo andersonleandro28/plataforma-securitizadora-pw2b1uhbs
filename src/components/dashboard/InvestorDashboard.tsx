@@ -35,6 +35,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
+import { formatDate } from '@/lib/utils'
 import {
   Dialog,
   DialogContent,
@@ -107,8 +108,11 @@ const calculateInvestmentMetrics = (inv: any) => {
   const activeQuotas = inv.quotas - (inv.redeemed_quotas || 0)
   const principal = activeQuotas * unitPrice
 
-  const startDate = new Date(inv.transfer_date || inv.created_at)
+  const dateStr = inv.transfer_date || inv.created_at || new Date().toISOString()
+  const [y, m, d] = dateStr.split('T')[0].split('-')
+  const startDate = new Date(Number(y), Number(m) - 1, Number(d))
   const today = new Date()
+  today.setHours(0, 0, 0, 0)
   const daysElapsed = Math.max(0, (today.getTime() - startDate.getTime()) / (1000 * 3600 * 24))
 
   const rateMatch = prod.rate?.match(/(\d+[.,]\d+|\d+)/)
@@ -251,7 +255,9 @@ export default function InvestorDashboard() {
         let monthYield = 0
         activeInvs.forEach((inv: any) => {
           if (inv.status === 'approved') {
-            const subDate = new Date(inv.transfer_date || inv.created_at)
+            const dateStr = inv.transfer_date || inv.created_at || new Date().toISOString()
+            const [yStr, mStr, dStr] = dateStr.split('T')[0].split('-')
+            const subDate = new Date(Number(yStr), Number(mStr) - 1, Number(dStr))
             if (subDate <= d) {
               const days = Math.max(0, (d.getTime() - subDate.getTime()) / (1000 * 3600 * 24))
               const rateMatch = inv.investment_products?.rate?.match(/(\d+[.,]\d+|\d+)/)
@@ -428,8 +434,11 @@ export default function InvestorDashboard() {
   const generateMonthExtract = (inv: any) => {
     if (!inv) return []
     const m = calculateInvestmentMetrics(inv)
-    const startDate = new Date(inv.transfer_date || inv.created_at)
+    const dateStr = inv.transfer_date || inv.created_at || new Date().toISOString()
+    const [y, mm, d] = dateStr.split('T')[0].split('-')
+    const startDate = new Date(Number(y), Number(mm) - 1, Number(d))
     const today = new Date()
+    today.setHours(0, 0, 0, 0)
     const extract = []
     let currentBalance = m.principal
     const monthlyRate = Math.pow(1 + m.annualRate, 1 / 12) - 1
@@ -664,9 +673,7 @@ export default function InvestorDashboard() {
                       <TableCell className="font-mono text-primary">
                         {formatCurrency(m ? m.principal : inv.total_value)}
                       </TableCell>
-                      <TableCell className="text-sm">
-                        {displayDate ? format(new Date(displayDate), 'dd/MM/yyyy') : '-'}
-                      </TableCell>
+                      <TableCell className="text-sm">{formatDate(displayDate)}</TableCell>
                       <TableCell className="text-emerald-600 font-mono">
                         {m ? `+${formatCurrency(m.yieldAmount)}` : '-'}
                       </TableCell>
@@ -752,9 +759,7 @@ export default function InvestorDashboard() {
                     <TableCell className="font-mono font-bold text-emerald-600">
                       {formatCurrency(red.net_value)}
                     </TableCell>
-                    <TableCell className="text-sm">
-                      {red.created_at ? format(new Date(red.created_at), 'dd/MM/yyyy') : '-'}
-                    </TableCell>
+                    <TableCell className="text-sm">{formatDate(red.created_at)}</TableCell>
                     <TableCell>
                       {red.status === 'paid' ? (
                         <Badge className="bg-emerald-500">Liquidado</Badge>

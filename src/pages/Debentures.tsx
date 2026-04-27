@@ -16,18 +16,10 @@ import {
 import { Loader2, RefreshCw, Clock, History, Settings, TrendingUp } from 'lucide-react'
 import { format } from 'date-fns'
 import { ManageSubscriptionsDialog } from '@/components/debentures/ManageSubscriptionsDialog'
+import { formatDate } from '@/lib/utils'
 
 const formatSafeDate = (dateStr: string | null | undefined) => {
-  if (!dateStr) return '-'
-  const parts = dateStr.split('T')[0].split('-')
-  if (parts.length !== 3) {
-    try {
-      return format(new Date(dateStr), 'dd/MM/yyyy')
-    } catch {
-      return '-'
-    }
-  }
-  return `${parts[2]}/${parts[1]}/${parts[0]}`
+  return formatDate(dateStr) || '-'
 }
 
 export default function Debentures() {
