@@ -10,10 +10,7 @@ Deno.serve(async (req: Request) => {
   try {
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Unauthorized: Missing Authorization header' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      return new Response(JSON.stringify({ error: 'Unauthorized: Missing Authorization header' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
@@ -21,42 +18,26 @@ Deno.serve(async (req: Request) => {
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
 
     const client = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
+      global: { headers: { Authorization: authHeader } }
     })
-
-    const {
-      data: { user: caller },
-      error: callerError,
-    } = await client.auth.getUser()
+    
+    const { data: { user: caller }, error: callerError } = await client.auth.getUser()
     if (callerError || !caller) {
-      return new Response(JSON.stringify({ error: 'Unauthorized: Invalid token' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      return new Response(JSON.stringify({ error: 'Unauthorized: Invalid token' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
     const adminClient = createClient(supabaseUrl, supabaseServiceKey)
 
-    const { data: callerProfile } = await adminClient
-      .from('profiles')
-      .select('role, is_admin')
-      .eq('id', caller.id)
-      .single()
+    const { data: callerProfile } = await adminClient.from('profiles').select('role, is_admin').eq('id', caller.id).single()
     if (callerProfile?.role !== 'admin' && !callerProfile?.is_admin) {
-      return new Response(
-        JSON.stringify({ error: 'Forbidden: Only administrators can create users' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      )
+      return new Response(JSON.stringify({ error: 'Forbidden: Only administrators can create users' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
     const body = await req.json()
     const { email, role, document_number, ...profileData } = body
 
     if (!email || !role || !document_number) {
-      return new Response(
-        JSON.stringify({ error: 'Bad Request: Email, role, and document_number are required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      )
+      return new Response(JSON.stringify({ error: 'Bad Request: Email, role, and document_number are required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
     // Generate temporary password based on numbers of the document or fallback
@@ -66,7 +47,7 @@ Deno.serve(async (req: Request) => {
       email,
       password,
       email_confirm: true,
-      user_metadata: { name: profileData.full_name || profileData.pj_company_name },
+      user_metadata: { name: profileData.full_name || profileData.pj_company_name }
     })
 
     if (createError) throw createError
@@ -81,14 +62,14 @@ Deno.serve(async (req: Request) => {
         is_staff: role === 'staff',
         is_investor: role === 'investor',
         is_borrower: role === 'borrower',
-        force_password_change: true,
+        force_password_change: true
       }
 
       const { error: profileError } = await adminClient
         .from('profiles')
         .update(updateData)
         .eq('id', userData.user.id)
-
+        
       if (profileError) {
         console.error('Error updating created user profile:', profileError)
       }
@@ -97,21 +78,19 @@ Deno.serve(async (req: Request) => {
         entity_type: 'profiles',
         entity_id: userData.user.id,
         action: 'admin_created_user',
-        details: { admin_id: caller.id, email },
+        details: { admin_id: caller.id, email }
       })
     }
 
-    return new Response(
-      JSON.stringify({ success: true, user: userData.user, tempPassword: password }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      },
-    )
+    return new Response(JSON.stringify({ success: true, user: userData.user, tempPassword: password }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+
   } catch (error) {
     console.error('Edge function admin-create-user error:', error)
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Internal Server Error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 })
