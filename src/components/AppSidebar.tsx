@@ -14,6 +14,7 @@ import {
   CreditCard,
   CheckSquare,
   FileBadge,
+  ShieldAlert,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -136,6 +137,12 @@ const allNavItems = [
     path: '/admin/accounting',
     icon: PieChart,
     roles: ['admin', 'accountant'],
+  },
+  {
+    title: 'Exposição & Risco Global',
+    path: '/admin/risk',
+    icon: ShieldAlert,
+    roles: ['admin', 'staff'],
   },
   {
     title: 'Relatórios',

@@ -8,7 +8,10 @@ import { BorrowerOperationsList } from './BorrowerOperationsList'
 import { BorrowerVault } from './BorrowerVault'
 import { BorrowerLiquidations } from './BorrowerLiquidations'
 import { useAuth } from '@/hooks/use-auth'
+import { useBorrowerLimit } from '@/hooks/use-borrower-limit'
 import { supabase } from '@/lib/supabase/client'
+import { PieChart, Pie, Cell } from 'recharts'
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import {
   Wallet,
   TrendingUp,
@@ -55,11 +58,11 @@ const PendingSignatureBanner = ({
 export default function BorrowerDashboard() {
   const { user, profile } = useAuth()
   const [pendingSignatures, setPendingSignatures] = useState<any[]>([])
+  const { limit, used, available, loading: limitLoading } = useBorrowerLimit(user?.id)
   const [stats, setStats] = useState({
     totalAnticipated: 0,
     inAnalysis: 0,
     nextMaturities: 0,
-    creditLimit: 1500000, // Fixed mock limit for UI purposes
   })
   const [latestOp, setLatestOp] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -185,15 +188,54 @@ export default function BorrowerDashboard() {
               <div className="text-2xl font-bold">{formatCurrency(stats.inAnalysis)}</div>
             </CardContent>
           </Card>
-          <Card className="border-l-4 border-l-primary shadow-sm">
-            <CardContent className="p-4 sm:p-6">
-              <div className="flex items-center justify-between space-y-0 pb-2">
-                <p className="text-sm font-medium text-muted-foreground">Limite Disponível</p>
-                <ShieldCheck className="h-4 w-4 text-primary" />
+          <Card className="border-l-4 border-l-primary shadow-sm flex flex-col">
+            <CardContent className="p-4 sm:p-6 flex-1 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between space-y-0 pb-2">
+                  <p className="text-sm font-medium text-muted-foreground">Limite Disponível</p>
+                  <ShieldCheck className="h-4 w-4 text-primary" />
+                </div>
+                <div className="text-2xl font-bold">
+                  {limitLoading ? '...' : formatCurrency(available)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Limite Total: {formatCurrency(limit)}
+                </p>
               </div>
-              <div className="text-2xl font-bold">
-                {formatCurrency(stats.creditLimit - stats.inAnalysis - stats.totalAnticipated)}
-              </div>
+
+              {!limitLoading && limit > 0 && (
+                <div className="mt-4 h-[80px] w-full relative">
+                  <ChartContainer
+                    config={{
+                      utilizado: { label: 'Utilizado', color: 'hsl(var(--destructive))' },
+                      disponivel: { label: 'Disponível', color: 'hsl(var(--primary))' },
+                    }}
+                    className="h-full w-full"
+                  >
+                    <PieChart>
+                      <Pie
+                        data={[
+                          { name: 'Utilizado', value: used, fill: 'var(--color-utilizado)' },
+                          { name: 'Disponível', value: available, fill: 'var(--color-disponivel)' },
+                        ]}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="100%"
+                        startAngle={180}
+                        endAngle={0}
+                        innerRadius={40}
+                        outerRadius={70}
+                        stroke="none"
+                      />
+                      <ChartTooltip content={<ChartTooltipContent hideLabel />} />
+                    </PieChart>
+                  </ChartContainer>
+                  <div className="absolute bottom-0 left-0 w-full text-center text-[10px] font-medium text-muted-foreground">
+                    Consumo: {((used / limit) * 100).toFixed(1)}%
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
           <Card className="border-l-4 border-l-muted-foreground shadow-sm">

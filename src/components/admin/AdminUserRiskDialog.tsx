@@ -119,7 +119,7 @@ export function AdminUserRiskDialog({ user, open, onOpenChange, onSaved }: any) 
         .from('audit_logs')
         .select('*')
         .eq('entity_id', user.id)
-        .eq('action', 'limit_change')
+        .in('action', ['limit_change', 'collection_notice'])
         .order('created_at', { ascending: false })
 
       setAuditLogs(logs || [])
@@ -170,7 +170,23 @@ export function AdminUserRiskDialog({ user, open, onOpenChange, onSaved }: any) 
   }
 
   const handleSendReminder = async (opId: string) => {
-    toast.success('Lembrete de cobrança enviado com sucesso via e-mail/WhatsApp.')
+    try {
+      await supabase.from('audit_logs').insert({
+        entity_type: 'profiles',
+        entity_id: user.id,
+        action: 'collection_notice',
+        user_id: session?.user?.id,
+        details: {
+          type: 'Cobrança Manual',
+          message: `Lembrete manual enviado para a operação ${opId.split('-')[0]}`,
+          admin_name: session?.user?.user_metadata?.name || 'Administrador',
+        },
+      })
+      toast.success('Lembrete de cobrança enviado com sucesso via e-mail/WhatsApp.')
+      loadRiskData()
+    } catch (e) {
+      toast.error('Erro ao registrar envio de lembrete.')
+    }
   }
 
   const available = Math.max(0, limit - used)
@@ -241,10 +257,11 @@ export function AdminUserRiskDialog({ user, open, onOpenChange, onSaved }: any) 
             </div>
 
             <Tabs defaultValue="limite">
-              <TabsList className="grid grid-cols-3 w-full">
+              <TabsList className="grid grid-cols-4 w-full">
                 <TabsTrigger value="limite">Alterar Limite</TabsTrigger>
                 <TabsTrigger value="alertas">Alertas & Cobrança</TabsTrigger>
                 <TabsTrigger value="historico">Histórico (Logs)</TabsTrigger>
+                <TabsTrigger value="regua">Régua Automática</TabsTrigger>
               </TabsList>
 
               <TabsContent value="limite" className="pt-4 space-y-4">
@@ -324,27 +341,87 @@ export function AdminUserRiskDialog({ user, open, onOpenChange, onSaved }: any) 
               <TabsContent value="historico" className="pt-4">
                 {auditLogs.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground bg-muted/20 rounded-lg border border-dashed">
-                    Nenhuma alteração de limite registrada.
+                    Nenhum registro encontrado.
                   </div>
                 ) : (
                   <div className="space-y-4">
                     {auditLogs.map((log) => (
                       <div key={log.id} className="border-l-2 border-primary pl-4 py-1">
                         <div className="text-sm font-medium">
-                          Limite alterado de {formatCurrency(log.details?.old_limit)} para{' '}
-                          {formatCurrency(log.details?.new_limit)}
+                          {log.action === 'limit_change'
+                            ? `Limite alterado de ${formatCurrency(log.details?.old_limit)} para ${formatCurrency(log.details?.new_limit)}`
+                            : log.action === 'collection_notice'
+                              ? `Notificação de Cobrança: ${log.details?.type}`
+                              : log.action}
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">
-                          Por {log.details?.admin_name} em{' '}
+                          Por {log.details?.admin_name || 'Sistema'} em{' '}
                           {new Date(log.created_at).toLocaleString('pt-BR')}
                         </div>
-                        <div className="text-sm mt-2 bg-muted/30 p-2 rounded">
-                          <span className="font-medium">Motivo:</span> {log.details?.reason}
-                        </div>
+                        {log.details?.reason && (
+                          <div className="text-sm mt-2 bg-muted/30 p-2 rounded">
+                            <span className="font-medium">Motivo:</span> {log.details?.reason}
+                          </div>
+                        )}
+                        {log.details?.message && (
+                          <div className="text-sm mt-2 bg-muted/30 p-2 rounded">
+                            <span className="font-medium">Detalhe:</span> {log.details?.message}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
                 )}
+              </TabsContent>
+
+              <TabsContent value="regua" className="pt-4 space-y-4">
+                <Card className="bg-muted/10 border-dashed">
+                  <CardContent className="p-4 space-y-4">
+                    <h3 className="font-semibold text-lg flex items-center gap-2">
+                      <Send className="w-5 h-5 text-primary" /> Régua de Cobrança (Multi-Mensagem)
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      O sistema monitora diariamente as parcelas e dispara notificações automáticas
+                      (E-mail/WhatsApp) nos seguintes gatilhos:
+                    </p>
+                    <div className="space-y-3 mt-4">
+                      <div className="flex gap-3 items-start border p-3 rounded-md bg-background">
+                        <Badge className="bg-amber-500 hover:bg-amber-600 mt-0.5 shrink-0">
+                          D-5
+                        </Badge>
+                        <div>
+                          <p className="text-sm font-medium">5 Dias Antes do Vencimento</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            "Lembrete de Vencimento: Sua parcela vence em 5 dias. Programe seu
+                            pagamento."
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-3 items-start border p-3 rounded-md bg-background">
+                        <Badge className="bg-blue-500 hover:bg-blue-600 mt-0.5 shrink-0">D-0</Badge>
+                        <div>
+                          <p className="text-sm font-medium">No Dia do Vencimento</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            "Vencimento Hoje: Identificamos uma parcela com vencimento para hoje.
+                            Acesse sua plataforma."
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-3 items-start border p-3 rounded-md bg-background">
+                        <Badge variant="destructive" className="mt-0.5 shrink-0">
+                          D+1
+                        </Badge>
+                        <div>
+                          <p className="text-sm font-medium">1 Dia Após o Vencimento</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            "Alerta de Atraso: Sua parcela venceu ontem. Evite multas e juros
+                            realizando o pagamento agora."
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
               </TabsContent>
             </Tabs>
           </div>
