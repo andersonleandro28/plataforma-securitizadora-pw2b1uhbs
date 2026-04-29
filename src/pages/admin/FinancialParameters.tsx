@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardFooter,
+} from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -20,7 +27,7 @@ export default function FinancialParameters() {
   const [iofFixed, setIofFixed] = useState('')
   const [iofDaily30, setIofDaily30] = useState('')
   const [iofDailyAfter, setIofDailyAfter] = useState('')
-  
+
   const [simValue, setSimValue] = useState('10000')
   const [simTerm, setSimTerm] = useState('12')
   const [simInstallment, setSimInstallment] = useState(0)
@@ -86,18 +93,20 @@ export default function FinancialParameters() {
       }
 
       const totalDiscounts = iofFixoVal + totalIofDiario + fee
-      const pmtFinal = pmt + (totalDiscounts / n)
+      const pmtFinal = pmt + totalDiscounts / n
 
       setSimInstallment(pmtFinal)
-      
-      let low = 0.0, high = 1.0, cetM = 0.0
+
+      let low = 0.0,
+        high = 1.0,
+        cetM = 0.0
       for (let i = 0; i < 50; i++) {
         cetM = (low + high) / 2
         const calcPv = (pmtFinal * (1 - Math.pow(1 + cetM, -n))) / cetM
         if (calcPv > pv) low = cetM
         else high = cetM
       }
-      
+
       setSimCetMonthly(cetM * 100)
       setSimCetAnnual((Math.pow(1 + cetM, 12) - 1) * 100)
     }
@@ -106,17 +115,20 @@ export default function FinancialParameters() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      const { error } = await supabase.from('config_ccb').upsert({
-        id: config.id,
-        interest_rate_monthly: Number(monthlyRate),
-        interest_rate_annual: Number(annualRate),
-        fixed_emission_cost: Number(fixedCost),
-        iof_rate: Number(iofFixed),
-        iof_daily_rate_30: Number(iofDaily30),
-        iof_daily_rate_after: Number(iofDailyAfter),
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'id' })
-      
+      const { error } = await supabase.from('config_ccb').upsert(
+        {
+          id: config.id,
+          interest_rate_monthly: Number(monthlyRate),
+          interest_rate_annual: Number(annualRate),
+          fixed_emission_cost: Number(fixedCost),
+          iof_rate: Number(iofFixed),
+          iof_daily_rate_30: Number(iofDaily30),
+          iof_daily_rate_after: Number(iofDailyAfter),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' },
+      )
+
       if (error) throw error
       toast.success('Parâmetros salvos com sucesso.')
     } catch (e: any) {
@@ -126,13 +138,20 @@ export default function FinancialParameters() {
     }
   }
 
-  if (loading) return <div className="p-8 flex justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>
+  if (loading)
+    return (
+      <div className="p-8 flex justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 animate-fade-in-up pb-12">
       <div>
         <h1 className="text-3xl font-bold">Configuração de CCB</h1>
-        <p className="text-muted-foreground">Gerencie as taxas de juros, custos de emissão e impostos globais.</p>
+        <p className="text-muted-foreground">
+          Gerencie as taxas de juros, custos de emissão e impostos globais.
+        </p>
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
@@ -145,28 +164,44 @@ export default function FinancialParameters() {
             <Alert className="bg-blue-50/50 border-blue-200">
               <Info className="h-4 w-4 text-blue-600" />
               <AlertDescription className="text-blue-800 text-xs">
-                Taxas calculadas via Juros Compostos (Equivalência Bancária). O bloqueio de edição anual garante a precisão exigida pelo Banco Central.
+                Taxas calculadas via Juros Compostos (Equivalência Bancária). O bloqueio de edição
+                anual garante a precisão exigida pelo Banco Central.
               </AlertDescription>
             </Alert>
 
             <div className="space-y-2">
               <Label>Taxa de Juros Mensal (% a.m.)</Label>
-              <Input type="number" step="0.0001" value={monthlyRate} onChange={e => setMonthlyRate(e.target.value)} />
+              <Input
+                type="number"
+                step="0.0001"
+                value={monthlyRate}
+                onChange={(e) => setMonthlyRate(e.target.value)}
+              />
             </div>
 
             <div className="space-y-2">
               <div className="flex justify-between items-center mb-1">
                 <Label>Taxa Anual Equivalente (% a.a.)</Label>
-                <Button variant="ghost" size="sm" className="h-5 px-1 text-[10px]" onClick={() => setAnnualLocked(!annualLocked)}>
-                  {annualLocked ? <Lock className="h-3 w-3 mr-1" /> : <Unlock className="h-3 w-3 mr-1" />}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 px-1 text-[10px]"
+                  onClick={() => setAnnualLocked(!annualLocked)}
+                >
+                  {annualLocked ? (
+                    <Lock className="h-3 w-3 mr-1" />
+                  ) : (
+                    <Unlock className="h-3 w-3 mr-1" />
+                  )}
                   {annualLocked ? 'Desbloquear' : 'Bloquear'}
                 </Button>
               </div>
-              <Input 
-                type="number" step="0.0001" 
-                value={annualRate} 
-                onChange={e => setAnnualRate(e.target.value)} 
-                disabled={annualLocked} 
+              <Input
+                type="number"
+                step="0.0001"
+                value={annualRate}
+                onChange={(e) => setAnnualRate(e.target.value)}
+                disabled={annualLocked}
                 className={annualLocked ? 'bg-muted' : ''}
               />
             </div>
@@ -181,20 +216,40 @@ export default function FinancialParameters() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label>Tarifa de Emissão / Custo Fixo (R$)</Label>
-              <Input type="number" step="0.01" value={fixedCost} onChange={e => setFixedCost(e.target.value)} />
+              <Input
+                type="number"
+                step="0.01"
+                value={fixedCost}
+                onChange={(e) => setFixedCost(e.target.value)}
+              />
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label>IOF Fixo (%)</Label>
-                <Input type="number" step="0.0001" value={iofFixed} onChange={e => setIofFixed(e.target.value)} />
+                <Input
+                  type="number"
+                  step="0.0001"
+                  value={iofFixed}
+                  onChange={(e) => setIofFixed(e.target.value)}
+                />
               </div>
               <div className="space-y-2">
                 <Label>IOF Diário (até 30d)</Label>
-                <Input type="number" step="0.00001" value={iofDaily30} onChange={e => setIofDaily30(e.target.value)} />
+                <Input
+                  type="number"
+                  step="0.00001"
+                  value={iofDaily30}
+                  onChange={(e) => setIofDaily30(e.target.value)}
+                />
               </div>
               <div className="space-y-2">
-                <Label>IOF Diário (>30d)</Label>
-                <Input type="number" step="0.00001" value={iofDailyAfter} onChange={e => setIofDailyAfter(e.target.value)} />
+                <Label>IOF Diário (&gt;30d)</Label>
+                <Input
+                  type="number"
+                  step="0.00001"
+                  value={iofDailyAfter}
+                  onChange={(e) => setIofDailyAfter(e.target.value)}
+                />
               </div>
             </div>
           </CardContent>
@@ -202,32 +257,59 @@ export default function FinancialParameters() {
 
         <Card className="md:col-span-2 bg-slate-50/50">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Calculator className="h-5 w-5" /> Simulação de Custo Efetivo Total (CET)</CardTitle>
-            <CardDescription>O CET considera os juros compostos, tarifas e IOF, igualando o fluxo de parcelas ao valor financiado (VPL).</CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <Calculator className="h-5 w-5" /> Simulação de Custo Efetivo Total (CET)
+            </CardTitle>
+            <CardDescription>
+              O CET considera os juros compostos, tarifas e IOF, igualando o fluxo de parcelas ao
+              valor financiado (VPL).
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid md:grid-cols-4 gap-6 items-center">
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label>Valor Solicitado (R$)</Label>
-                  <Input type="number" value={simValue} onChange={e => setSimValue(e.target.value)} />
+                  <Input
+                    type="number"
+                    value={simValue}
+                    onChange={(e) => setSimValue(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Prazo (Meses)</Label>
-                  <Input type="number" value={simTerm} onChange={e => setSimTerm(e.target.value)} />
+                  <Input
+                    type="number"
+                    value={simTerm}
+                    onChange={(e) => setSimTerm(e.target.value)}
+                  />
                 </div>
               </div>
               <div className="bg-white p-6 rounded-xl border shadow-sm col-span-3 grid grid-cols-3 gap-4 text-center">
                 <div className="border-r border-dashed">
-                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Valor da Parcela</div>
-                  <div className="font-bold text-primary text-2xl">R$ {simInstallment.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                    Valor da Parcela
+                  </div>
+                  <div className="font-bold text-primary text-2xl">
+                    R${' '}
+                    {simInstallment.toLocaleString('pt-BR', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </div>
                 </div>
                 <div className="border-r border-dashed">
-                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">CET Mensal</div>
-                  <div className="font-bold text-rose-600 text-2xl">{simCetMonthly.toFixed(4)}%</div>
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                    CET Mensal
+                  </div>
+                  <div className="font-bold text-rose-600 text-2xl">
+                    {simCetMonthly.toFixed(4)}%
+                  </div>
                 </div>
                 <div>
-                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">CET Anual</div>
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                    CET Anual
+                  </div>
                   <div className="font-bold text-rose-600 text-2xl">{simCetAnnual.toFixed(4)}%</div>
                 </div>
               </div>
