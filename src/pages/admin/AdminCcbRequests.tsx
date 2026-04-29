@@ -60,10 +60,13 @@ export default function AdminCcbRequests() {
 
   const [adjustModal, setAdjustModal] = useState<any>(null)
   const [adjRate, setAdjRate] = useState('')
+  const [adjAnnualRate, setAdjAnnualRate] = useState('')
   const [adjFee, setAdjFee] = useState('')
   const [adjPmt, setAdjPmt] = useState('')
   const [adjFirstDue, setAdjFirstDue] = useState('')
   const [adjCet, setAdjCet] = useState(0)
+  const [adjCetAnnual, setAdjCetAnnual] = useState(0)
+  const [annualLocked, setAnnualLocked] = useState(true)
   const [lastEdited, setLastEdited] = useState<'rate' | 'pmt' | null>(null)
 
   const calculateRate = (nper: number, pmt: number, pv: number) => {
@@ -105,10 +108,21 @@ export default function AdminCcbRequests() {
 
       const cet = calculateRate(nper, currentPmt, pv - fee)
       setAdjCet(cet)
+      setAdjCetAnnual((Math.pow(1 + cet / 100, 12) - 1) * 100)
     }, 600)
 
     return () => clearTimeout(timer)
   }, [adjRate, adjPmt, adjFee, adjustModal, lastEdited])
+
+  // Sync annual rate via compound interest
+  useEffect(() => {
+    if (annualLocked && adjRate) {
+      const iMensal = Number(adjRate) / 100
+      if (!isNaN(iMensal)) {
+        setAdjAnnualRate(((Math.pow(1 + iMensal, 12) - 1) * 100).toFixed(4))
+      }
+    }
+  }, [adjRate, annualLocked])
 
   const fetchData = async () => {
     setLoading(true)
@@ -193,9 +207,11 @@ export default function AdminCcbRequests() {
       const newSimulation = {
         ...opData.simulation,
         interest_rate_monthly: Number(adjRate),
+        interest_rate_annual: Number(adjAnnualRate),
         installment_value: Number(adjPmt),
         fixed_cost: Number(adjFee),
         cet: Number(adjCet),
+        cet_annual: Number(adjCetAnnual),
       }
       opData.simulation = newSimulation
 
@@ -331,6 +347,7 @@ export default function AdminCcbRequests() {
                             )
                             setAdjCet(sim.cet || 0)
                             setLastEdited(null)
+                            setAnnualLocked(true)
                           }}
                         >
                           <Edit className="h-4 w-4 mr-1" /> Ajustar
@@ -486,10 +503,17 @@ export default function AdminCcbRequests() {
             <DialogTitle>Ajustar Proposta de Crédito</DialogTitle>
             <DialogDescription>
               Ajuste a taxa de juros ou o valor da parcela. O sistema calculará o outro
-              automaticamente.
+              automaticamente através da fórmula de equivalência.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            <Alert className="bg-blue-50/50 border-blue-200">
+              <Info className="h-4 w-4 text-blue-600" />
+              <AlertDescription className="text-blue-800 text-xs">
+                Taxas calculadas via Juros Compostos (Equivalência Bancária). O bloqueio de edição
+                anual garante a paridade perfeita para o Custo Efetivo.
+              </AlertDescription>
+            </Alert>
             <div className="grid grid-cols-2 gap-4 bg-muted p-4 rounded-lg border">
               <div>
                 <Label className="text-xs text-muted-foreground uppercase tracking-wider">
@@ -531,7 +555,7 @@ export default function AdminCcbRequests() {
                 <div className="relative">
                   <Input
                     type="number"
-                    step="0.01"
+                    step="0.0001"
                     value={adjRate}
                     className="pr-8"
                     onChange={(e) => {
@@ -548,6 +572,32 @@ export default function AdminCcbRequests() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
+                <div className="flex justify-between items-center mb-1">
+                  <Label>Taxa Anual (% a.a.)</Label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 px-1 text-[10px]"
+                    onClick={() => setAnnualLocked(!annualLocked)}
+                  >
+                    {annualLocked ? 'Desbloquear' : 'Bloquear'}
+                  </Button>
+                </div>
+                <div className="relative">
+                  <Input
+                    type="number"
+                    step="0.0001"
+                    value={adjAnnualRate}
+                    disabled={annualLocked}
+                    className={annualLocked ? 'bg-muted pr-8' : 'pr-8'}
+                    onChange={(e) => setAdjAnnualRate(e.target.value)}
+                  />
+                  <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
+                    <span className="text-muted-foreground">%</span>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-2">
                 <Label>Tarifa de Emissão (R$)</Label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
@@ -563,16 +613,29 @@ export default function AdminCcbRequests() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>CET (% a.m.)</Label>
-                <div className="relative">
-                  <Input
-                    type="number"
-                    readOnly
-                    value={Number(adjCet).toFixed(2)}
-                    className="bg-muted pr-8 font-semibold text-primary"
-                  />
-                  <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
-                    <span className="text-muted-foreground">%</span>
+                <Label className="mb-1 block">CET (% a.m. / % a.a.)</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      readOnly
+                      value={Number(adjCet).toFixed(4)}
+                      className="bg-muted pr-6 font-semibold text-rose-600 text-sm"
+                    />
+                    <div className="absolute inset-y-0 right-2 flex items-center pointer-events-none">
+                      <span className="text-muted-foreground text-xs">%</span>
+                    </div>
+                  </div>
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      readOnly
+                      value={Number(adjCetAnnual).toFixed(4)}
+                      className="bg-muted pr-6 font-semibold text-rose-600 text-sm"
+                    />
+                    <div className="absolute inset-y-0 right-2 flex items-center pointer-events-none">
+                      <span className="text-muted-foreground text-xs">%</span>
+                    </div>
                   </div>
                 </div>
               </div>

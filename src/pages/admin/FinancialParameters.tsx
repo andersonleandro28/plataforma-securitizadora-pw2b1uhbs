@@ -1,581 +1,246 @@
-import { useState, useEffect } from 'react'
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-  CardDescription,
-  CardFooter,
-} from '@/components/ui/card'
+import { useEffect, useState } from 'react'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { useAuth } from '@/hooks/use-auth'
-import { Loader2, Save, Settings2, History, Info, Banknote } from 'lucide-react'
-import useSecurityStore from '@/stores/useSecurityStore'
+import { Calculator, Info, Lock, Unlock, Save, Loader2 } from 'lucide-react'
 
 export default function FinancialParameters() {
-  const { user } = useAuth()
-  const requestClearance = useSecurityStore((state) => state.requestClearance)
+  const [config, setConfig] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [type, setType] = useState<string>('global')
-  const [params, setParams] = useState<any>({})
-  const [ccbConfig, setCcbConfig] = useState<any>({})
+  const [annualLocked, setAnnualLocked] = useState(true)
 
-  const defaultParams = {
-    receivable_type: 'global',
-    interest_rate_monthly: 0,
-    discount_rate_monthly: 0,
-    ad_valorem_rate: 0,
-    ad_valorem_base: 'face_value',
-    structuring_fee: 0,
-    structuring_fee_type: 'percentage',
-    analysis_fee: 0,
-    analysis_fee_type: 'fixed',
-    iof_fixed_rate: 0.38,
-    iof_daily_rate: 0.0041,
-    penalty_rate: 0,
-    default_interest_rate: 0,
-    grace_period_days: 0,
-  }
-
-  const defaultCcbConfig = {
-    partner_name: 'BDIGITAL',
-    interest_rate_monthly: 2.5,
-    interest_rate_annual: 34.49,
-    iof_rate: 0.38,
-    fixed_emission_cost: 0,
-    multiplier_factor: 1.0,
-    max_term_months: 36,
-  }
+  const [monthlyRate, setMonthlyRate] = useState('')
+  const [annualRate, setAnnualRate] = useState('')
+  const [fixedCost, setFixedCost] = useState('')
+  const [iofFixed, setIofFixed] = useState('')
+  const [iofDaily30, setIofDaily30] = useState('')
+  const [iofDailyAfter, setIofDailyAfter] = useState('')
+  
+  const [simValue, setSimValue] = useState('10000')
+  const [simTerm, setSimTerm] = useState('12')
+  const [simInstallment, setSimInstallment] = useState(0)
+  const [simCetMonthly, setSimCetMonthly] = useState(0)
+  const [simCetAnnual, setSimCetAnnual] = useState(0)
 
   const fetchData = async () => {
     setLoading(true)
-
-    // Fetch Motor Params
-    const { data } = await supabase
-      .from('financial_parameters')
-      .select('*')
-      .eq('receivable_type', type)
-      .maybeSingle()
+    const { data } = await supabase.from('config_ccb').select('*').limit(1).maybeSingle()
     if (data) {
-      setParams(data)
+      setConfig(data)
+      setMonthlyRate(data.interest_rate_monthly?.toString() || '0')
+      setAnnualRate(data.interest_rate_annual?.toString() || '0')
+      setFixedCost(data.fixed_emission_cost?.toString() || '0')
+      setIofFixed(data.iof_rate?.toString() || '0.38')
+      setIofDaily30(data.iof_daily_rate_30?.toString() || '0.0041')
+      setIofDailyAfter(data.iof_daily_rate_after?.toString() || '0.00274')
     } else {
-      const { data: globalData } = await supabase
-        .from('financial_parameters')
-        .select('*')
-        .eq('receivable_type', 'global')
-        .maybeSingle()
-      setParams({ ...(globalData || defaultParams), id: undefined, receivable_type: type })
+      setConfig({ id: crypto.randomUUID() })
     }
-
-    // Fetch CCB Config
-    const { data: ccbData } = await supabase.from('config_ccb').select('*').maybeSingle()
-    if (ccbData) {
-      setCcbConfig(ccbData)
-    } else {
-      setCcbConfig(defaultCcbConfig)
-    }
-
     setLoading(false)
   }
 
   useEffect(() => {
     fetchData()
-  }, [type])
+  }, [])
 
-  const handleSaveParams = async () => {
-    requestClearance(`alteração de parâmetros financeiros para o tipo ${type}`, async () => {
-      setSaving(true)
-      try {
-        const { data: current } = await supabase
-          .from('financial_parameters')
-          .select('id')
-          .eq('receivable_type', type)
-          .maybeSingle()
-        let pId = current?.id
-
-        const payload = {
-          receivable_type: type,
-          interest_rate_monthly: Number(params.interest_rate_monthly),
-          discount_rate_monthly: Number(params.discount_rate_monthly),
-          ad_valorem_rate: Number(params.ad_valorem_rate),
-          structuring_fee: Number(params.structuring_fee),
-          structuring_fee_type: params.structuring_fee_type,
-          analysis_fee: Number(params.analysis_fee),
-          analysis_fee_type: params.analysis_fee_type,
-          iof_fixed_rate: Number(params.iof_fixed_rate),
-          iof_daily_rate: Number(params.iof_daily_rate),
-          penalty_rate: Number(params.penalty_rate),
-          default_interest_rate: Number(params.default_interest_rate),
-          grace_period_days: Number(params.grace_period_days),
-          updated_by: user?.id,
-          updated_at: new Date().toISOString(),
-        }
-
-        if (pId) {
-          const { error } = await supabase
-            .from('financial_parameters')
-            .update(payload)
-            .eq('id', pId)
-          if (error) throw error
-        } else {
-          const { data: inserted, error } = await supabase
-            .from('financial_parameters')
-            .insert(payload)
-            .select()
-            .single()
-          if (error) throw error
-          pId = inserted?.id
-        }
-
-        if (pId) {
-          await supabase
-            .from('parameter_history')
-            .insert({ parameter_id: pId, changes: payload, changed_by: user?.id })
-          await supabase.from('audit_logs').insert({
-            user_id: user?.id,
-            action: 'UPDATE_PARAMETERS',
-            entity_type: 'financial_parameters',
-            entity_id: pId,
-            details: { type, payload },
-          })
-        }
-
-        toast.success(`Parâmetros para "${type}" atualizados com sucesso.`)
-        fetchData()
-      } catch (err: any) {
-        toast.error(err.message || 'Erro ao salvar parâmetros.')
-      } finally {
-        setSaving(false)
+  useEffect(() => {
+    if (annualLocked && monthlyRate !== '') {
+      const iMensal = Number(monthlyRate) / 100
+      if (!isNaN(iMensal)) {
+        const iAnual = (Math.pow(1 + iMensal, 12) - 1) * 100
+        setAnnualRate(iAnual.toFixed(4))
       }
-    })
-  }
+    }
+  }, [monthlyRate, annualLocked])
 
-  const handleSaveCcb = async () => {
-    requestClearance(`alteração nas configurações globais de CCB`, async () => {
-      setSaving(true)
-      try {
-        const payload = {
-          partner_name: ccbConfig.partner_name,
-          interest_rate_monthly: Number(ccbConfig.interest_rate_monthly),
-          interest_rate_annual: Number(ccbConfig.interest_rate_annual),
-          iof_rate: Number(ccbConfig.iof_rate),
-          iof_daily_rate_30: Number(ccbConfig.iof_daily_rate_30 || 0.0041),
-          iof_daily_rate_after: Number(ccbConfig.iof_daily_rate_after || 0.00274),
-          fixed_emission_cost: Number(ccbConfig.fixed_emission_cost),
-          multiplier_factor: Number(ccbConfig.multiplier_factor),
-          max_term_months: Number(ccbConfig.max_term_months),
-          updated_at: new Date().toISOString(),
-        }
+  useEffect(() => {
+    const pv = Number(simValue)
+    const n = Number(simTerm)
+    const rate = Number(monthlyRate) / 100
+    const fee = Number(fixedCost)
+    const iofFixRate = Number(iofFixed) / 100
+    const iofD30 = Number(iofDaily30) / 100
+    const iofDAfter = Number(iofDailyAfter) / 100
 
-        if (ccbConfig.id) {
-          const { error } = await supabase.from('config_ccb').update(payload).eq('id', ccbConfig.id)
-          if (error) throw error
-        } else {
-          const { error } = await supabase.from('config_ccb').insert(payload)
-          if (error) throw error
-        }
+    if (pv > 0 && n > 0) {
+      let pmt = pv / n
+      if (rate > 0) pmt = (pv * rate * Math.pow(1 + rate, n)) / (Math.pow(1 + rate, n) - 1)
 
-        toast.success('Configurações CCB atualizadas com sucesso.')
-        fetchData()
-      } catch (err: any) {
-        toast.error('Erro ao salvar configurações CCB: ' + err.message)
-      } finally {
-        setSaving(false)
+      const iofFixoVal = pv * iofFixRate
+      let saldo = pv
+      let totalIofDiario = 0
+
+      for (let i = 1; i <= n; i++) {
+        const juros = saldo * rate
+        const amortizacao = pmt - juros
+        const days = i * 30
+        const d30 = Math.min(days, 30)
+        const dAfter = Math.max(0, days - 30)
+        totalIofDiario += amortizacao * (d30 * iofD30 + dAfter * iofDAfter)
+        saldo -= amortizacao
       }
-    })
+
+      const totalDiscounts = iofFixoVal + totalIofDiario + fee
+      const pmtFinal = pmt + (totalDiscounts / n)
+
+      setSimInstallment(pmtFinal)
+      
+      let low = 0.0, high = 1.0, cetM = 0.0
+      for (let i = 0; i < 50; i++) {
+        cetM = (low + high) / 2
+        const calcPv = (pmtFinal * (1 - Math.pow(1 + cetM, -n))) / cetM
+        if (calcPv > pv) low = cetM
+        else high = cetM
+      }
+      
+      setSimCetMonthly(cetM * 100)
+      setSimCetAnnual((Math.pow(1 + cetM, 12) - 1) * 100)
+    }
+  }, [simValue, simTerm, monthlyRate, fixedCost, iofFixed, iofDaily30, iofDailyAfter])
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      const { error } = await supabase.from('config_ccb').upsert({
+        id: config.id,
+        interest_rate_monthly: Number(monthlyRate),
+        interest_rate_annual: Number(annualRate),
+        fixed_emission_cost: Number(fixedCost),
+        iof_rate: Number(iofFixed),
+        iof_daily_rate_30: Number(iofDaily30),
+        iof_daily_rate_after: Number(iofDailyAfter),
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' })
+      
+      if (error) throw error
+      toast.success('Parâmetros salvos com sucesso.')
+    } catch (e: any) {
+      toast.error('Erro ao salvar: ' + e.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
-  if (loading) {
-    return (
-      <div className="flex justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    )
-  }
+  if (loading) return <div className="p-8 flex justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto animate-fade-in-up pb-10">
+    <div className="max-w-5xl mx-auto space-y-6 animate-fade-in-up pb-12">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Configurações Financeiras</h1>
-        <p className="text-muted-foreground">
-          Gerencie as taxas do motor de antecipação e as regras para emissão de CCB (BDIGITAL).
-        </p>
+        <h1 className="text-3xl font-bold">Configuração de CCB</h1>
+        <p className="text-muted-foreground">Gerencie as taxas de juros, custos de emissão e impostos globais.</p>
       </div>
 
-      <Tabs defaultValue="motor" className="w-full">
-        <TabsList className="mb-6 grid w-full grid-cols-2">
-          <TabsTrigger value="motor" className="flex items-center gap-2">
-            <Settings2 className="w-4 h-4" /> Motor de Antecipação
-          </TabsTrigger>
-          <TabsTrigger value="ccb" className="flex items-center gap-2">
-            <Banknote className="w-4 h-4" /> Configurações CCB
-          </TabsTrigger>
-        </TabsList>
+      <div className="grid md:grid-cols-2 gap-6">
+        <Card className="border-t-4 border-t-primary">
+          <CardHeader>
+            <CardTitle>Taxas de Juros Base</CardTitle>
+            <CardDescription>Configure a taxa nominal da CCB Digital</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Alert className="bg-blue-50/50 border-blue-200">
+              <Info className="h-4 w-4 text-blue-600" />
+              <AlertDescription className="text-blue-800 text-xs">
+                Taxas calculadas via Juros Compostos (Equivalência Bancária). O bloqueio de edição anual garante a precisão exigida pelo Banco Central.
+              </AlertDescription>
+            </Alert>
 
-        <TabsContent value="motor" className="space-y-6">
-          <Card className="bg-muted/30 border-dashed">
-            <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <Info className="h-5 w-5 text-primary shrink-0 mt-0.5 sm:mt-0" />
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                <strong>Hierarquia de Cálculo:</strong> O motor busca primeiro a taxa específica do
-                ativo. Caso não encontre, utiliza a "Global".
-              </p>
-            </CardContent>
-          </Card>
+            <div className="space-y-2">
+              <Label>Taxa de Juros Mensal (% a.m.)</Label>
+              <Input type="number" step="0.0001" value={monthlyRate} onChange={e => setMonthlyRate(e.target.value)} />
+            </div>
 
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 bg-background p-4 rounded-lg border shadow-sm">
-            <Label className="text-base font-semibold whitespace-nowrap">
-              Configurar Taxas para:
-            </Label>
-            <Select value={type} onValueChange={setType}>
-              <SelectTrigger className="w-full sm:w-[300px] border-primary/50 focus:ring-primary">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="global" className="font-bold text-primary">
-                  Global (Padrão/Fallback)
-                </SelectItem>
-                <SelectItem value="cheque">Cheque</SelectItem>
-                <SelectItem value="promissoria">Nota Promissória</SelectItem>
-                <SelectItem value="duplicata">Duplicata</SelectItem>
-                <SelectItem value="mutuo">Contrato de Mútuo</SelectItem>
-                <SelectItem value="confissao_divida">Confissão de Dívida</SelectItem>
-                <SelectItem value="contratual">Recebível Contratual</SelectItem>
-                <SelectItem value="outro">Outros</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center mb-1">
+                <Label>Taxa Anual Equivalente (% a.a.)</Label>
+                <Button variant="ghost" size="sm" className="h-5 px-1 text-[10px]" onClick={() => setAnnualLocked(!annualLocked)}>
+                  {annualLocked ? <Lock className="h-3 w-3 mr-1" /> : <Unlock className="h-3 w-3 mr-1" />}
+                  {annualLocked ? 'Desbloquear' : 'Bloquear'}
+                </Button>
+              </div>
+              <Input 
+                type="number" step="0.0001" 
+                value={annualRate} 
+                onChange={e => setAnnualRate(e.target.value)} 
+                disabled={annualLocked} 
+                className={annualLocked ? 'bg-muted' : ''}
+              />
+            </div>
+          </CardContent>
+        </Card>
 
-          <Card className="shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                Parâmetros do Motor de Cálculo
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-8">
-              <div>
-                <h3 className="text-sm font-semibold mb-4 flex items-center gap-2 text-foreground/80 border-b pb-2">
-                  1. Custo do Capital
-                </h3>
-                <div className="grid sm:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label>Taxa de Deságio Mensal (TDM)</Label>
-                    <div className="relative">
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={params.discount_rate_monthly}
-                        onChange={(e) =>
-                          setParams({ ...params, discount_rate_monthly: e.target.value })
-                        }
-                        className="pr-8"
-                      />
-                      <span className="absolute right-3 top-2.5 text-muted-foreground text-sm">
-                        %
-                      </span>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Taxa de Juros Mensal (TJM)</Label>
-                    <div className="relative">
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={params.interest_rate_monthly}
-                        onChange={(e) =>
-                          setParams({ ...params, interest_rate_monthly: e.target.value })
-                        }
-                        className="pr-8"
-                      />
-                      <span className="absolute right-3 top-2.5 text-muted-foreground text-sm">
-                        %
-                      </span>
-                    </div>
-                  </div>
-                </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Custos e Impostos (IOF)</CardTitle>
+            <CardDescription>Custo Fixo e parâmetros do Decreto 6.306/07</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Tarifa de Emissão / Custo Fixo (R$)</Label>
+              <Input type="number" step="0.01" value={fixedCost} onChange={e => setFixedCost(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>IOF Fixo (%)</Label>
+                <Input type="number" step="0.0001" value={iofFixed} onChange={e => setIofFixed(e.target.value)} />
               </div>
-              <div>
-                <h3 className="text-sm font-semibold mb-4 flex items-center gap-2 text-foreground/80 border-b pb-2">
-                  2. Custos Operacionais
-                </h3>
-                <div className="grid sm:grid-cols-3 gap-6">
-                  <div className="space-y-2">
-                    <Label>Taxa Ad Valorem (TAV)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={params.ad_valorem_rate}
-                      onChange={(e) => setParams({ ...params, ad_valorem_rate: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Taxa Estruturação (TE)</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={params.structuring_fee}
-                        onChange={(e) => setParams({ ...params, structuring_fee: e.target.value })}
-                      />
-                      <Select
-                        value={params.structuring_fee_type}
-                        onValueChange={(v) => setParams({ ...params, structuring_fee_type: v })}
-                      >
-                        <SelectTrigger className="w-[100px] shrink-0">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="percentage">%</SelectItem>
-                          <SelectItem value="fixed">R$ Fixo</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Taxa de Análise (TA)</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={params.analysis_fee}
-                        onChange={(e) => setParams({ ...params, analysis_fee: e.target.value })}
-                      />
-                      <Select
-                        value={params.analysis_fee_type}
-                        onValueChange={(v) => setParams({ ...params, analysis_fee_type: v })}
-                      >
-                        <SelectTrigger className="w-[100px] shrink-0">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="fixed">R$ Fixo</SelectItem>
-                          <SelectItem value="percentage">%</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </div>
+              <div className="space-y-2">
+                <Label>IOF Diário (até 30d)</Label>
+                <Input type="number" step="0.00001" value={iofDaily30} onChange={e => setIofDaily30(e.target.value)} />
               </div>
-              <div>
-                <h3 className="text-sm font-semibold mb-4 flex items-center gap-2 text-foreground/80 border-b pb-2">
-                  3. Inadimplência / Atraso
-                </h3>
-                <div className="grid sm:grid-cols-3 gap-6">
-                  <div className="space-y-2">
-                    <Label>Multa Fixa (%)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={params.penalty_rate || 0}
-                      onChange={(e) => setParams({ ...params, penalty_rate: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Juros de Mora (% a.m.)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={params.default_interest_rate || 0}
-                      onChange={(e) =>
-                        setParams({ ...params, default_interest_rate: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Carência (dias)</Label>
-                    <Input
-                      type="number"
-                      step="1"
-                      value={params.grace_period_days || 0}
-                      onChange={(e) => setParams({ ...params, grace_period_days: e.target.value })}
-                    />
-                  </div>
-                </div>
+              <div className="space-y-2">
+                <Label>IOF Diário (>30d)</Label>
+                <Input type="number" step="0.00001" value={iofDailyAfter} onChange={e => setIofDailyAfter(e.target.value)} />
               </div>
-              <div>
-                <h3 className="text-sm font-semibold mb-4 flex items-center gap-2 text-foreground/80 border-b pb-2 mt-8">
-                  4. Tributação (IOF)
-                </h3>
-                <div className="grid sm:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label>IOF Fixo (%)</Label>
-                    <Input
-                      type="number"
-                      step="0.0001"
-                      value={params.iof_fixed_rate}
-                      onChange={(e) => setParams({ ...params, iof_fixed_rate: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>IOF Diário (%)</Label>
-                    <Input
-                      type="number"
-                      step="0.0001"
-                      value={params.iof_daily_rate}
-                      onChange={(e) => setParams({ ...params, iof_daily_rate: e.target.value })}
-                    />
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-            <CardFooter className="bg-muted/10 border-t py-4 justify-between">
-              <div className="text-xs text-muted-foreground flex items-center gap-1">
-                <History className="h-3.5 w-3.5" /> Última alteração:{' '}
-                {params.updated_at ? new Date(params.updated_at).toLocaleString('pt-BR') : 'Nunca'}
-              </div>
-              <Button
-                onClick={handleSaveParams}
-                disabled={saving || loading}
-                size="lg"
-                className="gap-2 min-w-[150px]"
-              >
-                {saving ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}{' '}
-                Salvar Parâmetros
-              </Button>
-            </CardFooter>
-          </Card>
-        </TabsContent>
+            </div>
+          </CardContent>
+        </Card>
 
-        <TabsContent value="ccb" className="space-y-6">
-          <Card className="shadow-sm border-t-4 border-t-[#00C2E0]">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">Simulador de CCB (BDIGITAL)</CardTitle>
-              <CardDescription>
-                Defina as taxas que serão aplicadas para as simulações e emissões de Cédula de
-                Crédito Bancário na área do Tomador.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-8">
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <Card className="md:col-span-2 bg-slate-50/50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Calculator className="h-5 w-5" /> Simulação de Custo Efetivo Total (CET)</CardTitle>
+            <CardDescription>O CET considera os juros compostos, tarifas e IOF, igualando o fluxo de parcelas ao valor financiado (VPL).</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid md:grid-cols-4 gap-6 items-center">
+              <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Taxa de Juros Mensal (% a.m.)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={ccbConfig.interest_rate_monthly}
-                    onChange={(e) =>
-                      setCcbConfig({ ...ccbConfig, interest_rate_monthly: e.target.value })
-                    }
-                  />
+                  <Label>Valor Solicitado (R$)</Label>
+                  <Input type="number" value={simValue} onChange={e => setSimValue(e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Taxa de Juros Anual (% a.a.)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={ccbConfig.interest_rate_annual}
-                    onChange={(e) =>
-                      setCcbConfig({ ...ccbConfig, interest_rate_annual: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Prazo Máximo (Meses)</Label>
-                  <Input
-                    type="number"
-                    step="1"
-                    value={ccbConfig.max_term_months}
-                    onChange={(e) =>
-                      setCcbConfig({ ...ccbConfig, max_term_months: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>IOF Base Fixo (%)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={ccbConfig.iof_rate}
-                    onChange={(e) => setCcbConfig({ ...ccbConfig, iof_rate: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>IOF Diário 1-30d (%)</Label>
-                  <Input
-                    type="number"
-                    step="0.00001"
-                    value={ccbConfig.iof_daily_rate_30 || 0.0041}
-                    onChange={(e) =>
-                      setCcbConfig({ ...ccbConfig, iof_daily_rate_30: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>IOF Diário &gt;30d (%)</Label>
-                  <Input
-                    type="number"
-                    step="0.00001"
-                    value={ccbConfig.iof_daily_rate_after || 0.00274}
-                    onChange={(e) =>
-                      setCcbConfig({ ...ccbConfig, iof_daily_rate_after: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Custo Fixo Emissão CCB (R$)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={ccbConfig.fixed_emission_cost}
-                    onChange={(e) =>
-                      setCcbConfig({ ...ccbConfig, fixed_emission_cost: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Fator Multiplicador</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={ccbConfig.multiplier_factor}
-                    onChange={(e) =>
-                      setCcbConfig({ ...ccbConfig, multiplier_factor: e.target.value })
-                    }
-                  />
+                  <Label>Prazo (Meses)</Label>
+                  <Input type="number" value={simTerm} onChange={e => setSimTerm(e.target.value)} />
                 </div>
               </div>
-            </CardContent>
-            <CardFooter className="bg-muted/10 border-t py-4 justify-between">
-              <div className="text-xs text-muted-foreground flex items-center gap-1">
-                <History className="h-3.5 w-3.5" /> Atualizado em:{' '}
-                {ccbConfig.updated_at
-                  ? new Date(ccbConfig.updated_at).toLocaleString('pt-BR')
-                  : 'Nunca'}
+              <div className="bg-white p-6 rounded-xl border shadow-sm col-span-3 grid grid-cols-3 gap-4 text-center">
+                <div className="border-r border-dashed">
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Valor da Parcela</div>
+                  <div className="font-bold text-primary text-2xl">R$ {simInstallment.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                </div>
+                <div className="border-r border-dashed">
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">CET Mensal</div>
+                  <div className="font-bold text-rose-600 text-2xl">{simCetMonthly.toFixed(4)}%</div>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">CET Anual</div>
+                  <div className="font-bold text-rose-600 text-2xl">{simCetAnnual.toFixed(4)}%</div>
+                </div>
               </div>
-              <Button
-                onClick={handleSaveCcb}
-                disabled={saving || loading}
-                size="lg"
-                className="gap-2 min-w-[150px] bg-[#00C2E0] hover:bg-[#00a9c4]"
-              >
-                {saving ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}{' '}
-                Salvar Configurações CCB
-              </Button>
-            </CardFooter>
-          </Card>
-        </TabsContent>
-      </Tabs>
+            </div>
+          </CardContent>
+          <CardFooter className="justify-end border-t border-slate-200/60 pt-4 mt-4 bg-white/50 rounded-b-xl">
+            <Button onClick={handleSave} disabled={saving} className="gap-2 px-6">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Salvar Parâmetros
+            </Button>
+          </CardFooter>
+        </Card>
+      </div>
     </div>
   )
 }

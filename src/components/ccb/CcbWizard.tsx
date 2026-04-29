@@ -165,7 +165,12 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
   const isAval =
     opData.creditType?.toUpperCase().includes('AVAL') || guarData.guaranteeType === 'avalista'
 
-  const [simData, setSimData] = useState({ installment_value: 0, total_to_pay: 0, cet: 0 })
+  const [simData, setSimData] = useState({
+    installment_value: 0,
+    total_to_pay: 0,
+    cet: 0,
+    cet_monthly: 0,
+  })
   const [schedule, setSchedule] = useState<any[]>([])
 
   const { available, loading: limitLoading } = useBorrowerLimit(user?.id)
@@ -228,6 +233,7 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
       setSimData({
         installment_value: parcelaFinal,
         total_to_pay: totalToPay,
+        cet_monthly: r * 100,
         cet: (Math.pow(1 + r, 12) - 1) * 100,
       })
       setOpData((prev: any) => ({
@@ -235,7 +241,9 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
         simulation: {
           installment_value: parcelaFinal,
           total_to_pay: totalToPay,
+          cet_monthly: r * 100,
           cet: (Math.pow(1 + r, 12) - 1) * 100,
+          cet_annual: (Math.pow(1 + r, 12) - 1) * 100,
           rate_used: rate,
           fixed_cost: fixedCost,
           iof_fixo: iofFixo,
@@ -807,13 +815,16 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                   </span>
                 </div>
                 <div className="flex justify-between pb-2">
-                  <span className="text-sm">CET (a.a.)</span>
-                  <span className="font-semibold text-[#00C2E0]">{simData.cet.toFixed(2)}%</span>
+                  <span className="text-sm">CET (a.m. / a.a.)</span>
+                  <span className="font-semibold text-[#00C2E0]">
+                    {simData.cet_monthly.toFixed(4)}% / {simData.cet.toFixed(4)}%
+                  </span>
                 </div>
                 <Alert className="bg-muted/50 mt-4 border-primary/20">
                   <Info className="h-4 w-4 text-primary" />
                   <AlertDescription className="text-xs">
-                    IOF calculado conforme Lei 9.532/97 + Dec. 6.306/07. Simulação dia a dia.
+                    Taxas calculadas via Juros Compostos (Equivalência Bancária). IOF conforme
+                    Decreto 6.306/07.
                   </AlertDescription>
                 </Alert>
               </div>
