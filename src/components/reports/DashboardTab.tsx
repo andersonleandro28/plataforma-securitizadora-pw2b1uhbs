@@ -13,16 +13,15 @@ export function DashboardTab() {
 
   useEffect(() => {
     async function loadData() {
-      const [opsRes, antRes, recRes] = await Promise.all([
+      const [opsRes, recRes] = await Promise.all([
         supabase
           .from('credit_operations')
           .select('*, operation_calculations(effective_cost_rate)')
-          .not('status', 'in', '("cancelado","excluido")'),
+          .not('status', 'in', '("cancelado","excluido","reprovado")'),
         supabase
-          .from('operacoes_antecipacao')
-          .select('*, ccb_solicitacoes(requested_value)')
-          .not('status', 'in', '("cancelada","excluida")'),
-        supabase.from('recebiveis_ccb').select('*').not('status', 'in', '("cancelado","excluido")'),
+          .from('recebiveis_ccb')
+          .select('*')
+          .not('status', 'in', '("cancelado","excluido","Cancelado","Excluído")'),
       ])
 
       let totalAum = 0
@@ -44,34 +43,8 @@ export function DashboardTab() {
           const rate = Number(op.operation_calculations?.effective_cost_rate || 0)
           weightedRate += rate * value
 
-          if (due < now && op.status !== 'liquidado') {
+          if (due < now && op.status !== 'liquidado' && op.status !== 'pago') {
             overdueAmount += value
-          }
-        })
-      }
-
-      if (antRes.data) {
-        antRes.data.forEach((ant: any) => {
-          if (Array.isArray(ant.installments)) {
-            ant.installments.forEach((i: any) => {
-              const val = Number(i.value || 0)
-              const status = i.status?.toLowerCase() || ''
-
-              if (status !== 'paga' && status !== 'pago') {
-                totalAum += val
-
-                const dueTime = new Date(i.due_date || i.dueDate).getTime()
-                const issueTime = new Date(ant.created_at).getTime()
-                const duration = Math.max(0, (dueTime - issueTime) / (1000 * 60 * 60 * 24))
-                totalDays += duration * val
-
-                if (dueTime < now) {
-                  overdueAmount += val
-                }
-
-                weightedRate += 2.5 * val // Estimativa padrão
-              }
-            })
           }
         })
       }

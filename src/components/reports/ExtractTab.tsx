@@ -22,35 +22,32 @@ export function ExtractTab() {
 
   useEffect(() => {
     async function loadData() {
-      let opsQuery = supabase.from('credit_operations').select(`
+      let opsQuery = supabase
+        .from('credit_operations')
+        .select(`
           id, face_value, due_date, status, borrower_id, receivable_type,
           profiles!credit_operations_borrower_id_fkey ( full_name, pj_company_name ),
           operation_calculations ( interest_value )
         `)
+        .not('status', 'in', '("cancelado","excluido","reprovado")')
 
-      let antQuery = supabase.from('operacoes_antecipacao').select(`
-          id, user_id, status, installments,
-          ccb_solicitacoes (
-            profiles!ccb_solicitacoes_user_id_fkey ( full_name, pj_company_name )
-          )
-        `)
-
-      let recQuery = supabase.from('recebiveis_ccb').select(`
+      let recQuery = supabase
+        .from('recebiveis_ccb')
+        .select(`
           id, tomador_id, status, boletos,
           profiles!recebiveis_ccb_tomador_id_fkey ( full_name, pj_company_name )
         `)
+        .not('status', 'in', '("cancelado","excluido","Cancelado","Excluído")')
 
       if (activeRole === 'borrower') {
         opsQuery = opsQuery.eq('borrower_id', user?.id)
-        antQuery = antQuery.eq('user_id', user?.id)
         recQuery = recQuery.eq('tomador_id', user?.id)
       } else if (activeRole === 'investor') {
         opsQuery = opsQuery.limit(0)
-        antQuery = antQuery.limit(0)
         recQuery = recQuery.limit(0)
       }
 
-      const [opsRes, antRes, recRes] = await Promise.all([opsQuery, antQuery, recQuery])
+      const [opsRes, recRes] = await Promise.all([opsQuery, recQuery])
 
       const consolidated = []
 
@@ -64,8 +61,9 @@ export function ExtractTab() {
           const due = new Date(op.due_date)
 
           let itemStatus = op.status
-          if (op.status !== 'liquidado' && due < now) itemStatus = 'atrasado'
-          else if (op.status !== 'liquidado') itemStatus = 'pendente'
+          if (op.status !== 'liquidado' && op.status !== 'pago' && due < now)
+            itemStatus = 'atrasado'
+          else if (op.status !== 'liquidado' && op.status !== 'pago') itemStatus = 'pendente'
 
           consolidated.push({
             id: op.id,
@@ -77,40 +75,6 @@ export function ExtractTab() {
             status: itemStatus,
             type: op.receivable_type,
           })
-        })
-      }
-
-      if (antRes.data) {
-        antRes.data.forEach((ant: any) => {
-          const ccb = Array.isArray(ant.ccb_solicitacoes)
-            ? ant.ccb_solicitacoes[0]
-            : ant.ccb_solicitacoes
-          const prof = Array.isArray(ccb?.profiles) ? ccb.profiles[0] : ccb?.profiles || {}
-          const tomador = prof?.pj_company_name || prof?.full_name || 'N/A'
-
-          if (Array.isArray(ant.installments)) {
-            ant.installments.forEach((inst: any) => {
-              const val = Number(inst.value || 0)
-              const due = new Date(inst.due_date || inst.dueDate)
-              const now = new Date()
-
-              let itemStatus = inst.status?.toLowerCase() || 'pendente'
-              if (itemStatus !== 'paga' && itemStatus !== 'pago' && due < now) {
-                itemStatus = 'atrasado'
-              }
-
-              consolidated.push({
-                id: `${ant.id}-${inst.number}`,
-                tomador: tomador,
-                due_date: inst.due_date || inst.dueDate,
-                principal: val * 0.8,
-                interest: val * 0.2,
-                total: val,
-                status: itemStatus,
-                type: 'CCB Digital',
-              })
-            })
-          }
         })
       }
 
@@ -131,14 +95,14 @@ export function ExtractTab() {
               }
 
               consolidated.push({
-                id: `${rec.id}-${bol.number || bol.id}`,
+                id: `${rec.id}-${bol.number || bol.id || Math.random().toString(36).substring(7)}`,
                 tomador: tomador,
                 due_date: bol.due_date || bol.dueDate,
                 principal: val * 0.8,
                 interest: val * 0.2,
                 total: val,
                 status: itemStatus,
-                type: 'CCB Aquisição',
+                type: 'CCB',
               })
             })
           }

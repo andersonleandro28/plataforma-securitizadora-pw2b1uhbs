@@ -10,13 +10,18 @@ export function ResultsTab() {
 
   useEffect(() => {
     async function loadData() {
-      const [calcsRes, antRes, recRes] = await Promise.all([
-        supabase.from('operation_calculations').select(`
+      const [calcsRes, recRes] = await Promise.all([
+        supabase
+          .from('operation_calculations')
+          .select(`
           *,
-          credit_operations ( issue_date, receivable_type )
-        `),
-        supabase.from('operacoes_antecipacao').select('*'),
-        supabase.from('recebiveis_ccb').select('*'),
+          credit_operations!inner ( issue_date, receivable_type, status )
+        `)
+          .not('credit_operations.status', 'in', '("cancelado","excluido","reprovado")'),
+        supabase
+          .from('recebiveis_ccb')
+          .select('*')
+          .not('status', 'in', '("cancelado","excluido","Cancelado","Excluído")'),
       ])
 
       const grouped: Record<string, any> = {}
@@ -53,28 +58,6 @@ export function ResultsTab() {
 
           const taxaEmissao = Number(c.analysis_value || 0)
           const funding = receitaBruta * 0.5 // Estimated funding cost
-
-          addGroup(period, receitaBruta, taxaEmissao, funding)
-        })
-      }
-
-      if (antRes.data) {
-        antRes.data.forEach((ant: any) => {
-          if (!ant.created_at) return
-          const period = getPeriod(ant.created_at)
-
-          let totalFace = 0
-          if (Array.isArray(ant.installments)) {
-            totalFace = ant.installments.reduce(
-              (acc: number, i: any) => acc + Number(i.value || 0),
-              0,
-            )
-          }
-
-          const net = Number(ant.net_value || 0)
-          const receitaBruta = Math.max(0, totalFace - net)
-          const taxaEmissao = receitaBruta * 0.1
-          const funding = receitaBruta * 0.5
 
           addGroup(period, receitaBruta, taxaEmissao, funding)
         })

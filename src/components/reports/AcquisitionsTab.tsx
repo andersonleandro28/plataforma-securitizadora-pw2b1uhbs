@@ -20,26 +20,23 @@ export function AcquisitionsTab() {
 
   useEffect(() => {
     async function loadData() {
-      const [opsRes, antRes, recRes] = await Promise.all([
+      const [opsRes, recRes] = await Promise.all([
         supabase
           .from('credit_operations')
           .select(`
-            id, receivable_type, face_value, issue_date, 
+            id, receivable_type, face_value, issue_date, status,
             profiles!credit_operations_borrower_id_fkey ( full_name, pj_company_name ),
             operation_calculations ( net_value, effective_cost_rate )
           `)
+          .not('status', 'in', '("cancelado","excluido","reprovado")')
           .order('issue_date', { ascending: false }),
-        supabase.from('operacoes_antecipacao').select(`
-            id, created_at, net_value, installments,
-            ccb_solicitacoes (
-              requested_value,
-              profiles!ccb_solicitacoes_user_id_fkey ( full_name, pj_company_name )
-            )
-          `),
-        supabase.from('recebiveis_ccb').select(`
-            id, created_at, acquisition_value, boleto_count, boleto_unit_value, tir_effective,
+        supabase
+          .from('recebiveis_ccb')
+          .select(`
+            id, created_at, acquisition_value, boleto_count, boleto_unit_value, tir_effective, status,
             profiles!recebiveis_ccb_tomador_id_fkey ( full_name, pj_company_name )
-          `),
+          `)
+          .not('status', 'in', '("cancelado","excluido","Cancelado","Excluído")'),
       ])
 
       const consolidated = []
@@ -59,42 +56,13 @@ export function AcquisitionsTab() {
         })
       }
 
-      if (antRes.data) {
-        antRes.data.forEach((ant: any) => {
-          const ccb = Array.isArray(ant.ccb_solicitacoes)
-            ? ant.ccb_solicitacoes[0]
-            : ant.ccb_solicitacoes
-          const prof = Array.isArray(ccb?.profiles) ? ccb.profiles[0] : ccb?.profiles || {}
-
-          let faceValue = 0
-          if (Array.isArray(ant.installments)) {
-            faceValue = ant.installments.reduce(
-              (acc: number, i: any) => acc + Number(i.value || 0),
-              0,
-            )
-          } else {
-            faceValue = Number(ccb?.requested_value || 0)
-          }
-
-          consolidated.push({
-            type: 'CCB Digital',
-            id: ant.id,
-            tomador: prof?.pj_company_name || prof?.full_name || 'N/A',
-            faceValue: faceValue,
-            netValue: ant.net_value || 0,
-            rate: 0,
-            date: ant.created_at,
-          })
-        })
-      }
-
       if (recRes.data) {
         recRes.data.forEach((rec: any) => {
           const prof = Array.isArray(rec.profiles) ? rec.profiles[0] : rec.profiles || {}
           const faceValue = Number(rec.boleto_count || 0) * Number(rec.boleto_unit_value || 0)
 
           consolidated.push({
-            type: 'CCB Aquisição',
+            type: 'CCB',
             id: rec.id,
             tomador: prof?.pj_company_name || prof?.full_name || 'N/A',
             faceValue: faceValue,
