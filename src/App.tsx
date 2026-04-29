@@ -27,6 +27,7 @@ import AdminCcbRequests from './pages/admin/AdminCcbRequests'
 import Expenses from './pages/admin/Expenses'
 import Accounting from './pages/admin/Accounting'
 import RiskExposure from './pages/admin/RiskExposure'
+import Reports from './pages/admin/Reports'
 import KycOnboarding from './pages/KycOnboarding'
 import CcbDigital from './pages/borrower/CcbDigital'
 import MyCcbInstallments from './pages/borrower/MyCcbInstallments'
@@ -386,6 +387,14 @@ const App = () => (
               element={
                 <RoleGuard allowedRoles={['admin', 'staff']}>
                   <RiskExposure />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/reports"
+              element={
+                <RoleGuard allowedRoles={['admin', 'staff', 'accountant', 'investor', 'borrower']}>
+                  <Reports />
                 </RoleGuard>
               }
             />
