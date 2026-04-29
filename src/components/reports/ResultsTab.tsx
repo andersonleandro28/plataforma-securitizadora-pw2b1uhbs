@@ -10,40 +10,92 @@ export function ResultsTab() {
 
   useEffect(() => {
     async function loadData() {
-      const { data: calcs } = await supabase.from('operation_calculations').select(`
+      const [calcsRes, antRes, recRes] = await Promise.all([
+        supabase.from('operation_calculations').select(`
           *,
           credit_operations ( issue_date, receivable_type )
-        `)
+        `),
+        supabase.from('operacoes_antecipacao').select('*'),
+        supabase.from('recebiveis_ccb').select('*'),
+      ])
 
-      if (calcs) {
-        const grouped: Record<string, any> = {}
-        calcs.forEach((c) => {
-          const dateStr = c.credit_operations?.issue_date || c.calculated_at
+      const grouped: Record<string, any> = {}
+
+      const getPeriod = (dateStr: string) => {
+        const date = new Date(dateStr)
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      }
+
+      const addGroup = (period: string, bruta: number, taxaEmissao: number, funding: number) => {
+        if (!grouped[period]) {
+          grouped[period] = { period, bruta: 0, taxaEmissao: 0, funding: 0, liquida: 0 }
+        }
+        grouped[period].bruta += bruta
+        grouped[period].taxaEmissao += taxaEmissao
+        grouped[period].funding += funding
+        grouped[period].liquida += bruta - taxaEmissao - funding
+      }
+
+      if (calcsRes.data) {
+        calcsRes.data.forEach((c) => {
+          const op = Array.isArray(c.credit_operations)
+            ? c.credit_operations[0]
+            : c.credit_operations
+          const dateStr = op?.issue_date || c.calculated_at
           if (!dateStr) return
 
-          const date = new Date(dateStr)
-          const period = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-
-          if (!grouped[period]) {
-            grouped[period] = { period, bruta: 0, taxaEmissao: 0, funding: 0, liquida: 0 }
-          }
-
+          const period = getPeriod(dateStr)
           const receitaBruta =
             Number(c.interest_value || 0) +
             Number(c.ad_valorem_value || 0) +
             Number(c.structuring_value || 0) +
             Number(c.discount_value || 0)
+
           const taxaEmissao = Number(c.analysis_value || 0)
+          const funding = receitaBruta * 0.5 // Estimated funding cost
+
+          addGroup(period, receitaBruta, taxaEmissao, funding)
+        })
+      }
+
+      if (antRes.data) {
+        antRes.data.forEach((ant: any) => {
+          if (!ant.created_at) return
+          const period = getPeriod(ant.created_at)
+
+          let totalFace = 0
+          if (Array.isArray(ant.installments)) {
+            totalFace = ant.installments.reduce(
+              (acc: number, i: any) => acc + Number(i.value || 0),
+              0,
+            )
+          }
+
+          const net = Number(ant.net_value || 0)
+          const receitaBruta = Math.max(0, totalFace - net)
+          const taxaEmissao = receitaBruta * 0.1
           const funding = receitaBruta * 0.5
 
-          grouped[period].bruta += receitaBruta
-          grouped[period].taxaEmissao += taxaEmissao
-          grouped[period].funding += funding
-          grouped[period].liquida += receitaBruta - taxaEmissao - funding
+          addGroup(period, receitaBruta, taxaEmissao, funding)
         })
-
-        setData(Object.values(grouped).sort((a, b) => b.period.localeCompare(a.period)))
       }
+
+      if (recRes.data) {
+        recRes.data.forEach((rec: any) => {
+          if (!rec.created_at) return
+          const period = getPeriod(rec.created_at)
+
+          const totalFace = Number(rec.boleto_count || 0) * Number(rec.boleto_unit_value || 0)
+          const acq = Number(rec.acquisition_value || 0)
+          const receitaBruta = Number(rec.gross_profit || Math.max(0, totalFace - acq))
+          const taxaEmissao = receitaBruta * 0.1
+          const funding = receitaBruta * 0.5
+
+          addGroup(period, receitaBruta, taxaEmissao, funding)
+        })
+      }
+
+      setData(Object.values(grouped).sort((a, b) => b.period.localeCompare(a.period)))
     }
     loadData()
   }, [])

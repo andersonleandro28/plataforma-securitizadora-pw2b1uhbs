@@ -13,12 +13,17 @@ export function DashboardTab() {
 
   useEffect(() => {
     async function loadData() {
-      const { data: ops } = await supabase
-        .from('credit_operations')
-        .select('*, operation_calculations(effective_cost_rate)')
-        .not('status', 'in', '("cancelado","excluido")')
-
-      if (!ops) return
+      const [opsRes, antRes, recRes] = await Promise.all([
+        supabase
+          .from('credit_operations')
+          .select('*, operation_calculations(effective_cost_rate)')
+          .not('status', 'in', '("cancelado","excluido")'),
+        supabase
+          .from('operacoes_antecipacao')
+          .select('*, ccb_solicitacoes(requested_value)')
+          .not('status', 'in', '("cancelada","excluida")'),
+        supabase.from('recebiveis_ccb').select('*').not('status', 'in', '("cancelado","excluido")'),
+      ])
 
       let totalAum = 0
       let totalDays = 0
@@ -26,22 +31,76 @@ export function DashboardTab() {
       let overdueAmount = 0
       const now = new Date().getTime()
 
-      ops.forEach((op) => {
-        const value = Number(op.face_value || 0)
-        totalAum += value
+      if (opsRes.data) {
+        opsRes.data.forEach((op) => {
+          const value = Number(op.face_value || 0)
+          totalAum += value
 
-        const issue = new Date(op.issue_date || op.created_at).getTime()
-        const due = new Date(op.due_date).getTime()
-        const duration = Math.max(0, (due - issue) / (1000 * 60 * 60 * 24))
-        totalDays += duration * value
+          const issue = new Date(op.issue_date || op.created_at).getTime()
+          const due = new Date(op.due_date).getTime()
+          const duration = Math.max(0, (due - issue) / (1000 * 60 * 60 * 24))
+          totalDays += duration * value
 
-        const rate = Number(op.operation_calculations?.effective_cost_rate || 0)
-        weightedRate += rate * value
+          const rate = Number(op.operation_calculations?.effective_cost_rate || 0)
+          weightedRate += rate * value
 
-        if (due < now && op.status !== 'liquidado') {
-          overdueAmount += value
-        }
-      })
+          if (due < now && op.status !== 'liquidado') {
+            overdueAmount += value
+          }
+        })
+      }
+
+      if (antRes.data) {
+        antRes.data.forEach((ant: any) => {
+          if (Array.isArray(ant.installments)) {
+            ant.installments.forEach((i: any) => {
+              const val = Number(i.value || 0)
+              const status = i.status?.toLowerCase() || ''
+
+              if (status !== 'paga' && status !== 'pago') {
+                totalAum += val
+
+                const dueTime = new Date(i.due_date || i.dueDate).getTime()
+                const issueTime = new Date(ant.created_at).getTime()
+                const duration = Math.max(0, (dueTime - issueTime) / (1000 * 60 * 60 * 24))
+                totalDays += duration * val
+
+                if (dueTime < now) {
+                  overdueAmount += val
+                }
+
+                weightedRate += 2.5 * val // Estimativa padrão
+              }
+            })
+          }
+        })
+      }
+
+      if (recRes.data) {
+        recRes.data.forEach((rec: any) => {
+          if (Array.isArray(rec.boletos)) {
+            rec.boletos.forEach((b: any) => {
+              const val = Number(b.unit_value || b.value || rec.boleto_unit_value || 0)
+              const status = b.status?.toLowerCase() || ''
+
+              if (status !== 'paga' && status !== 'pago') {
+                totalAum += val
+                const dueTime = new Date(b.due_date || b.dueDate).getTime()
+                const issueTime = new Date(rec.created_at).getTime()
+                const duration = Math.max(0, (dueTime - issueTime) / (1000 * 60 * 60 * 24))
+                totalDays += duration * val
+
+                if (dueTime < now) {
+                  overdueAmount += val
+                }
+
+                const rate = Number(rec.tir_effective || 2.0)
+                weightedRate += rate * val
+              }
+            })
+          }
+        })
+      }
 
       setMetrics({
         aum: totalAum,

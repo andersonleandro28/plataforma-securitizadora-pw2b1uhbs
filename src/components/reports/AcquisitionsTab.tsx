@@ -20,15 +20,93 @@ export function AcquisitionsTab() {
 
   useEffect(() => {
     async function loadData() {
-      const { data: ops } = await supabase
-        .from('credit_operations')
-        .select(`
-          id, receivable_type, face_value, issue_date, 
-          profiles ( full_name, pj_company_name ),
-          operation_calculations ( net_value, effective_cost_rate )
-        `)
-        .order('issue_date', { ascending: false })
-      if (ops) setData(ops)
+      const [opsRes, antRes, recRes] = await Promise.all([
+        supabase
+          .from('credit_operations')
+          .select(`
+            id, receivable_type, face_value, issue_date, 
+            profiles!credit_operations_borrower_id_fkey ( full_name, pj_company_name ),
+            operation_calculations ( net_value, effective_cost_rate )
+          `)
+          .order('issue_date', { ascending: false }),
+        supabase.from('operacoes_antecipacao').select(`
+            id, created_at, net_value, installments,
+            ccb_solicitacoes (
+              requested_value,
+              profiles!ccb_solicitacoes_user_id_fkey ( full_name, pj_company_name )
+            )
+          `),
+        supabase.from('recebiveis_ccb').select(`
+            id, created_at, acquisition_value, boleto_count, boleto_unit_value, tir_effective,
+            profiles!recebiveis_ccb_tomador_id_fkey ( full_name, pj_company_name )
+          `),
+      ])
+
+      const consolidated = []
+
+      if (opsRes.data) {
+        opsRes.data.forEach((op: any) => {
+          const prof = Array.isArray(op.profiles) ? op.profiles[0] : op.profiles
+          consolidated.push({
+            type: op.receivable_type,
+            id: op.id,
+            tomador: prof?.pj_company_name || prof?.full_name || 'N/A',
+            faceValue: op.face_value,
+            netValue: op.operation_calculations?.net_value || 0,
+            rate: op.operation_calculations?.effective_cost_rate || 0,
+            date: op.issue_date,
+          })
+        })
+      }
+
+      if (antRes.data) {
+        antRes.data.forEach((ant: any) => {
+          const ccb = Array.isArray(ant.ccb_solicitacoes)
+            ? ant.ccb_solicitacoes[0]
+            : ant.ccb_solicitacoes
+          const prof = Array.isArray(ccb?.profiles) ? ccb.profiles[0] : ccb?.profiles || {}
+
+          let faceValue = 0
+          if (Array.isArray(ant.installments)) {
+            faceValue = ant.installments.reduce(
+              (acc: number, i: any) => acc + Number(i.value || 0),
+              0,
+            )
+          } else {
+            faceValue = Number(ccb?.requested_value || 0)
+          }
+
+          consolidated.push({
+            type: 'CCB Digital',
+            id: ant.id,
+            tomador: prof?.pj_company_name || prof?.full_name || 'N/A',
+            faceValue: faceValue,
+            netValue: ant.net_value || 0,
+            rate: 0,
+            date: ant.created_at,
+          })
+        })
+      }
+
+      if (recRes.data) {
+        recRes.data.forEach((rec: any) => {
+          const prof = Array.isArray(rec.profiles) ? rec.profiles[0] : rec.profiles || {}
+          const faceValue = Number(rec.boleto_count || 0) * Number(rec.boleto_unit_value || 0)
+
+          consolidated.push({
+            type: 'CCB Aquisição',
+            id: rec.id,
+            tomador: prof?.pj_company_name || prof?.full_name || 'N/A',
+            faceValue: faceValue,
+            netValue: rec.acquisition_value || 0,
+            rate: rec.tir_effective || 0,
+            date: rec.created_at,
+          })
+        })
+      }
+
+      consolidated.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      setData(consolidated)
     }
     loadData()
   }, [])
@@ -36,19 +114,18 @@ export function AcquisitionsTab() {
   const filtered = data.filter(
     (d) =>
       d.id.toLowerCase().includes(search.toLowerCase()) ||
-      (d.profiles?.full_name || '').toLowerCase().includes(search.toLowerCase()) ||
-      (d.profiles?.pj_company_name || '').toLowerCase().includes(search.toLowerCase()),
+      (d.tomador || '').toLowerCase().includes(search.toLowerCase()),
   )
 
   const handleExport = () => {
     const csvData = filtered.map((d) => ({
-      'Tipo de Operação': d.receivable_type,
+      'Tipo de Operação': d.type,
       'ID da Operação': d.id,
-      'Nome do Tomador': d.profiles?.pj_company_name || d.profiles?.full_name || 'N/A',
-      'Valor de Face': d.face_value,
-      'Valor de Aquisição': d.operation_calculations?.net_value || 0,
-      'Taxa Desconto/Juros': `${d.operation_calculations?.effective_cost_rate || 0}%`,
-      'Data de Registro': d.issue_date ? new Date(d.issue_date).toLocaleDateString('pt-BR') : '',
+      'Nome do Tomador': d.tomador,
+      'Valor de Face': d.faceValue,
+      'Valor de Aquisição': d.netValue,
+      'Taxa Desconto/Juros': `${d.rate}%`,
+      'Data de Registro': d.date ? new Date(d.date).toLocaleDateString('pt-BR') : '',
     }))
     exportToCSV(csvData, 'aquisicoes.csv')
   }
@@ -77,34 +154,30 @@ export function AcquisitionsTab() {
                 <TableHead>Tomador</TableHead>
                 <TableHead>Valor Face</TableHead>
                 <TableHead>Aquisição (Líquido)</TableHead>
-                <TableHead>Taxa (CET)</TableHead>
+                <TableHead>Taxa (CET/TIR)</TableHead>
                 <TableHead>Data</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((item) => (
                 <TableRow key={item.id}>
-                  <TableCell className="capitalize">{item.receivable_type}</TableCell>
+                  <TableCell className="capitalize">{item.type}</TableCell>
                   <TableCell className="font-mono text-xs">{item.id.substring(0, 8)}</TableCell>
-                  <TableCell>
-                    {item.profiles?.pj_company_name || item.profiles?.full_name || 'N/A'}
-                  </TableCell>
+                  <TableCell>{item.tomador}</TableCell>
                   <TableCell>
                     {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
-                      item.face_value,
+                      item.faceValue,
                     )}
                   </TableCell>
                   <TableCell>
                     {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
-                      item.operation_calculations?.net_value || 0,
+                      item.netValue,
                     )}
                   </TableCell>
+                  <TableCell>{Number(item.rate || 0).toFixed(2)}%</TableCell>
                   <TableCell>
-                    {Number(item.operation_calculations?.effective_cost_rate || 0).toFixed(2)}%
-                  </TableCell>
-                  <TableCell>
-                    {item.issue_date
-                      ? new Date(item.issue_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
+                    {item.date
+                      ? new Date(item.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
                       : '-'}
                   </TableCell>
                 </TableRow>
