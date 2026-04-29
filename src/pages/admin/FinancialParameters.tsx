@@ -22,9 +22,11 @@ import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/use-auth'
 import { Loader2, Save, Settings2, History, Info, Banknote } from 'lucide-react'
+import useSecurityStore from '@/stores/useSecurityStore'
 
 export default function FinancialParameters() {
   const { user } = useAuth()
+  const requestClearance = useSecurityStore((state) => state.requestClearance)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [type, setType] = useState<string>('global')
@@ -94,99 +96,106 @@ export default function FinancialParameters() {
   }, [type])
 
   const handleSaveParams = async () => {
-    setSaving(true)
-    try {
-      const { data: current } = await supabase
-        .from('financial_parameters')
-        .select('id')
-        .eq('receivable_type', type)
-        .maybeSingle()
-      let pId = current?.id
-
-      const payload = {
-        receivable_type: type,
-        interest_rate_monthly: Number(params.interest_rate_monthly),
-        discount_rate_monthly: Number(params.discount_rate_monthly),
-        ad_valorem_rate: Number(params.ad_valorem_rate),
-        structuring_fee: Number(params.structuring_fee),
-        structuring_fee_type: params.structuring_fee_type,
-        analysis_fee: Number(params.analysis_fee),
-        analysis_fee_type: params.analysis_fee_type,
-        iof_fixed_rate: Number(params.iof_fixed_rate),
-        iof_daily_rate: Number(params.iof_daily_rate),
-        penalty_rate: Number(params.penalty_rate),
-        default_interest_rate: Number(params.default_interest_rate),
-        grace_period_days: Number(params.grace_period_days),
-        updated_by: user?.id,
-        updated_at: new Date().toISOString(),
-      }
-
-      if (pId) {
-        const { error } = await supabase.from('financial_parameters').update(payload).eq('id', pId)
-        if (error) throw error
-      } else {
-        const { data: inserted, error } = await supabase
+    requestClearance(`alteração de parâmetros financeiros para o tipo ${type}`, async () => {
+      setSaving(true)
+      try {
+        const { data: current } = await supabase
           .from('financial_parameters')
-          .insert(payload)
-          .select()
-          .single()
-        if (error) throw error
-        pId = inserted?.id
-      }
+          .select('id')
+          .eq('receivable_type', type)
+          .maybeSingle()
+        let pId = current?.id
 
-      if (pId) {
-        await supabase
-          .from('parameter_history')
-          .insert({ parameter_id: pId, changes: payload, changed_by: user?.id })
-        await supabase.from('audit_logs').insert({
-          user_id: user?.id,
-          action: 'UPDATE_PARAMETERS',
-          entity_type: 'financial_parameters',
-          entity_id: pId,
-          details: { type, payload },
-        })
-      }
+        const payload = {
+          receivable_type: type,
+          interest_rate_monthly: Number(params.interest_rate_monthly),
+          discount_rate_monthly: Number(params.discount_rate_monthly),
+          ad_valorem_rate: Number(params.ad_valorem_rate),
+          structuring_fee: Number(params.structuring_fee),
+          structuring_fee_type: params.structuring_fee_type,
+          analysis_fee: Number(params.analysis_fee),
+          analysis_fee_type: params.analysis_fee_type,
+          iof_fixed_rate: Number(params.iof_fixed_rate),
+          iof_daily_rate: Number(params.iof_daily_rate),
+          penalty_rate: Number(params.penalty_rate),
+          default_interest_rate: Number(params.default_interest_rate),
+          grace_period_days: Number(params.grace_period_days),
+          updated_by: user?.id,
+          updated_at: new Date().toISOString(),
+        }
 
-      toast.success(`Parâmetros para "${type}" atualizados com sucesso.`)
-      fetchData()
-    } catch (err: any) {
-      toast.error(err.message || 'Erro ao salvar parâmetros.')
-    } finally {
-      setSaving(false)
-    }
+        if (pId) {
+          const { error } = await supabase
+            .from('financial_parameters')
+            .update(payload)
+            .eq('id', pId)
+          if (error) throw error
+        } else {
+          const { data: inserted, error } = await supabase
+            .from('financial_parameters')
+            .insert(payload)
+            .select()
+            .single()
+          if (error) throw error
+          pId = inserted?.id
+        }
+
+        if (pId) {
+          await supabase
+            .from('parameter_history')
+            .insert({ parameter_id: pId, changes: payload, changed_by: user?.id })
+          await supabase.from('audit_logs').insert({
+            user_id: user?.id,
+            action: 'UPDATE_PARAMETERS',
+            entity_type: 'financial_parameters',
+            entity_id: pId,
+            details: { type, payload },
+          })
+        }
+
+        toast.success(`Parâmetros para "${type}" atualizados com sucesso.`)
+        fetchData()
+      } catch (err: any) {
+        toast.error(err.message || 'Erro ao salvar parâmetros.')
+      } finally {
+        setSaving(false)
+      }
+    })
   }
 
   const handleSaveCcb = async () => {
-    setSaving(true)
-    try {
-      const payload = {
-        partner_name: ccbConfig.partner_name,
-        interest_rate_monthly: Number(ccbConfig.interest_rate_monthly),
-        interest_rate_annual: Number(ccbConfig.interest_rate_annual),
-        iof_rate: Number(ccbConfig.iof_rate),
-        iof_daily_rate_30: Number(ccbConfig.iof_daily_rate_30 || 0.0041),
-        iof_daily_rate_after: Number(ccbConfig.iof_daily_rate_after || 0.00274),
-        fixed_emission_cost: Number(ccbConfig.fixed_emission_cost),
-        multiplier_factor: Number(ccbConfig.multiplier_factor),
-        max_term_months: Number(ccbConfig.max_term_months),
-        updated_at: new Date().toISOString(),
-      }
+    requestClearance(`alteração nas configurações globais de CCB`, async () => {
+      setSaving(true)
+      try {
+        const payload = {
+          partner_name: ccbConfig.partner_name,
+          interest_rate_monthly: Number(ccbConfig.interest_rate_monthly),
+          interest_rate_annual: Number(ccbConfig.interest_rate_annual),
+          iof_rate: Number(ccbConfig.iof_rate),
+          iof_daily_rate_30: Number(ccbConfig.iof_daily_rate_30 || 0.0041),
+          iof_daily_rate_after: Number(ccbConfig.iof_daily_rate_after || 0.00274),
+          fixed_emission_cost: Number(ccbConfig.fixed_emission_cost),
+          multiplier_factor: Number(ccbConfig.multiplier_factor),
+          max_term_months: Number(ccbConfig.max_term_months),
+          updated_at: new Date().toISOString(),
+        }
 
-      if (ccbConfig.id) {
-        const { error } = await supabase.from('config_ccb').update(payload).eq('id', ccbConfig.id)
-        if (error) throw error
-      } else {
-        const { error } = await supabase.from('config_ccb').insert(payload)
-        if (error) throw error
-      }
+        if (ccbConfig.id) {
+          const { error } = await supabase.from('config_ccb').update(payload).eq('id', ccbConfig.id)
+          if (error) throw error
+        } else {
+          const { error } = await supabase.from('config_ccb').insert(payload)
+          if (error) throw error
+        }
 
-      toast.success('Configurações CCB atualizadas com sucesso.')
-      fetchData()
-    } catch (err: any) {
-      toast.error('Erro ao salvar configurações CCB: ' + err.message)
-    } finally {
-      setSaving(false)
-    }
+        toast.success('Configurações CCB atualizadas com sucesso.')
+        fetchData()
+      } catch (err: any) {
+        toast.error('Erro ao salvar configurações CCB: ' + err.message)
+      } finally {
+        setSaving(false)
+      }
+    })
   }
 
   if (loading) {

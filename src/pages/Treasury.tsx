@@ -42,8 +42,10 @@ import { NewTransactionDialog } from '@/components/Treasury/NewTransactionDialog
 import { EditTransactionDialog } from '@/components/Treasury/EditTransactionDialog'
 import { Download, ExternalLink } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import useSecurityStore from '@/stores/useSecurityStore'
 
 export default function Treasury() {
+  const requestClearance = useSecurityStore((state) => state.requestClearance)
   const [transactions, setTransactions] = useState<any[]>([])
   const [filteredTx, setFilteredTx] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -231,7 +233,14 @@ export default function Treasury() {
           >
             <FileSpreadsheet className="w-4 h-4 mr-2" /> Exportar CSV
           </Button>
-          <Button className="bg-primary" onClick={() => setIsNewEntryOpen(true)}>
+          <Button
+            className="bg-primary"
+            onClick={() => {
+              requestClearance('acesso à criação de novo lançamento de tesouraria', () => {
+                setIsNewEntryOpen(true)
+              })
+            }}
+          >
             <Plus className="w-4 h-4 mr-2" /> Novo Lançamento
           </Button>
           <NewTransactionDialog
@@ -373,7 +382,14 @@ export default function Treasury() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => setEditingTx(tx)}
+                              onClick={() => {
+                                requestClearance(
+                                  `edição de lançamento de tesouraria no registro ${tx.rawId}`,
+                                  () => {
+                                    setEditingTx(tx)
+                                  },
+                                )
+                              }}
                               title="Editar Lançamento"
                             >
                               <Pencil className="h-4 w-4 text-muted-foreground hover:text-primary" />

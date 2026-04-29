@@ -22,8 +22,10 @@ import { Badge } from '@/components/ui/badge'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { ProductDialog } from '@/components/admin/ProductDialog'
+import useSecurityStore from '@/stores/useSecurityStore'
 
 export default function InvestmentProducts() {
+  const requestClearance = useSecurityStore((state) => state.requestClearance)
   const [products, setProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -48,24 +50,29 @@ export default function InvestmentProducts() {
   }, [])
 
   const handleDuplicate = (prod: any) => {
-    const copy = { ...prod, id: undefined, title: `${prod.title} (Cópia)`, sold_quotas: 0 }
-    setSelectedProduct(copy)
-    setDialogOpen(true)
+    requestClearance(`duplicação do produto ${prod.id}`, () => {
+      const copy = { ...prod, id: undefined, title: `${prod.title} (Cópia)`, sold_quotas: 0 }
+      setSelectedProduct(copy)
+      setDialogOpen(true)
+    })
   }
 
   const handleArchive = async (id: string) => {
     if (!confirm('Deseja realmente arquivar este produto? Ele sumirá da listagem principal.'))
       return
-    try {
-      await supabase
-        .from('investment_products')
-        .update({ is_archived: true, is_active: false })
-        .eq('id', id)
-      toast.success('Produto arquivado.')
-      fetchProducts()
-    } catch (e) {
-      toast.error('Erro ao arquivar.')
-    }
+
+    requestClearance(`arquivamento (ocultação) do registro ${id}`, async () => {
+      try {
+        await supabase
+          .from('investment_products')
+          .update({ is_archived: true, is_active: false })
+          .eq('id', id)
+        toast.success('Produto arquivado.')
+        fetchProducts()
+      } catch (e) {
+        toast.error('Erro ao arquivar.')
+      }
+    })
   }
 
   const filtered = products.filter((p) => {
@@ -85,8 +92,10 @@ export default function InvestmentProducts() {
         </div>
         <Button
           onClick={() => {
-            setSelectedProduct(null)
-            setDialogOpen(true)
+            requestClearance('acesso à criação de novo produto', () => {
+              setSelectedProduct(null)
+              setDialogOpen(true)
+            })
           }}
           className="gap-2"
         >
@@ -194,8 +203,10 @@ export default function InvestmentProducts() {
                         size="icon"
                         title="Editar"
                         onClick={() => {
-                          setSelectedProduct(p)
-                          setDialogOpen(true)
+                          requestClearance(`edição do produto no registro ${p.id}`, () => {
+                            setSelectedProduct(p)
+                            setDialogOpen(true)
+                          })
                         }}
                       >
                         <Edit2 className="h-4 w-4 text-muted-foreground hover:text-primary" />

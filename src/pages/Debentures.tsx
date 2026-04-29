@@ -17,6 +17,7 @@ import { Loader2, RefreshCw, Clock, History, Settings, TrendingUp } from 'lucide
 import { format } from 'date-fns'
 import { ManageSubscriptionsDialog } from '@/components/debentures/ManageSubscriptionsDialog'
 import { formatDate } from '@/lib/utils'
+import useSecurityStore from '@/stores/useSecurityStore'
 
 const formatSafeDate = (dateStr: string | null | undefined) => {
   return formatDate(dateStr) || '-'
@@ -24,6 +25,7 @@ const formatSafeDate = (dateStr: string | null | undefined) => {
 
 export default function Debentures() {
   const { profile } = useAuth()
+  const requestClearance = useSecurityStore((state) => state.requestClearance)
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
 
@@ -180,7 +182,18 @@ export default function Debentures() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="outline" size="sm" onClick={() => setManageSeries(s)}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          requestClearance(
+                            `acesso ao gerenciamento de subscrições da série ${s.series_number}`,
+                            () => {
+                              setManageSeries(s)
+                            },
+                          )
+                        }}
+                      >
                         <Settings className="h-4 w-4 mr-2" /> Gerenciar
                       </Button>
                     </TableCell>

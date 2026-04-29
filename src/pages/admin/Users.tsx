@@ -52,9 +52,11 @@ import { AdminUserFormDialog } from '@/components/admin/AdminUserFormDialog'
 import { AdminChangePasswordDialog } from '@/components/admin/AdminChangePasswordDialog'
 import { AdminUserRiskDialog } from '@/components/admin/AdminUserRiskDialog'
 import { getKycCompletion, exportCsv } from '@/lib/kyc-utils'
+import useSecurityStore from '@/stores/useSecurityStore'
 
 export default function Users() {
   const { session } = useAuth()
+  const requestClearance = useSecurityStore((state) => state.requestClearance)
   const [users, setUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -90,75 +92,90 @@ export default function Users() {
   }, [])
 
   const handleRoleChange = async (userId: string, roleKey: string, checked: boolean) => {
-    const { error } = await supabase
-      .from('profiles')
-      .update({ [roleKey]: checked })
-      .eq('id', userId)
-    if (error) {
-      toast.error('Erro ao atualizar permissões do usuário.')
-    } else {
-      toast.success('Permissões atualizadas com sucesso.')
-      setUsers(users.map((u) => (u.id === userId ? { ...u, [roleKey]: checked } : u)))
-      if (manageRolesUser?.id === userId) {
-        setManageRolesUser({ ...manageRolesUser, [roleKey]: checked })
-      }
-    }
+    requestClearance(
+      `alteração do papel ${roleKey} para ${checked} no registro ${userId}`,
+      async () => {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ [roleKey]: checked })
+          .eq('id', userId)
+        if (error) {
+          toast.error('Erro ao atualizar permissões do usuário.')
+        } else {
+          toast.success('Permissões atualizadas com sucesso.')
+          setUsers(users.map((u) => (u.id === userId ? { ...u, [roleKey]: checked } : u)))
+          if (manageRolesUser?.id === userId) {
+            setManageRolesUser({ ...manageRolesUser, [roleKey]: checked })
+          }
+        }
+      },
+    )
   }
 
   const handleDeleteUser = async () => {
     if (!deletingUser) return
-    setProcessingId(deletingUser.id)
-    const promise = supabase.functions
-      .invoke('delete-user', {
-        body: { targetUserId: deletingUser.id },
-      })
-      .then(({ data, error }) => {
-        if (error) throw error
-        if (data?.error) throw new Error(data.error)
-        setUsers((prev) => prev.filter((u) => u.id !== deletingUser.id))
-      })
-      .finally(() => {
-        setProcessingId(null)
-        setDeletingUser(null)
-      })
+    const target = deletingUser
+    setDeletingUser(null)
 
-    toast.promise(promise, {
-      loading: 'Excluindo usuário...',
-      success: 'Usuário excluído permanentemente.',
-      error: (err) => err.message || 'Erro ao excluir.',
+    requestClearance(`exclusão permanente no registro ${target.id}`, async () => {
+      setProcessingId(target.id)
+      const promise = supabase.functions
+        .invoke('delete-user', {
+          body: { targetUserId: target.id },
+        })
+        .then(({ data, error }) => {
+          if (error) throw error
+          if (data?.error) throw new Error(data.error)
+          setUsers((prev) => prev.filter((u) => u.id !== target.id))
+        })
+        .finally(() => {
+          setProcessingId(null)
+        })
+
+      toast.promise(promise, {
+        loading: 'Excluindo usuário...',
+        success: 'Usuário excluído permanentemente.',
+        error: (err) => err.message || 'Erro ao excluir.',
+      })
     })
   }
 
   const handleToggleBlock = async () => {
     if (!blockUser) return
-    setProcessingId(blockUser.id)
-    const isBlocking = !blockUser.is_blocked
+    const target = blockUser
+    setBlockUser(null)
+    const isBlocking = !target.is_blocked
 
-    const promise = supabase.functions
-      .invoke('admin-update-user', {
-        body: {
-          targetUserId: blockUser.id,
-          action: 'toggle_block',
-          payload: { is_blocked: isBlocking },
-        },
-      })
-      .then(({ data, error }) => {
-        if (error) throw error
-        if (data?.error) throw new Error(data.error)
-        setUsers((prev) =>
-          prev.map((u) => (u.id === blockUser.id ? { ...u, is_blocked: isBlocking } : u)),
-        )
-      })
-      .finally(() => {
-        setProcessingId(null)
-        setBlockUser(null)
-      })
+    requestClearance(
+      `alteração do status de bloqueio para ${isBlocking} no registro ${target.id}`,
+      async () => {
+        setProcessingId(target.id)
+        const promise = supabase.functions
+          .invoke('admin-update-user', {
+            body: {
+              targetUserId: target.id,
+              action: 'toggle_block',
+              payload: { is_blocked: isBlocking },
+            },
+          })
+          .then(({ data, error }) => {
+            if (error) throw error
+            if (data?.error) throw new Error(data.error)
+            setUsers((prev) =>
+              prev.map((u) => (u.id === target.id ? { ...u, is_blocked: isBlocking } : u)),
+            )
+          })
+          .finally(() => {
+            setProcessingId(null)
+          })
 
-    toast.promise(promise, {
-      loading: isBlocking ? 'Bloqueando acesso...' : 'Restaurando acesso...',
-      success: isBlocking ? 'Usuário bloqueado com sucesso.' : 'Acesso do usuário restaurado.',
-      error: (err) => err.message || 'Erro ao alterar status.',
-    })
+        toast.promise(promise, {
+          loading: isBlocking ? 'Bloqueando acesso...' : 'Restaurando acesso...',
+          success: isBlocking ? 'Usuário bloqueado com sucesso.' : 'Acesso do usuário restaurado.',
+          error: (err) => err.message || 'Erro ao alterar status.',
+        })
+      },
+    )
   }
 
   const handleExport = () => {
@@ -202,8 +219,10 @@ export default function Users() {
           <Button
             className="gap-2"
             onClick={() => {
-              setEditingUser(null)
-              setFormOpen(true)
+              requestClearance('acesso ao formulário de criação de novo usuário', () => {
+                setEditingUser(null)
+                setFormOpen(true)
+              })
             }}
           >
             <UserPlus className="h-4 w-4" /> Novo Cadastro
@@ -440,8 +459,13 @@ export default function Users() {
                             title="Editar Dados Cadastrais"
                             className="h-8 w-8 text-primary hover:bg-primary/10"
                             onClick={() => {
-                              setEditingUser(u)
-                              setFormOpen(true)
+                              requestClearance(
+                                `edição de dados cadastrais no registro ${u.id}`,
+                                () => {
+                                  setEditingUser(u)
+                                  setFormOpen(true)
+                                },
+                              )
                             }}
                           >
                             <Edit className="h-4 w-4" />
@@ -451,7 +475,14 @@ export default function Users() {
                             size="icon"
                             title="Contas Bancárias"
                             className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                            onClick={() => setManageBanksUser(u)}
+                            onClick={() => {
+                              requestClearance(
+                                `edição de contas bancárias no registro ${u.id}`,
+                                () => {
+                                  setManageBanksUser(u)
+                                },
+                              )
+                            }}
                           >
                             <Landmark className="h-4 w-4" />
                           </Button>
@@ -471,14 +502,35 @@ export default function Users() {
                               <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wider">
                                 Acesso e Segurança
                               </DropdownMenuLabel>
-                              <DropdownMenuItem onClick={() => setManageRolesUser(u)}>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  requestClearance(
+                                    `acesso à gestão de papéis no registro ${u.id}`,
+                                    () => setManageRolesUser(u),
+                                  )
+                                }}
+                              >
                                 <Settings2 className="mr-2 h-4 w-4" /> Papéis de Acesso
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setPasswordUser(u)}>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  requestClearance(
+                                    `acesso à redefinição de senha no registro ${u.id}`,
+                                    () => setPasswordUser(u),
+                                  )
+                                }}
+                              >
                                 <Key className="mr-2 h-4 w-4" /> Redefinir Senha
                               </DropdownMenuItem>
                               {u.is_borrower && (
-                                <DropdownMenuItem onClick={() => setRiskUser(u)}>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    requestClearance(
+                                      `acesso à gestão de risco no registro ${u.id}`,
+                                      () => setRiskUser(u),
+                                    )
+                                  }}
+                                >
                                   <Activity className="mr-2 h-4 w-4 text-amber-500" /> Gestão de
                                   Risco e Limite
                                 </DropdownMenuItem>
