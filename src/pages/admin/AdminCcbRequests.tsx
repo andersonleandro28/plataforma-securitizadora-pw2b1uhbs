@@ -26,6 +26,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -40,6 +41,7 @@ import {
   Trash2,
   Calculator,
   Edit,
+  Info,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 
