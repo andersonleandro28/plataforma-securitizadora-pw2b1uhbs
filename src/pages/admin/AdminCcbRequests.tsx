@@ -472,12 +472,16 @@ export default function AdminCcbRequests() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Status</Label>
-              <Select value={statusVal} onValueChange={setStatusVal}>
+              <Select value={statusVal} onValueChange={setStatusVal} disabled={saving}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Selecione um novo status" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="pendente">Pendente</SelectItem>
+                  <SelectItem value="simulacao">Simulação</SelectItem>
+                  <SelectItem value="em_analise">Em Análise</SelectItem>
+                  <SelectItem value="proposta_ajustada">Proposta Ajustada</SelectItem>
+                  <SelectItem value="aceite_tomador">Aceite Tomador</SelectItem>
                   <SelectItem value="aprovada">Aprovada (Gerar Operação)</SelectItem>
                   <SelectItem value="rejeitada">Rejeitada</SelectItem>
                 </SelectContent>
@@ -485,14 +489,15 @@ export default function AdminCcbRequests() {
             </div>
             <div className="space-y-2">
               <Label>Notas</Label>
-              <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
+              <Input value={notes} onChange={(e) => setNotes(e.target.value)} disabled={saving} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setManageId(null)}>
+            <Button variant="outline" onClick={() => setManageId(null)} disabled={saving}>
               Cancelar
             </Button>
             <Button onClick={handleUpdate} disabled={saving}>
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Salvar
             </Button>
           </DialogFooter>
