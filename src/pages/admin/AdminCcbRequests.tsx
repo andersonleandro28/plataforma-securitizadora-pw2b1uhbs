@@ -476,7 +476,7 @@ export default function AdminCcbRequests() {
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione um novo status" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[9999]">
                   <SelectItem value="pendente">Pendente</SelectItem>
                   <SelectItem value="simulacao">Simulação</SelectItem>
                   <SelectItem value="em_analise">Em Análise</SelectItem>
