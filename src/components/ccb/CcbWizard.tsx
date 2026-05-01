@@ -764,7 +764,7 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                     <Label>Valor</Label>
                     <div className="text-right">
                       <span className="font-bold text-[#00C2E0]">
-                        R$ {Number(opData.requestedValue || 5000).toLocaleString('pt-BR')}
+                        R$ {Number(opData.requestedValue || 1000).toLocaleString('pt-BR')}
                       </span>
                       {!limitLoading && (
                         <div className="text-[10px] text-muted-foreground mt-0.5">
@@ -774,10 +774,10 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
                     </div>
                   </div>
                   <Slider
-                    min={5000}
+                    min={1000}
                     max={500000}
                     step={1000}
-                    value={[Number(opData.requestedValue) || 5000]}
+                    value={[Number(opData.requestedValue) || 1000]}
                     onValueChange={(v) => setOpData({ ...opData, requestedValue: v[0].toString() })}
                   />
                 </div>

@@ -149,7 +149,7 @@ export default function CcbDigital() {
             </h1>
             <p className="text-lg text-white/80 leading-relaxed">
               Antecipação imediata com simulação em tempo real e aprovação bancária direto do seu
-              painel. Crédito rápido, sem burocracia, para valores a partir de R$ 5.000.
+              painel. Crédito rápido, sem burocracia, para valores a partir de R$ 1.000.
             </p>
           </div>
           <div className="hidden md:flex flex-col gap-4 bg-white/5 p-6 rounded-xl border border-white/10 backdrop-blur-sm min-w-[280px]">
