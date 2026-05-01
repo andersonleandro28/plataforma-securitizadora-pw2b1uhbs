@@ -32,6 +32,7 @@ import { toast } from 'sonner'
 import { useNavigate } from 'react-router-dom'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { formatDate } from '@/lib/utils'
+import { useCheckPermission } from '@/hooks/use-check-permission'
 
 export default function Investments() {
   const { profile, user } = useAuth()
@@ -45,6 +46,7 @@ export default function Investments() {
   const [saving, setSaving] = useState(false)
   const [activeBank, setActiveBank] = useState<any>(null)
   const [subscriptionStep, setSubscriptionStep] = useState<1 | 2>(1)
+  const { isAllowed } = useCheckPermission('investor')
 
   const fetchData = async () => {
     setLoading(true)
@@ -115,6 +117,16 @@ export default function Investments() {
     setAcceptedTerms(false)
     setSubscriptionStep(1)
   }
+
+  if (isAllowed === null) {
+    return (
+      <div className="flex h-[50vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (isAllowed === false) return null
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up pb-10">

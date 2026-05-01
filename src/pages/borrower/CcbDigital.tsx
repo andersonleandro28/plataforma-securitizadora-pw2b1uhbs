@@ -32,6 +32,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
+import { useCheckPermission } from '@/hooks/use-check-permission'
 
 export default function CcbDigital() {
   const { user } = useAuth()
@@ -41,6 +42,7 @@ export default function CcbDigital() {
   const [uploading, setUploading] = useState<string | null>(null)
 
   const [reviewModal, setReviewModal] = useState<any>(null)
+  const { isAllowed } = useCheckPermission('borrower')
 
   const fetchData = async () => {
     if (!user) return
@@ -134,6 +136,16 @@ export default function CcbDigital() {
       toast.error('Erro ao aceitar proposta: ' + e.message)
     }
   }
+
+  if (isAllowed === null) {
+    return (
+      <div className="flex h-[50vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (isAllowed === false) return null
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 animate-fade-in-up pb-10">
