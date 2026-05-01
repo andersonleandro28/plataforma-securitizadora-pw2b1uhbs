@@ -1,7 +1,9 @@
-import { ReactNode, useEffect, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { ReactNode, useEffect, useState, useRef } from 'react'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth, AppRole } from '@/hooks/use-auth'
 import { Loader2 } from 'lucide-react'
+import { supabase } from '@/lib/supabase/client'
+import { toast } from 'sonner'
 
 interface RoleGuardProps {
   children: ReactNode
@@ -9,8 +11,13 @@ interface RoleGuardProps {
 }
 
 export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
-  const { activeRole, loading } = useAuth()
+  const { activeRole, loading, user, signOut } = useAuth()
   const [isSafeToRender, setIsSafeToRender] = useState(false)
+  const [isValidating, setIsValidating] = useState(false)
+
+  const location = useLocation()
+  const navigate = useNavigate()
+  const lastValidatedPath = useRef<string | null>(null)
 
   useEffect(() => {
     let mounted = true
@@ -47,7 +54,88 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
     }
   }, [])
 
-  if (loading || !isSafeToRender) {
+  useEffect(() => {
+    let mounted = true
+
+    const validatePermissions = async () => {
+      if (!user) return
+
+      // Skip if we already validated this exact path and we are not forcing it
+      if (lastValidatedPath.current === location.pathname) {
+        return
+      }
+
+      setIsValidating(true)
+
+      try {
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('role, is_admin, is_staff, is_investor, is_borrower, is_blocked')
+          .eq('id', user.id)
+          .maybeSingle()
+
+        if (error || !profile) {
+          if (mounted) {
+            toast.error('Suas permissões foram alteradas. Faça login novamente.')
+            await signOut()
+            navigate('/login', { replace: true })
+          }
+          return
+        }
+
+        if (profile.is_blocked) {
+          if (mounted) {
+            toast.error('Seu acesso à plataforma foi temporariamente suspenso.')
+            await signOut()
+            navigate('/login', { replace: true })
+          }
+          return
+        }
+
+        const roles: AppRole[] = []
+        const isSuperAdmin = user.email === 'andersonleandro28@gmail.com'
+
+        if (profile.is_admin || profile.role === 'admin' || isSuperAdmin) roles.push('admin')
+        if (profile.is_staff || profile.role === 'staff') roles.push('staff')
+        if (profile.is_investor || profile.role === 'investor') roles.push('investor')
+        if (profile.is_borrower || profile.role === 'borrower') roles.push('borrower')
+
+        if (roles.length === 0 && isSuperAdmin) {
+          roles.push('admin')
+        }
+
+        // If the current active role is no longer in the user's valid roles
+        if (activeRole && !roles.includes(activeRole)) {
+          if (mounted) {
+            toast.error('Suas permissões foram alteradas. Faça login novamente.')
+            await signOut()
+            navigate('/login', { replace: true })
+          }
+          return
+        }
+
+        if (mounted) {
+          lastValidatedPath.current = location.pathname
+        }
+      } catch (err) {
+        console.error('Validation error:', err)
+      } finally {
+        if (mounted) {
+          setIsValidating(false)
+        }
+      }
+    }
+
+    if (isSafeToRender && !loading && user) {
+      validatePermissions()
+    }
+
+    return () => {
+      mounted = false
+    }
+  }, [location.pathname, user, isSafeToRender, loading, activeRole, signOut, navigate])
+
+  if (loading || !isSafeToRender || isValidating) {
     return (
       <div className="flex h-[80vh] w-full items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
