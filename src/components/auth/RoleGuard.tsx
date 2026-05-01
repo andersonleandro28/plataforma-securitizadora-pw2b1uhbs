@@ -95,21 +95,41 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
         const roles: AppRole[] = []
         const isSuperAdmin = user.email === 'andersonleandro28@gmail.com'
 
-        if (profile.is_admin || profile.role === 'admin' || isSuperAdmin) roles.push('admin')
-        if (profile.is_staff || profile.role === 'staff') roles.push('staff')
-        if (profile.is_investor || profile.role === 'investor') roles.push('investor')
-        if (profile.is_borrower || profile.role === 'borrower') roles.push('borrower')
+        const isAdmin = profile.is_admin || profile.role === 'admin' || isSuperAdmin
+        const isStaff = profile.is_staff || profile.role === 'staff'
+
+        if (isAdmin) roles.push('admin')
+        if (isStaff) roles.push('staff')
+        if (profile.is_investor || profile.role === 'investor' || isAdmin || isStaff)
+          roles.push('investor')
+        if (profile.is_borrower || profile.role === 'borrower' || isAdmin || isStaff)
+          roles.push('borrower')
 
         if (roles.length === 0 && isSuperAdmin) {
           roles.push('admin')
+          roles.push('investor')
+          roles.push('borrower')
         }
 
         // If the current active role is no longer in the user's valid roles
         if (activeRole && !roles.includes(activeRole)) {
           if (mounted) {
-            toast.error('Suas permissões foram alteradas. Faça login novamente.')
-            await signOut()
-            navigate('/login', { replace: true })
+            toast.error(
+              'Você não tem permissão para acessar esta área. Redirecionando para seu dashboard...',
+            )
+
+            if (roles.length > 0) {
+              const fallbackRole = roles.includes('admin')
+                ? 'admin'
+                : roles.includes('staff')
+                  ? 'staff'
+                  : roles[0]
+              sessionStorage.setItem('activeRole', fallbackRole)
+              window.location.href = '/'
+            } else {
+              await signOut()
+              navigate('/login', { replace: true })
+            }
           }
           return
         }
@@ -143,9 +163,22 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
     )
   }
 
-  if (!activeRole || !allowedRoles.includes(activeRole)) {
+  if (!activeRole) {
     return <Navigate to="/" replace />
   }
 
+  if (!allowedRoles.includes(activeRole)) {
+    return <RedirectWithToast />
+  }
+
   return <>{children}</>
+}
+
+function RedirectWithToast() {
+  useEffect(() => {
+    toast.error(
+      'Você não tem permissão para acessar esta área. Redirecionando para seu dashboard...',
+    )
+  }, [])
+  return <Navigate to="/" replace />
 }

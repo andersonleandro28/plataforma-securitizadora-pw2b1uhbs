@@ -158,13 +158,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
             const isSuperAdmin = currentUser.email === 'andersonleandro28@gmail.com'
 
-            if (p.is_admin || p.role === 'admin' || isSuperAdmin) roles.push('admin')
-            if (p.is_staff || p.role === 'staff') roles.push('staff')
-            if (p.is_investor || p.role === 'investor') roles.push('investor')
-            if (p.is_borrower || p.role === 'borrower') roles.push('borrower')
+            const isAdmin = p.is_admin || p.role === 'admin' || isSuperAdmin
+            const isStaff = p.is_staff || p.role === 'staff'
+
+            if (isAdmin) roles.push('admin')
+            if (isStaff) roles.push('staff')
+            if (p.is_investor || p.role === 'investor' || isAdmin || isStaff) roles.push('investor')
+            if (p.is_borrower || p.role === 'borrower' || isAdmin || isStaff) roles.push('borrower')
 
             if (roles.length === 0 && isSuperAdmin) {
               roles.push('admin')
+              roles.push('investor')
+              roles.push('borrower')
             }
 
             const uniqueRoles = Array.from(new Set(roles))
