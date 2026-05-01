@@ -22,7 +22,9 @@ import {
   AlertCircle,
   Banknote,
   FileSignature,
+  Loader2,
 } from 'lucide-react'
+import { useCheckPermission } from '@/hooks/use-check-permission'
 
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
@@ -57,6 +59,7 @@ const PendingSignatureBanner = ({
 
 export default function BorrowerDashboard() {
   const { user, profile } = useAuth()
+  const { isAllowed } = useCheckPermission('borrower')
   const [pendingSignatures, setPendingSignatures] = useState<any[]>([])
   const { limit, used, available, loading: limitLoading } = useBorrowerLimit(user?.id)
   const [stats, setStats] = useState({
@@ -139,6 +142,18 @@ export default function BorrowerDashboard() {
     if (['pago', 'liquidado'].includes(status)) return 4
     if (['reprovado', 'cancelado'].includes(status)) return -1 // Error state
     return 0
+  }
+
+  if (isAllowed === null) {
+    return (
+      <div className="flex h-[50vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  if (isAllowed === false) {
+    return null
   }
 
   return (

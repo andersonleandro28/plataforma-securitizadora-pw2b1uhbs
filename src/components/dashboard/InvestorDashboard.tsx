@@ -22,6 +22,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase/client'
+import { useCheckPermission } from '@/hooks/use-check-permission'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import {
   Table,
@@ -147,6 +148,7 @@ const calculateInvestmentMetrics = (inv: any) => {
 export default function InvestorDashboard() {
   const { profile, user } = useAuth()
   const navigate = useNavigate()
+  const { isAllowed } = useCheckPermission('investor')
   const [loading, setLoading] = useState(true)
   const [myInvestments, setMyInvestments] = useState<any[]>([])
   const [myRedemptions, setMyRedemptions] = useState<any[]>([])
@@ -474,12 +476,18 @@ export default function InvestorDashboard() {
     }
   }
 
-  if (loading)
+  if (isAllowed === null || loading) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="flex h-[50vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     )
+  }
+
+  if (isAllowed === false) {
+    return null
+  }
+
   if (!profile?.document_number)
     return (
       <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up">

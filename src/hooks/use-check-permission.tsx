@@ -44,14 +44,20 @@ export function useCheckPermission(requiredRole: 'investor' | 'borrower') {
 
         if (requiredRole === 'investor' && !isInvestor) {
           toast.error('Você não tem permissão para acessar esta área.')
-          navigate('/')
+          if (isBorrower) {
+            sessionStorage.setItem('activeRole', 'borrower')
+          }
+          window.location.href = '/'
           if (mounted) setIsAllowed(false)
           return
         }
 
         if (requiredRole === 'borrower' && !isBorrower) {
           toast.error('Você não tem permissão para acessar esta área.')
-          navigate('/')
+          if (isInvestor) {
+            sessionStorage.setItem('activeRole', 'investor')
+          }
+          window.location.href = '/'
           if (mounted) setIsAllowed(false)
           return
         }
