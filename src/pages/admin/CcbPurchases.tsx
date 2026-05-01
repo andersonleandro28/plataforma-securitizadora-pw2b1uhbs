@@ -94,23 +94,18 @@ export default function CcbPurchases() {
     }
 
     // Filtro case-insensitive para os status
-    const allowedStatuses = [
-      'aprovado',
-      'aprovada',
-      'aceite_tomador',
-      'aguardando_formalizacao',
-      'formalizado',
-      'aguardando_liquidacao',
-      'liquidado',
-      'aprovada_bdigital',
-      'comprada_bdigital',
-      'ativa',
-    ]
-
     const c = (cRaw || []).filter((item) => {
       const statusLower = String(item.status || '').toLowerCase()
+
+      // Excluir expressamente as que já estão como "comprada_bdigital"
+      if (statusLower === 'comprada_bdigital') return false
+
       return (
-        allowedStatuses.includes(statusLower) ||
+        statusLower === 'disponível' ||
+        statusLower === 'disponivel' ||
+        statusLower === 'aprovada' ||
+        statusLower === 'aprovado' ||
+        statusLower === 'aceite_tomador' ||
         statusLower.includes('aprovad') ||
         statusLower.includes('aceite')
       )
@@ -440,13 +435,38 @@ export default function CcbPurchases() {
                 <Label>Simulação CCB (Lookup)</Label>
                 <Select
                   value={form.ccb_id}
-                  onValueChange={(v) => setForm({ ...form, ccb_id: v })}
+                  onValueChange={(v) => {
+                    const selected = ccbs.find((c) => c.id === v)
+                    let pmt = ''
+                    if (selected) {
+                      const sim = selected.operation_data?.simulation
+                      if (sim?.installment_value) {
+                        pmt = String(sim.installment_value)
+                      } else if (selected.requested_value && selected.term_months) {
+                        pmt = String((selected.requested_value / selected.term_months).toFixed(2))
+                      }
+                    }
+                    setForm({
+                      ...form,
+                      ccb_id: v,
+                      acquisition_value: selected
+                        ? String(selected.requested_value || '')
+                        : form.acquisition_value,
+                      boleto_count: selected
+                        ? String(selected.term_months || '')
+                        : form.boleto_count,
+                      boleto_unit_value: selected ? pmt : form.boleto_unit_value,
+                      ccb_created_at: selected?.created_at
+                        ? selected.created_at.split('T')[0]
+                        : form.ccb_created_at,
+                    })
+                  }}
                   disabled={!!editingId}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione a operação..." />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[9999] relative">
                     {ccbs.map((c) => {
                       const tomadorName = c.profiles?.full_name || c.profiles?.pj_company_name
                       const displayName = tomadorName ? tomadorName : `Tomador ID: ${c.user_id}`
