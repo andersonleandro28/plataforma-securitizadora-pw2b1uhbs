@@ -62,6 +62,9 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: any }>
   signOut: () => Promise<{ error: any }>
   loading: boolean
+  isLoadingProfile: boolean
+  profileError: string | null
+  retryLoadProfile: () => void
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -84,6 +87,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [availableRoles, setAvailableRoles] = useState<AppRole[]>([])
 
   const [loadingSession, setLoadingSession] = useState(true)
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true)
+  const [profileError, setProfileError] = useState<string | null>(null)
 
   const setActiveRole = useCallback((role: AppRole | null) => {
     setActiveRoleState(role)
@@ -123,10 +128,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => subscription.unsubscribe()
   }, [])
 
-  useEffect(() => {
-    let mounted = true
-
-    const loadProfile = async (currentUser: User) => {
+  const loadProfile = useCallback(
+    async (currentUser: User) => {
+      setIsLoadingProfile(true)
+      setProfileError(null)
       try {
         const { data, error } = await supabase
           .from('profiles')
@@ -136,74 +141,89 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         if (error && (error.code === 'PGRST301' || error.code === '401')) {
           supabase.auth.signOut().catch(() => {})
+          throw error
         }
 
-        if (mounted) {
-          const p = data ? (data as Profile) : null
+        if (error) throw error
 
-          if (p?.is_blocked) {
-            toast.error('Seu acesso à plataforma foi temporariamente suspenso.')
-            supabase.auth.signOut().catch(() => {})
-            setProfile(null)
-            setActiveRoleState(null)
-            setAvailableRoles([])
-            setProfileLoadedFor(null)
-            return
+        const p = data ? (data as Profile) : null
+
+        if (p?.is_blocked) {
+          toast.error('Seu acesso à plataforma foi temporariamente suspenso.')
+          supabase.auth.signOut().catch(() => {})
+          setProfile(null)
+          setActiveRole(null)
+          setAvailableRoles([])
+          setProfileLoadedFor(null)
+          setIsLoadingProfile(false)
+          return
+        }
+
+        setProfile(p)
+
+        if (p) {
+          const roles: AppRole[] = []
+
+          const isSuperAdmin = currentUser.email === 'andersonleandro28@gmail.com'
+
+          const isAdmin = p.is_admin || p.role === 'admin' || isSuperAdmin
+          const isStaff = p.is_staff || p.role === 'staff'
+
+          if (isAdmin) roles.push('admin')
+          if (isStaff) roles.push('staff')
+          if (p.is_investor || p.role === 'investor' || isAdmin || isStaff) roles.push('investor')
+          if (p.is_borrower || p.role === 'borrower' || isAdmin || isStaff) roles.push('borrower')
+
+          if (roles.length === 0 && isSuperAdmin) {
+            roles.push('admin')
+            roles.push('investor')
+            roles.push('borrower')
           }
 
-          setProfile(p)
+          const uniqueRoles = Array.from(new Set(roles))
+          setAvailableRoles(uniqueRoles)
 
-          if (p) {
-            const roles: AppRole[] = []
+          const currentActive = sessionStorage.getItem('activeRole') as AppRole | null
 
-            const isSuperAdmin = currentUser.email === 'andersonleandro28@gmail.com'
-
-            const isAdmin = p.is_admin || p.role === 'admin' || isSuperAdmin
-            const isStaff = p.is_staff || p.role === 'staff'
-
-            if (isAdmin) roles.push('admin')
-            if (isStaff) roles.push('staff')
-            if (p.is_investor || p.role === 'investor' || isAdmin || isStaff) roles.push('investor')
-            if (p.is_borrower || p.role === 'borrower' || isAdmin || isStaff) roles.push('borrower')
-
-            if (roles.length === 0 && isSuperAdmin) {
-              roles.push('admin')
-              roles.push('investor')
-              roles.push('borrower')
-            }
-
-            const uniqueRoles = Array.from(new Set(roles))
-            setAvailableRoles(uniqueRoles)
-
-            const currentActive = sessionStorage.getItem('activeRole') as AppRole | null
-
-            if (uniqueRoles.length === 1) {
-              setActiveRole(uniqueRoles[0])
-            } else if (uniqueRoles.length > 1) {
-              if (currentActive && uniqueRoles.includes(currentActive)) {
-                setActiveRole(currentActive)
-              } else {
-                setActiveRole(null)
-              }
+          if (uniqueRoles.length === 1) {
+            setActiveRole(uniqueRoles[0])
+          } else if (uniqueRoles.length > 1) {
+            if (currentActive && uniqueRoles.includes(currentActive)) {
+              setActiveRole(currentActive)
             } else {
               setActiveRole(null)
             }
           } else {
-            if (currentUser.email === 'andersonleandro28@gmail.com') {
-              setAvailableRoles(['admin'])
-              setActiveRole('admin')
-            } else {
-              setAvailableRoles([])
-              setActiveRole(null)
-            }
+            setActiveRole(null)
           }
-
-          setProfileLoadedFor(currentUser.id)
+        } else {
+          if (currentUser.email === 'andersonleandro28@gmail.com') {
+            setAvailableRoles(['admin'])
+            setActiveRole('admin')
+          } else {
+            setAvailableRoles([])
+            setActiveRole(null)
+          }
         }
-      } catch (err) {
-        if (mounted) setProfileLoadedFor(currentUser.id)
+
+        setProfileLoadedFor(currentUser.id)
+        setIsLoadingProfile(false)
+      } catch (err: any) {
+        setProfileError(err.message || 'Erro ao carregar perfil.')
+        setIsLoadingProfile(false)
       }
+    },
+    [setActiveRole],
+  )
+
+  const retryLoadProfile = useCallback(() => {
+    if (user) {
+      loadProfile(user)
     }
+  }, [user, loadProfile])
+
+  useEffect(() => {
+    let mounted = true
 
     if (user && profileLoadedFor !== user.id) {
       loadProfile(user)
@@ -213,7 +233,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setAvailableRoles([])
         setActiveRole(null)
         setProfileLoadedFor(null)
+        setIsLoadingProfile(false)
       }
+    } else if (!user) {
+      if (mounted) setIsLoadingProfile(false)
+    } else if (user && profileLoadedFor === user.id) {
+      if (mounted) setIsLoadingProfile(false)
     }
 
     const handleProfileUpdate = () => {
@@ -225,7 +250,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       mounted = false
       window.removeEventListener('profile-updated', handleProfileUpdate)
     }
-  }, [user, profileLoadedFor, setActiveRole])
+  }, [user, profileLoadedFor, loadProfile, setActiveRole])
 
   const signUp = async (email: string, password: string, fullName?: string) => {
     try {
@@ -261,7 +286,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }
 
-  const loading = loadingSession || (!!user && profileLoadedFor !== user.id)
+  const loading = loadingSession
 
   return (
     <AuthContext.Provider
@@ -276,6 +301,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         signIn,
         signOut,
         loading,
+        isLoadingProfile,
+        profileError,
+        retryLoadProfile,
       }}
     >
       {children}

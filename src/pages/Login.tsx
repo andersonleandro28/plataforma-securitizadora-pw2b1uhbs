@@ -15,7 +15,8 @@ import { toast } from 'sonner'
 import { Link, useNavigate, Navigate, useLocation } from 'react-router-dom'
 
 export default function Login() {
-  const { user, loading, signIn } = useAuth()
+  const { user, loading, isLoadingProfile, profileError, retryLoadProfile, signOut, signIn } =
+    useAuth()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -34,7 +35,37 @@ export default function Login() {
     )
   }
 
-  if (user) return <Navigate to={from} replace />
+  if (user && isLoadingProfile) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
+        <Loader2 className="animate-spin h-8 w-8 text-primary" />
+        <p className="text-sm text-muted-foreground animate-pulse">Carregando seu perfil...</p>
+      </div>
+    )
+  }
+
+  if (user && profileError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
+        <div className="text-destructive font-semibold text-lg text-center px-4">
+          Erro ao carregar perfil. Tente fazer login novamente.
+        </div>
+        <p className="text-sm text-muted-foreground text-center max-w-sm mb-4 px-4">
+          {profileError}
+        </p>
+        <div className="flex gap-4">
+          <Button onClick={retryLoadProfile}>Tentar Novamente</Button>
+          <Button variant="outline" onClick={() => signOut()}>
+            Sair
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (user && !isLoadingProfile && !profileError) {
+    return <Navigate to={from} replace />
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -72,7 +103,8 @@ export default function Login() {
         toast.error(errorMessage)
       } else {
         toast.success('Login realizado com sucesso!')
-        navigate(from, { replace: true })
+        // O redirecionamento agora é reativo e gerenciado pelo render
+        // Assim garantimos que o profile e session foram totalmente carregados
       }
     } catch (error: any) {
       toast.error('Ocorreu um erro inesperado ao tentar fazer login. Tente novamente.')

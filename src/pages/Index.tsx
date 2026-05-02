@@ -8,14 +8,27 @@ import { Link } from 'react-router-dom'
 import { AlertCircle, Clock, Loader2 } from 'lucide-react'
 
 export default function Index() {
-  const { profile, activeRole, user, loading, availableRoles } = useAuth()
+  const { profile, activeRole, user, loading, availableRoles, isLoadingProfile, profileError } =
+    useAuth()
 
   // Bloqueio de renderização estrutural: aguarda o carregamento do perfil real do banco
-  if (loading) {
+  if (loading || isLoadingProfile) {
     return (
       <div className="flex h-[80vh] w-full flex-col items-center justify-center gap-4">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
         <p className="text-sm text-muted-foreground animate-pulse">Validando permissões...</p>
+      </div>
+    )
+  }
+
+  if (profileError) {
+    return (
+      <div className="flex h-[80vh] w-full flex-col items-center justify-center gap-4 text-center">
+        <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mb-2">
+          <AlertCircle className="w-8 h-8 text-destructive" />
+        </div>
+        <h2 className="text-xl font-semibold text-destructive">Erro ao carregar permissões</h2>
+        <p className="text-muted-foreground max-w-md">{profileError}</p>
       </div>
     )
   }
