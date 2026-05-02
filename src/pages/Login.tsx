@@ -27,8 +27,9 @@ export default function Login() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
         <Loader2 className="animate-spin h-8 w-8 text-primary" />
+        <p className="text-sm text-muted-foreground animate-pulse">Verificando sessão...</p>
       </div>
     )
   }

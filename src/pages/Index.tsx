@@ -5,14 +5,40 @@ import BorrowerDashboard from '@/components/dashboard/BorrowerDashboard'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Link } from 'react-router-dom'
-import { AlertCircle, Clock } from 'lucide-react'
+import { AlertCircle, Clock, Loader2 } from 'lucide-react'
 
 export default function Index() {
-  const { profile, activeRole, user } = useAuth()
+  const { profile, activeRole, user, loading, availableRoles } = useAuth()
 
-  // Força o papel de admin imediatamente para não piscar a tela de erro enquanto o activeRole carrega
+  // Bloqueio de renderização estrutural: aguarda o carregamento do perfil real do banco
+  if (loading) {
+    return (
+      <div className="flex h-[80vh] w-full flex-col items-center justify-center gap-4">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground animate-pulse">Validando permissões...</p>
+      </div>
+    )
+  }
+
   const isSuperAdmin = user?.email === 'andersonleandro28@gmail.com'
-  const effectiveRole = isSuperAdmin && !activeRole ? 'admin' : activeRole
+
+  // Validação estrita do papel: cruzamento com o availableRoles real do banco de dados
+  let effectiveRole = activeRole
+
+  if (isSuperAdmin && !effectiveRole) {
+    effectiveRole = 'admin'
+  } else if (
+    effectiveRole &&
+    availableRoles.length > 0 &&
+    !availableRoles.includes(effectiveRole)
+  ) {
+    // Corrige ativamente a sessão caso o activeRole não corresponda aos papéis autorizados
+    effectiveRole = availableRoles.includes('admin')
+      ? 'admin'
+      : availableRoles.includes('staff')
+        ? 'staff'
+        : availableRoles[0]
+  }
 
   const renderKycBanner = () => {
     if (!profile) return null
