@@ -4,8 +4,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, x-supabase-client-platform, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, x-supabase-client-platform, apikey, content-type',
 }
 
 Deno.serve(async (req: Request) => {
@@ -18,9 +17,8 @@ Deno.serve(async (req: Request) => {
     const record = payload.record || payload
 
     if (!record || !record.user_id) {
-      return new Response(JSON.stringify({ error: 'Registro não encontrado no payload' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      return new Response(JSON.stringify({ error: 'Registro não encontrado no payload' }), { 
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       })
     }
 
@@ -29,23 +27,17 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     // Fetch user details to get the email address
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.admin.getUserById(record.user_id)
+    const { data: { user }, error } = await supabase.auth.admin.getUserById(record.user_id)
 
     if (error || !user) {
       console.error('Erro ao buscar usuário:', error)
-      return new Response(JSON.stringify({ error: 'Usuário não encontrado' }), {
-        status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      return new Response(JSON.stringify({ error: 'Usuário não encontrado' }), { 
+        status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       })
     }
 
     const userEmail = user.email
-    const logDate = new Date(record.created_at).toLocaleString('pt-BR', {
-      timeZone: 'America/Sao_Paulo',
-    })
+    const logDate = new Date(record.created_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
 
     const resendApiKey = Deno.env.get('RESEND_API_KEY')
 
@@ -54,7 +46,7 @@ Deno.serve(async (req: Request) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${resendApiKey}`,
+          'Authorization': `Bearer ${resendApiKey}`
         },
         body: JSON.stringify({
           from: 'Plataforma Securitizadora <contato@seaconnection.api.br>',
@@ -69,8 +61,8 @@ Deno.serve(async (req: Request) => {
               <br/>
               <p>Atenciosamente,<br/>Equipe Plataforma Securitizadora</p>
             </div>
-          `,
-        }),
+          `
+        })
       })
 
       if (!res.ok) {
@@ -83,24 +75,20 @@ Deno.serve(async (req: Request) => {
       console.log('--- NOTIFICAÇÃO DE LOGIN ---')
       console.log(`Para: ${userEmail}`)
       console.log(`Assunto: Alerta de Segurança - Novo Acesso`)
-      console.log(
-        `Mensagem: Um novo acesso foi detectado em sua conta na Plataforma Securitizadora.`,
-      )
+      console.log(`Mensagem: Um novo acesso foi detectado em sua conta na Plataforma Securitizadora.`)
       console.log(`Data/Hora: ${logDate}`)
       console.log('----------------------------')
     }
 
-    return new Response(
-      JSON.stringify({ success: true, message: 'Notificação de login disparada com sucesso.' }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      },
-    )
+    return new Response(JSON.stringify({ success: true, message: 'Notificação de login disparada com sucesso.' }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+
   } catch (error) {
     console.error('Erro interno:', error)
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Erro interno' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 })
