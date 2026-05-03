@@ -63,6 +63,12 @@ export default function Accounting() {
       if (movErr) throw movErr
       if (saldoErr && saldoErr.code !== 'PGRST116') throw saldoErr
 
+      // Log para auditoria de frontend confirmando que não há filtros restritivos na requisição
+      console.log('Contabilidade: Dados carregados com sucesso.', {
+        totalMovimentacoes: movs?.length || 0,
+        saldoCaixa: saldo?.saldo_atual || 0,
+      })
+
       setMovimentacoes(movs || [])
       setSaldoCaixa(saldo?.saldo_atual || 0)
 
