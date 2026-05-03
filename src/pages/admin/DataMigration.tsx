@@ -46,12 +46,10 @@ export default function DataMigration() {
   const checkExistingData = async () => {
     try {
       setChecking(true)
-      const { count, error } = await supabase
-        .from('movimentacoes_caixa')
-        .select('*', { count: 'exact', head: true })
+      const { data, error } = await supabase.from('movimentacoes_caixa').select('id').limit(1)
 
       if (error) throw error
-      if (count && count > 0) {
+      if (data && data.length > 0) {
         setHasData(true)
       }
     } catch (err: any) {
