@@ -16,7 +16,6 @@ import Debentures from './pages/Debentures'
 import Investments from './pages/Investments'
 import InvestmentCheckout from './pages/investor/InvestmentCheckout'
 import Trustee from './pages/Trustee'
-import Treasury from './pages/Treasury'
 import Profile from './pages/Profile'
 import Users from './pages/admin/Users'
 import FinancialParameters from './pages/admin/FinancialParameters'
@@ -293,15 +292,6 @@ const App = () => (
                 </RoleGuard>
               }
             />
-            <Route
-              path="/treasury"
-              element={
-                <RoleGuard allowedRoles={['admin', 'staff']}>
-                  <Treasury />
-                </RoleGuard>
-              }
-            />
-
             <Route
               path="/admin/users"
               element={

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card'
 import {
   Table,
@@ -9,279 +9,352 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { supabase } from '@/lib/supabase/client'
 import {
   Loader2,
-  Download,
   TrendingUp,
-  Landmark,
+  TrendingDown,
+  DollarSign,
   FileSpreadsheet,
-  Building,
-  ShieldCheck,
+  PieChart,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
 export default function Accounting() {
   const [loading, setLoading] = useState(true)
-  const [metrics, setMetrics] = useState({
-    totalReceitas: 0,
-    totalDespesas: 0,
-    impostosEstimados: 0,
-    lucroLiquido: 0,
-    dre: [] as any[],
-    darfs: [] as any[],
-  })
+  const [movimentacoes, setMovimentacoes] = useState<any[]>([])
+  const [saldoCaixa, setSaldoCaixa] = useState(0)
+
+  const [periodoInicio, setPeriodoInicio] = useState('')
+  const [periodoFim, setPeriodoFim] = useState('')
+  const [filtroTipo, setFiltroTipo] = useState('todos')
+  const [filtroCategoria, setFiltroCategoria] = useState('todas')
+  const [busca, setBusca] = useState('')
 
   useEffect(() => {
-    fetchAccountingData()
+    fetchData()
   }, [])
 
-  const fetchAccountingData = async () => {
+  const fetchData = async () => {
     try {
       setLoading(true)
-
-      const [
-        { data: operations },
-        { data: expenses },
-        { data: recebiveis },
-        { data: debentures },
-        { data: manuals },
-      ] = await Promise.all([
-        supabase
-          .from('credit_operations')
-          .select(
-            'id, face_value, requested_value, status, operation_calculations(iof_fixed_value, iof_daily_value, total_discounts)',
-          )
-          .in('status', ['liquidado', 'pago', 'aprovado']),
-        supabase.from('expenses').select('*').eq('status', 'paid'),
-        supabase.from('recebiveis_ccb').select('*'),
-        supabase.from('debentures').select('*'),
-        supabase.from('treasury_transactions').select('*'),
+      const [{ data: movs, error: movErr }, { data: saldo, error: saldoErr }] = await Promise.all([
+        supabase.from('movimentacoes_caixa').select('*').order('created_at', { ascending: false }),
+        supabase.from('saldo_caixa').select('saldo_atual').limit(1).maybeSingle(),
       ])
 
-      let receitas = 0
-      let receitasRecebiveis = 0
-      let ativoRecebiveis = 0
-      let provisaoTotal = 0
+      if (movErr) throw movErr
+      if (saldoErr && saldoErr.code !== 'PGRST116') throw saldoErr
 
-      recebiveis?.forEach((r) => {
-        receitasRecebiveis += Number(r.gross_profit || 0)
-        ativoRecebiveis += Number(r.boleto_count || 0) * Number(r.boleto_unit_value || 0)
-        provisaoTotal += Number(r.provision_amount || 0)
-      })
-      receitas += receitasRecebiveis
-
-      let passivoDebentures = 0
-      debentures?.forEach((d) => {
-        passivoDebentures += Number(d.total_volume || 0)
-      })
-      let impostosIOF = 0
-
-      operations?.forEach((op) => {
-        const calc = Array.isArray(op.operation_calculations)
-          ? op.operation_calculations[0]
-          : op.operation_calculations
-        if (calc) {
-          const iof = (calc.iof_fixed_value || 0) + (calc.iof_daily_value || 0)
-          receitas += (calc.total_discounts || 0) - iof
-          impostosIOF += iof
-        } else {
-          receitas += Number(op.face_value) - Number(op.requested_value)
-        }
-      })
-
-      let despesas = 0
-      const despesasPorCategoria: Record<string, number> = {}
-      expenses?.forEach((exp) => {
-        const val = Number(exp.amount)
-        despesas += val
-        despesasPorCategoria[exp.category] = (despesasPorCategoria[exp.category] || 0) + val
-      })
-
-      const manualReceitasMap: Record<string, number> = {}
-      manuals?.forEach((m) => {
-        const val = Number(m.amount)
-        if (m.type === 'in') {
-          receitas += val
-          manualReceitasMap[m.category] = (manualReceitasMap[m.category] || 0) + val
-        } else {
-          despesas += val
-          despesasPorCategoria[m.category] = (despesasPorCategoria[m.category] || 0) + val
-        }
-      })
-
-      const lucroLiquido = receitas - despesas
-
-      const dre = [
-        {
-          label: 'Receita Bruta Operacional (Deságio + Taxas)',
-          value:
-            receitas - Object.values(manualReceitasMap).reduce((a, b) => a + b, 0) + impostosIOF,
-          type: 'receita',
-        },
-        ...Object.entries(manualReceitasMap).map(([cat, val]) => ({
-          label: `(+) Receita Manual: ${cat}`,
-          value: val,
-          type: 'receita',
-        })),
-        { label: '(-) Impostos Diretos (IOF Retido)', value: -impostosIOF, type: 'imposto' },
-        {
-          label: '(+) Receita Bruta Recebíveis CCB (Projetada)',
-          value: receitasRecebiveis,
-          type: 'receita',
-        },
-        { label: '= Receita Líquida Operacional', value: receitas, type: 'subtotal' },
-        ...Object.entries(despesasPorCategoria).map(([cat, val]) => ({
-          label: `(-) Despesa: ${cat}`,
-          value: -val,
-          type: 'despesa',
-        })),
-        { label: '= Lucro Líquido do Exercício', value: lucroLiquido, type: 'total' },
-      ]
-
-      const darfs = [
-        {
-          codigo: '3642',
-          descricao: 'IOF - Operações de Crédito (Retido)',
-          periodo: 'Mensal',
-          valor: impostosIOF,
-          status: 'Pendente',
-        },
-        {
-          codigo: '0473',
-          descricao: 'IRRF - Rendimentos',
-          periodo: 'Mensal',
-          valor: receitas * 0.015,
-          status: 'Pendente',
-        },
-      ]
-
-      setMetrics({
-        totalReceitas: receitas,
-        totalDespesas: despesas,
-        impostosEstimados: impostosIOF,
-        lucroLiquido,
-        dre,
-        darfs,
-        ativoRecebiveis,
-        passivoDebentures,
-        provisaoTotal,
-      } as any)
-    } catch (err) {
-      console.error(err)
-      toast.error('Erro ao carregar dados contábeis.')
+      setMovimentacoes(movs || [])
+      setSaldoCaixa(saldo?.saldo_atual || 0)
+    } catch (error: any) {
+      console.error(error)
+      toast.error('Erro ao carregar dados da contabilidade.')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleExportDRE = () => {
-    let csv = 'Rubrica,Valor\n'
-    metrics.dre.forEach((item) => {
-      csv += `"${item.label}",${item.value}\n`
+  const categoriasUnicas = useMemo(() => {
+    const cats = new Set<string>()
+    movimentacoes.forEach((m) => {
+      if (m.categoria) cats.add(m.categoria)
+    })
+    return Array.from(cats).sort()
+  }, [movimentacoes])
+
+  const dadosFiltrados = useMemo(() => {
+    let filtrado = movimentacoes
+
+    if (periodoInicio) {
+      filtrado = filtrado.filter(
+        (m) => new Date(m.created_at) >= new Date(periodoInicio + 'T00:00:00'),
+      )
+    }
+    if (periodoFim) {
+      filtrado = filtrado.filter(
+        (m) => new Date(m.created_at) <= new Date(periodoFim + 'T23:59:59'),
+      )
+    }
+    if (filtroTipo !== 'todos') {
+      filtrado = filtrado.filter((m) => m.tipo === filtroTipo)
+    }
+    if (filtroCategoria !== 'todas') {
+      filtrado = filtrado.filter((m) => m.categoria === filtroCategoria)
+    }
+    if (busca) {
+      const b = busca.toLowerCase()
+      filtrado = filtrado.filter(
+        (m) =>
+          m.descricao?.toLowerCase().includes(b) || m.referencia_numero?.toLowerCase().includes(b),
+      )
+    }
+    return filtrado
+  }, [movimentacoes, periodoInicio, periodoFim, filtroTipo, filtroCategoria, busca])
+
+  const { totalEntradas, totalSaidas, resultado } = useMemo(() => {
+    let ent = 0,
+      sai = 0
+    dadosFiltrados.forEach((m) => {
+      if (m.tipo === 'entrada') ent += Number(m.valor || 0)
+      if (m.tipo === 'saída') sai += Number(m.valor || 0)
+    })
+    return { totalEntradas: ent, totalSaidas: sai, resultado: ent - sai }
+  }, [dadosFiltrados])
+
+  const { receitas, despesas } = useMemo(() => {
+    const recs: Record<string, number> = {}
+    const desps: Record<string, number> = {}
+
+    dadosFiltrados.forEach((m) => {
+      const val = Number(m.valor || 0)
+      if (m.tipo === 'entrada') {
+        recs[m.categoria] = (recs[m.categoria] || 0) + val
+      } else if (m.tipo === 'saída') {
+        desps[m.categoria] = (desps[m.categoria] || 0) + val
+      }
+    })
+    return { receitas: recs, despesas: desps }
+  }, [dadosFiltrados])
+
+  const formatCurrency = (val: number) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
+
+  const handleExportCSV = () => {
+    let csv = 'Data,Tipo,Categoria,Descricao,Referencia,Valor,Saldo\n'
+    dadosFiltrados.forEach((item) => {
+      const data = new Date(item.created_at).toLocaleDateString('pt-BR')
+      const tipo = item.tipo
+      const cat = item.categoria || ''
+      const desc = `"${(item.descricao || '').replace(/"/g, '""')}"`
+      const ref = item.referencia_numero || ''
+      const val = item.valor
+      const saldo = item.saldo_novo || 0
+      csv += `${data},${tipo},${cat},${desc},${ref},${val},${saldo}\n`
     })
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `DRE_${new Date().toISOString().split('T')[0]}.csv`
+    a.download = `Livro_Caixa_${new Date().toISOString().split('T')[0]}.csv`
     a.click()
   }
 
-  const formatCurrency = (val: number) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
-
-  if (loading)
+  if (loading) {
     return (
-      <div className="flex justify-center py-12">
+      <div className="flex justify-center items-center h-64">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     )
+  }
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto animate-fade-in-up pb-10">
+    <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up pb-10">
       <div className="flex justify-between items-end">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Contabilidade Full-Cycle</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Contabilidade</h1>
           <p className="text-muted-foreground">
-            Painel Contador: Consolidação de Receitas, Despesas, DRE e Geração de DARFs.
+            Livro Caixa, DRE e Fluxo sincronizados com a Tesouraria.
           </p>
         </div>
-        <Button onClick={handleExportDRE} className="bg-emerald-600 hover:bg-emerald-700">
-          <FileSpreadsheet className="w-4 h-4 mr-2" /> Exportar SPED/DRE
+        <Button onClick={handleExportCSV} variant="outline" className="gap-2">
+          <FileSpreadsheet className="w-4 h-4" /> Exportar CSV
         </Button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
+        <Card className="border-l-4 border-l-emerald-500">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Receita Operacional Líquida
+            <CardTitle className="text-sm font-medium text-muted-foreground flex justify-between">
+              Entradas (Receitas) <TrendingUp className="w-4 h-4 text-emerald-500" />
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-emerald-600">
-              {formatCurrency(metrics.totalReceitas)}
+              {formatCurrency(totalEntradas)}
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-4 border-l-rose-500">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Despesas Totais (Pagas)
+            <CardTitle className="text-sm font-medium text-muted-foreground flex justify-between">
+              Saídas (Despesas) <TrendingDown className="w-4 h-4 text-rose-500" />
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-rose-600">
-              -{formatCurrency(metrics.totalDespesas)}
-            </div>
+            <div className="text-2xl font-bold text-rose-600">-{formatCurrency(totalSaidas)}</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card
+          className={`border-l-4 ${resultado >= 0 ? 'border-l-blue-500' : 'border-l-orange-500'}`}
+        >
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Tributos Retidos (IOF)
+            <CardTitle className="text-sm font-medium text-muted-foreground flex justify-between">
+              Resultado do Período <PieChart className="w-4 h-4" />
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-amber-600">
-              {formatCurrency(metrics.impostosEstimados)}
+            <div
+              className={`text-2xl font-bold ${resultado >= 0 ? 'text-blue-600' : 'text-orange-600'}`}
+            >
+              {formatCurrency(resultado)}
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-primary/5">
+        <Card className="bg-primary/5 border-primary border-l-4">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-primary">Lucro Líquido</CardTitle>
+            <CardTitle className="text-sm font-medium text-primary flex justify-between">
+              Saldo em Caixa <DollarSign className="w-4 h-4" />
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(metrics.lucroLiquido)}</div>
+            <div className="text-2xl font-bold text-primary">{formatCurrency(saldoCaixa)}</div>
           </CardContent>
         </Card>
       </div>
 
-      <Tabs defaultValue="dre" className="w-full">
-        <TabsList className="mb-6 grid w-full max-w-4xl grid-cols-4">
-          <TabsTrigger value="dre" className="flex items-center gap-2">
-            <TrendingUp className="w-4 h-4" /> DRE & Fluxo
-          </TabsTrigger>
-          <TabsTrigger value="fiscal" className="flex items-center gap-2">
-            <Landmark className="w-4 h-4" /> Fiscal & DARFs
-          </TabsTrigger>
-          <TabsTrigger value="patrimonial" className="flex items-center gap-2">
-            <Building className="w-4 h-4" /> Balanço Patrimonial
-          </TabsTrigger>
-          <TabsTrigger value="compliance" className="flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4" /> Compliance & Provisões
-          </TabsTrigger>
+      <Card>
+        <CardContent className="p-4 flex flex-wrap gap-4 items-end">
+          <div className="grid gap-1 flex-1 min-w-[200px]">
+            <span className="text-xs font-medium text-muted-foreground">Busca</span>
+            <Input
+              placeholder="Buscar por descrição..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+            />
+          </div>
+          <div className="grid gap-1">
+            <span className="text-xs font-medium text-muted-foreground">Data Inicial</span>
+            <Input
+              type="date"
+              value={periodoInicio}
+              onChange={(e) => setPeriodoInicio(e.target.value)}
+            />
+          </div>
+          <div className="grid gap-1">
+            <span className="text-xs font-medium text-muted-foreground">Data Final</span>
+            <Input type="date" value={periodoFim} onChange={(e) => setPeriodoFim(e.target.value)} />
+          </div>
+          <div className="grid gap-1">
+            <span className="text-xs font-medium text-muted-foreground">Tipo</span>
+            <Select value={filtroTipo} onValueChange={setFiltroTipo}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos</SelectItem>
+                <SelectItem value="entrada">Entradas</SelectItem>
+                <SelectItem value="saída">Saídas</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-1">
+            <span className="text-xs font-medium text-muted-foreground">Categoria</span>
+            <Select value={filtroCategoria} onValueChange={setFiltroCategoria}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas as Categorias</SelectItem>
+                {categoriasUnicas.map((c) => (
+                  <SelectItem key={c} value={c} className="capitalize">
+                    {c.replace(/_/g, ' ')}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Tabs defaultValue="movimentacoes" className="w-full">
+        <TabsList className="mb-4">
+          <TabsTrigger value="movimentacoes">Livro Caixa (Tabela)</TabsTrigger>
+          <TabsTrigger value="dre">DRE e Fluxo</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="movimentacoes">
+          <Card>
+            <CardHeader>
+              <CardTitle>Histórico de Movimentações</CardTitle>
+              <CardDescription>
+                Visualização detalhada de todas as entradas e saídas sincronizadas com o saldo.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-md border max-h-[600px] overflow-auto">
+                <Table>
+                  <TableHeader className="sticky top-0 bg-background z-10">
+                    <TableRow>
+                      <TableHead>Data</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Categoria</TableHead>
+                      <TableHead>Descrição</TableHead>
+                      <TableHead className="text-right">Valor</TableHead>
+                      <TableHead className="text-right">Saldo Final</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {dadosFiltrados.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                          Nenhuma movimentação encontrada para os filtros selecionados.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      dadosFiltrados.map((m) => (
+                        <TableRow key={m.id}>
+                          <TableCell className="whitespace-nowrap">
+                            {new Date(m.created_at).toLocaleString('pt-BR')}
+                          </TableCell>
+                          <TableCell>
+                            <span
+                              className={`px-2 py-1 rounded text-xs font-medium ${m.tipo === 'entrada' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}
+                            >
+                              {m.tipo.toUpperCase()}
+                            </span>
+                          </TableCell>
+                          <TableCell className="capitalize text-muted-foreground text-sm">
+                            {m.categoria?.replace(/_/g, ' ')}
+                          </TableCell>
+                          <TableCell className="max-w-[300px] truncate" title={m.descricao}>
+                            {m.descricao}
+                          </TableCell>
+                          <TableCell
+                            className={`text-right font-mono font-medium ${m.tipo === 'entrada' ? 'text-emerald-600' : 'text-rose-600'}`}
+                          >
+                            {m.tipo === 'entrada' ? '+' : '-'}
+                            {formatCurrency(m.valor)}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-muted-foreground">
+                            {formatCurrency(m.saldo_novo || 0)}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="dre">
           <Card>
             <CardHeader>
-              <CardTitle>DRE Gerencial Consolidado</CardTitle>
+              <CardTitle>Demonstração do Resultado (DRE)</CardTitle>
               <CardDescription>
-                Visão sintética de receitas de securitização e despesas de fornecedores.
+                Agrupamento por rubricas e categorias financeiras no período filtrado.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -289,179 +362,60 @@ export default function Accounting() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Rubrica Contábil</TableHead>
-                    <TableHead className="text-right">Valor</TableHead>
+                    <TableHead className="text-right">Valor Consolidado</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {metrics.dre.map((item, idx) => (
-                    <TableRow
-                      key={idx}
-                      className={
-                        item.type === 'total' || item.type === 'subtotal'
-                          ? 'bg-muted/30 font-bold'
-                          : ''
-                      }
+                  <TableRow className="bg-emerald-50/50">
+                    <TableCell className="font-bold text-emerald-800">
+                      RECEITAS (ENTRADAS)
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-emerald-800">
+                      {formatCurrency(totalEntradas)}
+                    </TableCell>
+                  </TableRow>
+                  {Object.entries(receitas)
+                    .sort()
+                    .map(([cat, val]) => (
+                      <TableRow key={cat}>
+                        <TableCell className="pl-8 capitalize text-muted-foreground">
+                          {cat.replace(/_/g, ' ')}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-emerald-600">
+                          {formatCurrency(val)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+
+                  <TableRow className="bg-rose-50/50">
+                    <TableCell className="font-bold text-rose-800">DESPESAS (SAÍDAS)</TableCell>
+                    <TableCell className="text-right font-bold text-rose-800">
+                      -{formatCurrency(totalSaidas)}
+                    </TableCell>
+                  </TableRow>
+                  {Object.entries(despesas)
+                    .sort()
+                    .map(([cat, val]) => (
+                      <TableRow key={cat}>
+                        <TableCell className="pl-8 capitalize text-muted-foreground">
+                          {cat.replace(/_/g, ' ')}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-rose-600">
+                          -{formatCurrency(val)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+
+                  <TableRow className="bg-primary/5">
+                    <TableCell className="font-bold text-lg">RESULTADO DO PERÍODO</TableCell>
+                    <TableCell
+                      className={`text-right font-bold text-lg font-mono ${resultado >= 0 ? 'text-blue-600' : 'text-orange-600'}`}
                     >
-                      <TableCell
-                        className={
-                          item.type === 'despesa' || item.type === 'imposto'
-                            ? 'pl-8 text-muted-foreground'
-                            : ''
-                        }
-                      >
-                        {item.label}
-                      </TableCell>
-                      <TableCell
-                        className={`text-right font-mono ${item.value < 0 ? 'text-rose-600' : 'text-emerald-600'}`}
-                      >
-                        {formatCurrency(item.value)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="fiscal">
-          <Card>
-            <CardHeader>
-              <CardTitle>Apuração de Tributos e Guias DARF</CardTitle>
-              <CardDescription>
-                Geração automática baseada na liquidação de operações (Lei 9.532/97 e retenções na
-                fonte).
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Código Receita</TableHead>
-                    <TableHead>Descrição</TableHead>
-                    <TableHead>Período de Apuração</TableHead>
-                    <TableHead className="text-right">Valor Apurado</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Ação</TableHead>
+                      {formatCurrency(resultado)}
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {metrics.darfs.map((darf, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-bold font-mono">{darf.codigo}</TableCell>
-                      <TableCell>{darf.descricao}</TableCell>
-                      <TableCell>{darf.periodo}</TableCell>
-                      <TableCell className="text-right font-mono">
-                        {formatCurrency(darf.valor)}
-                      </TableCell>
-                      <TableCell>
-                        <span className="px-2 py-1 rounded text-xs bg-amber-100 text-amber-800">
-                          {darf.status}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="outline" size="sm" className="gap-2">
-                          <Download className="w-4 h-4" /> Guia PDF
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="patrimonial">
-          <div className="grid md:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader className="bg-emerald-50">
-                <CardTitle className="text-emerald-800">ATIVO CIRCULANTE</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-4">
-                <div className="flex justify-between py-2 border-b">
-                  <span>Caixa e Equivalentes</span>
-                  <span className="font-mono">R$ 500.000,00</span>
-                </div>
-                <div className="flex justify-between py-2 border-b">
-                  <span>Direitos Creditórios (Recebíveis CCB Totais)</span>
-                  <span className="font-mono">
-                    {formatCurrency((metrics as any).ativoRecebiveis || 0)}
-                  </span>
-                </div>
-                <div className="flex justify-between py-2 border-b font-bold">
-                  <span>TOTAL ATIVO</span>
-                  <span className="font-mono">
-                    {formatCurrency(500000 + ((metrics as any).ativoRecebiveis || 0))}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="bg-rose-50">
-                <CardTitle className="text-rose-800">PASSIVO E PATRIMÔNIO LÍQUIDO</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-4">
-                <div className="flex justify-between py-2 border-b">
-                  <span>Debêntures Emitidas (A Pagar)</span>
-                  <span className="font-mono">
-                    {formatCurrency((metrics as any).passivoDebentures || 0)}
-                  </span>
-                </div>
-                <div className="flex justify-between py-2 border-b">
-                  <span>Tributos a Recolher (IOF/IRRF)</span>
-                  <span className="font-mono">
-                    {formatCurrency((metrics as any).impostosEstimados || 0)}
-                  </span>
-                </div>
-                <div className="flex justify-between py-2 border-b font-bold">
-                  <span>TOTAL PASSIVO</span>
-                  <span className="font-mono">
-                    {formatCurrency(
-                      ((metrics as any).passivoDebentures || 0) +
-                        ((metrics as any).impostosEstimados || 0),
-                    )}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="compliance">
-          <Card>
-            <CardHeader>
-              <CardTitle>Compliance e Provisões</CardTitle>
-              <CardDescription>
-                Monitoramento de índices regulatórios e PDD (Provisão para Devedores Duvidosos).
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-4 border rounded bg-muted/20">
-                <div>
-                  <p className="font-medium text-rose-600">
-                    Provisão de Inadimplência (PDD Projetada)
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Reservado sobre volume de recebíveis
-                  </p>
-                </div>
-                <span className="text-xl font-bold font-mono text-rose-600">
-                  {formatCurrency((metrics as any).provisaoTotal || 0)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between p-4 border rounded bg-emerald-50">
-                <div>
-                  <p className="font-medium text-emerald-800">
-                    ROE (Retorno sobre Patrimônio Líquido)
-                  </p>
-                  <p className="text-sm text-emerald-600/80">
-                    Projeção anual baseada no lucro líquido atual
-                  </p>
-                </div>
-                <span className="text-xl font-bold font-mono text-emerald-700">14.5%</span>
-              </div>
             </CardContent>
           </Card>
         </TabsContent>

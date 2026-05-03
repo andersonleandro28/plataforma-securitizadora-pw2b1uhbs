@@ -121,12 +121,6 @@ const allNavItems = [
     roles: ['admin', 'staff'],
   },
   {
-    title: 'Tesouraria & Escrow',
-    path: '/treasury',
-    icon: Briefcase,
-    roles: ['admin', 'staff'],
-  },
-  {
     title: 'Fornecedores & Despesas',
     path: '/admin/expenses',
     icon: Building,
