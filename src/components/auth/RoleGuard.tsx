@@ -70,6 +70,13 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
       try {
         const isSuperAdmin = user.email === 'andersonleandro28@gmail.com'
 
+        if (isSuperAdmin) {
+          if (mounted) {
+            lastValidatedPath.current = location.pathname
+          }
+          return
+        }
+
         const { data: profile, error } = await supabase
           .from('profiles')
           .select('role, is_admin, is_staff, is_accountant, is_investor, is_borrower, is_blocked')
@@ -153,7 +160,9 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
     }
   }, [location.pathname, user, isSafeToRender, loading, activeRole, signOut, navigate])
 
-  if (loading || !isSafeToRender || isValidating) {
+  const isSuperAdmin = user?.email === 'andersonleandro28@gmail.com'
+
+  if (loading || !isSafeToRender || (isValidating && !isSuperAdmin)) {
     return (
       <div className="flex h-[80vh] w-full items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -161,13 +170,15 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
     )
   }
 
-  const isSuperAdmin = user?.email === 'andersonleandro28@gmail.com'
+  if (isSuperAdmin) {
+    return <>{children}</>
+  }
 
-  if (!activeRole && !isSuperAdmin) {
+  if (!activeRole) {
     return <Navigate to="/" replace />
   }
 
-  if (activeRole && !allowedRoles.includes(activeRole) && !isSuperAdmin) {
+  if (!allowedRoles.includes(activeRole)) {
     return <RedirectWithToast />
   }
 
