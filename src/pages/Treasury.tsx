@@ -7,6 +7,8 @@ import {
   Plus,
   FileSpreadsheet,
   Pencil,
+  Trash2,
+  Loader2,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -54,6 +56,8 @@ export default function Treasury() {
   const [filterEscrow, setFilterEscrow] = useState(false)
   const [isNewEntryOpen, setIsNewEntryOpen] = useState(false)
   const [editingTx, setEditingTx] = useState<any>(null)
+  const [deletingTx, setDeletingTx] = useState<any>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
     fetchTransactions()
@@ -189,6 +193,27 @@ export default function Treasury() {
 
   const formatC = (v: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
+
+  const handleDelete = async () => {
+    if (!deletingTx) return
+    setIsDeleting(true)
+    try {
+      const { error } = await supabase
+        .from('treasury_transactions')
+        .delete()
+        .eq('id', deletingTx.rawId)
+
+      if (error) throw error
+
+      toast.success('Lançamento excluído com sucesso.')
+      setDeletingTx(null)
+      fetchTransactions()
+    } catch (err: any) {
+      toast.error('Erro ao excluir lançamento.')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
 
   const generateReceipt = async (redemptionId: string) => {
     try {
@@ -379,21 +404,38 @@ export default function Treasury() {
                       <TableCell>
                         <div className="flex justify-end gap-1">
                           {tx.id.startsWith('man-') && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => {
-                                requestClearance(
-                                  `edição de lançamento de tesouraria no registro ${tx.rawId}`,
-                                  () => {
-                                    setEditingTx(tx)
-                                  },
-                                )
-                              }}
-                              title="Editar Lançamento"
-                            >
-                              <Pencil className="h-4 w-4 text-muted-foreground hover:text-primary" />
-                            </Button>
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  requestClearance(
+                                    `edição de lançamento de tesouraria no registro ${tx.rawId}`,
+                                    () => {
+                                      setEditingTx(tx)
+                                    },
+                                  )
+                                }}
+                                title="Editar Lançamento"
+                              >
+                                <Pencil className="h-4 w-4 text-muted-foreground hover:text-primary" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  requestClearance(
+                                    `exclusão de lançamento de tesouraria no registro ${tx.rawId}`,
+                                    () => {
+                                      setDeletingTx(tx)
+                                    },
+                                  )
+                                }}
+                                title="Excluir Lançamento"
+                              >
+                                <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                              </Button>
+                            </>
                           )}
                           {tx.referenceId && tx.description.includes('Resgate') && (
                             <Button
@@ -443,6 +485,30 @@ export default function Treasury() {
           fetchTransactions()
         }}
       />
+
+      <Dialog open={!!deletingTx} onOpenChange={(op) => !op && setDeletingTx(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Confirmar Exclusão</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 text-sm text-muted-foreground">
+            Tem certeza que deseja excluir o lançamento <strong>"{deletingTx?.description}"</strong>{' '}
+            no valor de <strong>{deletingTx && formatC(deletingTx.amount)}</strong>?
+            <br />
+            <br />
+            Esta ação é irreversível e afetará os saldos em tempo real.
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeletingTx(null)} disabled={isDeleting}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+              {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Excluir Definitivamente
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
