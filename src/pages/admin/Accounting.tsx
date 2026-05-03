@@ -51,7 +51,7 @@ export default function Accounting() {
     try {
       setLoading(true)
       const [{ data: movs, error: movErr }, { data: saldo, error: saldoErr }] = await Promise.all([
-        supabase.from('movimentacoes_caixa').select('*').order('created_at', { ascending: false }),
+        supabase.from('treasury_transactions').select('*').order('date', { ascending: false }),
         supabase
           .from('saldo_caixa')
           .select('saldo_atual')
@@ -74,8 +74,8 @@ export default function Accounting() {
 
       let calc = 0
       ;(movs || []).forEach((m) => {
-        if (m.tipo === 'entrada') calc += Number(m.valor)
-        if (m.tipo === 'saída') calc -= Number(m.valor)
+        if (m.type === 'in') calc += Number(m.amount)
+        if (m.type === 'out') calc -= Number(m.amount)
       })
       const saldoAtualDB = saldo?.saldo_atual || 0
       if (Math.abs(calc - saldoAtualDB) > 0.01) {
@@ -94,7 +94,7 @@ export default function Accounting() {
   const categoriasUnicas = useMemo(() => {
     const cats = new Set<string>()
     movimentacoes.forEach((m) => {
-      if (m.categoria) cats.add(m.categoria)
+      if (m.category) cats.add(m.category)
     })
     return Array.from(cats).sort()
   }, [movimentacoes])
@@ -103,26 +103,22 @@ export default function Accounting() {
     let filtrado = movimentacoes
 
     if (periodoInicio) {
-      filtrado = filtrado.filter(
-        (m) => new Date(m.created_at) >= new Date(periodoInicio + 'T00:00:00'),
-      )
+      filtrado = filtrado.filter((m) => new Date(m.date) >= new Date(periodoInicio + 'T00:00:00'))
     }
     if (periodoFim) {
-      filtrado = filtrado.filter(
-        (m) => new Date(m.created_at) <= new Date(periodoFim + 'T23:59:59'),
-      )
+      filtrado = filtrado.filter((m) => new Date(m.date) <= new Date(periodoFim + 'T23:59:59'))
     }
     if (filtroTipo !== 'todos') {
-      filtrado = filtrado.filter((m) => m.tipo === filtroTipo)
+      filtrado = filtrado.filter((m) => m.type === filtroTipo)
     }
     if (filtroCategoria !== 'todas') {
-      filtrado = filtrado.filter((m) => m.categoria === filtroCategoria)
+      filtrado = filtrado.filter((m) => m.category === filtroCategoria)
     }
     if (busca) {
       const b = busca.toLowerCase()
       filtrado = filtrado.filter(
         (m) =>
-          m.descricao?.toLowerCase().includes(b) || m.referencia_numero?.toLowerCase().includes(b),
+          m.description?.toLowerCase().includes(b) || m.external_ref?.toLowerCase().includes(b),
       )
     }
     return filtrado
@@ -132,8 +128,8 @@ export default function Accounting() {
     let ent = 0,
       sai = 0
     dadosFiltrados.forEach((m) => {
-      if (m.tipo === 'entrada') ent += Number(m.valor || 0)
-      if (m.tipo === 'saída') sai += Number(m.valor || 0)
+      if (m.type === 'in') ent += Number(m.amount || 0)
+      if (m.type === 'out') sai += Number(m.amount || 0)
     })
     return { totalEntradas: ent, totalSaidas: sai, resultado: ent - sai }
   }, [dadosFiltrados])
@@ -143,11 +139,11 @@ export default function Accounting() {
     const desps: Record<string, number> = {}
 
     dadosFiltrados.forEach((m) => {
-      const val = Number(m.valor || 0)
-      if (m.tipo === 'entrada') {
-        recs[m.categoria] = (recs[m.categoria] || 0) + val
-      } else if (m.tipo === 'saída') {
-        desps[m.categoria] = (desps[m.categoria] || 0) + val
+      const val = Number(m.amount || 0)
+      if (m.type === 'in') {
+        recs[m.category] = (recs[m.category] || 0) + val
+      } else if (m.type === 'out') {
+        desps[m.category] = (desps[m.category] || 0) + val
       }
     })
     return { receitas: recs, despesas: desps }
@@ -159,12 +155,12 @@ export default function Accounting() {
   const handleExportCSV = () => {
     let csv = 'Data,Tipo,Categoria,Descricao,Referencia,Valor,Saldo\n'
     dadosFiltrados.forEach((item) => {
-      const data = new Date(item.created_at).toLocaleDateString('pt-BR')
-      const tipo = item.tipo
-      const cat = item.categoria || ''
-      const desc = `"${(item.descricao || '').replace(/"/g, '""')}"`
-      const ref = item.referencia_numero || ''
-      const val = item.valor
+      const data = new Date(item.date).toLocaleDateString('pt-BR')
+      const tipo = item.type === 'in' ? 'entrada' : 'saída'
+      const cat = item.category || ''
+      const desc = `"${(item.description || '').replace(/"/g, '""')}"`
+      const ref = item.external_ref || ''
+      const val = item.amount
       const saldo = item.saldo_novo || 0
       csv += `${data},${tipo},${cat},${desc},${ref},${val},${saldo}\n`
     })
@@ -292,8 +288,8 @@ export default function Accounting() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="entrada">Entradas</SelectItem>
-                <SelectItem value="saída">Saídas</SelectItem>
+                <SelectItem value="in">Entradas</SelectItem>
+                <SelectItem value="out">Saídas</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -354,26 +350,26 @@ export default function Accounting() {
                       dadosFiltrados.map((m) => (
                         <TableRow key={m.id}>
                           <TableCell className="whitespace-nowrap">
-                            {new Date(m.created_at).toLocaleString('pt-BR')}
+                            {new Date(m.date).toLocaleDateString('pt-BR')}
                           </TableCell>
                           <TableCell>
                             <span
-                              className={`px-2 py-1 rounded text-xs font-medium ${m.tipo === 'entrada' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}
+                              className={`px-2 py-1 rounded text-xs font-medium ${m.type === 'in' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}
                             >
-                              {m.tipo.toUpperCase()}
+                              {m.type === 'in' ? 'ENTRADA' : 'SAÍDA'}
                             </span>
                           </TableCell>
                           <TableCell className="capitalize text-muted-foreground text-sm">
-                            {m.categoria?.replace(/_/g, ' ')}
+                            {m.category?.replace(/_/g, ' ')}
                           </TableCell>
-                          <TableCell className="max-w-[300px] truncate" title={m.descricao}>
-                            {m.descricao}
+                          <TableCell className="max-w-[300px] truncate" title={m.description}>
+                            {m.description}
                           </TableCell>
                           <TableCell
-                            className={`text-right font-mono font-medium ${m.tipo === 'entrada' ? 'text-emerald-600' : 'text-rose-600'}`}
+                            className={`text-right font-mono font-medium ${m.type === 'in' ? 'text-emerald-600' : 'text-rose-600'}`}
                           >
-                            {m.tipo === 'entrada' ? '+' : '-'}
-                            {formatCurrency(m.valor)}
+                            {m.type === 'in' ? '+' : '-'}
+                            {formatCurrency(m.amount)}
                           </TableCell>
                           <TableCell className="text-right font-mono text-muted-foreground">
                             {formatCurrency(m.saldo_novo || 0)}
