@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { supabase } from '@/lib/supabase/client'
 import {
   Loader2,
@@ -26,6 +27,7 @@ import {
   DollarSign,
   FileSpreadsheet,
   PieChart,
+  AlertTriangle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -33,6 +35,7 @@ export default function Accounting() {
   const [loading, setLoading] = useState(true)
   const [movimentacoes, setMovimentacoes] = useState<any[]>([])
   const [saldoCaixa, setSaldoCaixa] = useState(0)
+  const [divergencia, setDivergencia] = useState(0)
 
   const [periodoInicio, setPeriodoInicio] = useState('')
   const [periodoFim, setPeriodoFim] = useState('')
@@ -57,6 +60,18 @@ export default function Accounting() {
 
       setMovimentacoes(movs || [])
       setSaldoCaixa(saldo?.saldo_atual || 0)
+
+      let calc = 0
+      ;(movs || []).forEach((m) => {
+        if (m.tipo === 'entrada') calc += Number(m.valor)
+        if (m.tipo === 'saída') calc -= Number(m.valor)
+      })
+      const saldoAtualDB = saldo?.saldo_atual || 0
+      if (Math.abs(calc - saldoAtualDB) > 0.01) {
+        setDivergencia(calc)
+      } else {
+        setDivergencia(0)
+      }
     } catch (error: any) {
       console.error(error)
       toast.error('Erro ao carregar dados da contabilidade.')
@@ -171,6 +186,19 @@ export default function Accounting() {
           <FileSpreadsheet className="w-4 h-4" /> Exportar CSV
         </Button>
       </div>
+
+      {divergencia !== 0 && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Divergência de saldo detectada!</AlertTitle>
+          <AlertDescription>
+            Saldo esperado pela soma das movimentações:{' '}
+            <strong>{formatCurrency(divergencia)}</strong>. Saldo atual no sistema:{' '}
+            <strong>{formatCurrency(saldoCaixa)}</strong>. Vá até a página de Migração de Dados para
+            recalcular o saldo e corrigir essa inconsistência.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card className="border-l-4 border-l-emerald-500">

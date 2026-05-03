@@ -25,6 +25,7 @@ import InvestmentsReview from './pages/admin/InvestmentsReview'
 import AdminCcbRequests from './pages/admin/AdminCcbRequests'
 import Expenses from './pages/admin/Expenses'
 import Accounting from './pages/admin/Accounting'
+import DataMigration from './pages/admin/DataMigration'
 import RiskExposure from './pages/admin/RiskExposure'
 import Reports from './pages/admin/Reports'
 import KycOnboarding from './pages/KycOnboarding'
@@ -369,6 +370,14 @@ const App = () => (
               element={
                 <RoleGuard allowedRoles={['admin', 'staff', 'accountant']}>
                   <Accounting />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/admin/migracao-dados"
+              element={
+                <RoleGuard allowedRoles={['admin']}>
+                  <DataMigration />
                 </RoleGuard>
               }
             />

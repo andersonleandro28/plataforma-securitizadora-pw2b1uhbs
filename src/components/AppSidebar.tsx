@@ -7,6 +7,7 @@ import {
   Building,
   Briefcase,
   PieChart,
+  Database,
   Users as UsersIcon,
   TrendingUp,
   Settings2,
@@ -131,6 +132,12 @@ const allNavItems = [
     path: '/admin/accounting',
     icon: PieChart,
     roles: ['admin', 'accountant'],
+  },
+  {
+    title: 'Migração de Dados',
+    path: '/admin/migracao-dados',
+    icon: Database,
+    roles: ['admin'],
   },
   {
     title: 'Exposição & Risco Global',
