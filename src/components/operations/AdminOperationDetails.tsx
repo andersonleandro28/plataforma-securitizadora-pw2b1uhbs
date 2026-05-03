@@ -191,6 +191,92 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
 
   const handleStatusChange = async (newStatus: string) => {
     setActionLoading(true)
+
+    if (newStatus === 'liquidado' && op.status !== 'liquidado') {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+        if (!user) throw new Error('Não autenticado')
+
+        const { data: mapped } = await supabase
+          .from('mapeamento_movimentacoes')
+          .select('id')
+          .eq('origem_tabela', 'recebíveis')
+          .eq('origem_id', op.id)
+          .maybeSingle()
+
+        if (mapped) {
+          toast.error('Esta operação já foi registrada no caixa anteriormente.')
+        } else {
+          const netValue = calc?.net_value || op.requested_value || 0
+          const interestValue = (op.face_value || 0) - netValue
+
+          if (netValue > 0) {
+            const { data: movPrinc, error: movErr1 } = await supabase
+              .from('movimentacoes_caixa')
+              .insert({
+                tipo: 'entrada',
+                categoria: 'liquidação_recebível',
+                descricao: `Liquidação de recebível — ${op.sacado}`,
+                valor: netValue,
+                saldo_anterior: 0,
+                saldo_novo: 0,
+                referencia_id: op.id,
+                referencia_tipo: 'recebível',
+                referencia_numero: op.document_number,
+                user_id: user.id,
+              })
+              .select()
+              .single()
+
+            if (movErr1) throw movErr1
+            await supabase.from('mapeamento_movimentacoes').insert({
+              movimentacao_caixa_id: movPrinc.id,
+              origem_tabela: 'recebíveis',
+              origem_id: op.id,
+              sincronizado: true,
+              user_id: user.id,
+            })
+            toast.success('Recebível liquidado e registrado no caixa')
+          }
+
+          if (interestValue > 0) {
+            const { data: movJur, error: movErr2 } = await supabase
+              .from('movimentacoes_caixa')
+              .insert({
+                tipo: 'entrada',
+                categoria: 'juros_entrada',
+                descricao: `Juros recebidos — Operação #${op.id.split('-')[0].toUpperCase()}`,
+                valor: interestValue,
+                saldo_anterior: 0,
+                saldo_novo: 0,
+                referencia_id: op.id,
+                referencia_tipo: 'recebível',
+                referencia_numero: op.document_number,
+                user_id: user.id,
+              })
+              .select()
+              .single()
+
+            if (movErr2) throw movErr2
+            await supabase.from('mapeamento_movimentacoes').insert({
+              movimentacao_caixa_id: movJur.id,
+              origem_tabela: 'juros',
+              origem_id: op.id,
+              sincronizado: true,
+              user_id: user.id,
+            })
+            toast.success('Juros registrados no caixa')
+          }
+        }
+      } catch (err: any) {
+        toast.error('Erro ao registrar no caixa: ' + err.message)
+        setActionLoading(false)
+        return
+      }
+    }
+
     const { error } = await supabase
       .from('credit_operations')
       .update({ status: newStatus })

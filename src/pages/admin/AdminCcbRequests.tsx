@@ -59,6 +59,7 @@ export default function AdminCcbRequests() {
   const [saving, setSaving] = useState(false)
   const [manageOp, setManageOp] = useState<any>(null)
   const [uploadingBoleto, setUploadingBoleto] = useState<string | null>(null)
+  const [payLoading, setPayLoading] = useState(false)
 
   const [adjustModal, setAdjustModal] = useState<any>(null)
   const [adjRate, setAdjRate] = useState('')
@@ -239,6 +240,82 @@ export default function AdminCcbRequests() {
       toast.error('Erro ao ajustar proposta: ' + e.message)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handlePayInstallment = async (opId: string, installment: any) => {
+    setPayLoading(true)
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) throw new Error('Não autenticado')
+
+      const { data: mapped } = await supabase
+        .from('mapeamento_movimentacoes')
+        .select('id')
+        .eq('origem_tabela', 'ccb')
+        .eq('origem_id', installment.id)
+        .maybeSingle()
+
+      if (mapped) {
+        toast.error('Esta operação já foi registrada no caixa')
+        setPayLoading(false)
+        return
+      }
+
+      const opToUpdate = activeOps.find((o) => o.id === opId)
+      if (!opToUpdate) throw new Error('Operação não encontrada')
+
+      const updatedInstallments = opToUpdate.installments.map((i: any) => {
+        if (i.id === installment.id) {
+          return { ...i, status: 'paga', payment_date: new Date().toISOString() }
+        }
+        return i
+      })
+
+      const { error: updErr } = await supabase
+        .from('operacoes_antecipacao')
+        .update({ installments: updatedInstallments })
+        .eq('id', opId)
+
+      if (updErr) throw updErr
+
+      const { data: mov, error: movErr } = await supabase
+        .from('movimentacoes_caixa')
+        .insert({
+          tipo: 'entrada',
+          categoria: 'pagamento_ccb',
+          descricao: `Pagamento de parcela — ${opToUpdate.ccb_solicitacoes?.profiles?.full_name} — Parcela ${installment.number}`,
+          valor: Number(installment.value),
+          saldo_anterior: 0,
+          saldo_novo: 0,
+          referencia_id: opToUpdate.ccb_id,
+          referencia_tipo: 'ccb',
+          referencia_numero: opToUpdate.ccb_id?.split('-')[0]?.toUpperCase(),
+          user_id: user.id,
+        })
+        .select()
+        .single()
+
+      if (movErr) throw movErr
+
+      await supabase.from('mapeamento_movimentacoes').insert({
+        movimentacao_caixa_id: mov.id,
+        origem_tabela: 'ccb',
+        origem_id: installment.id,
+        sincronizado: true,
+        user_id: user.id,
+      })
+
+      toast.success('Pagamento de parcela registrado no caixa')
+
+      setManageOp({ ...manageOp, installments: updatedInstallments })
+      fetchData()
+    } catch (err: any) {
+      toast.error('Erro: ' + err.message)
+    } finally {
+      setPayLoading(false)
     }
   }
 
@@ -660,6 +737,60 @@ export default function AdminCcbRequests() {
               Salvar e Enviar Proposta
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!manageOp} onOpenChange={(v) => !v && setManageOp(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Gerenciar Parcelas da CCB</DialogTitle>
+            <DialogDescription>
+              Operação #{manageOp?.ccb_id?.split('-')[0]?.toUpperCase()} -{' '}
+              {manageOp?.ccb_solicitacoes?.profiles?.full_name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Parcela</TableHead>
+                  <TableHead>Vencimento</TableHead>
+                  <TableHead>Valor</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {manageOp?.installments?.map((inst: any, idx: number) => (
+                  <TableRow key={inst.id || idx}>
+                    <TableCell>{inst.number}</TableCell>
+                    <TableCell>{new Date(inst.due_date).toLocaleDateString('pt-BR')}</TableCell>
+                    <TableCell>R$ {Number(inst.value).toLocaleString('pt-BR')}</TableCell>
+                    <TableCell>
+                      <Badge variant={inst.status === 'paga' ? 'default' : 'outline'}>
+                        {inst.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {inst.status !== 'paga' && (
+                        <Button
+                          size="sm"
+                          onClick={() => handlePayInstallment(manageOp.id, inst)}
+                          disabled={payLoading}
+                        >
+                          {payLoading ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            'Marcar como Paga'
+                          )}
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -32,6 +32,7 @@ import { toast } from 'sonner'
 import { exportToCSV } from '@/lib/export-utils'
 import { TransactionDetailsModal } from '@/components/Treasury/TransactionDetailsModal'
 import { ReconcileModal } from '@/components/Treasury/ReconcileModal'
+import { DepositModal } from '@/components/Treasury/DepositModal'
 import { Skeleton } from '@/components/ui/skeleton'
 
 export default function Treasury() {
@@ -46,6 +47,7 @@ export default function Treasury() {
 
   const [selectedTx, setSelectedTx] = useState(null)
   const [isReconcileOpen, setIsReconcileOpen] = useState(false)
+  const [isDepositOpen, setIsDepositOpen] = useState(false)
 
   const fetchDashboard = async () => {
     const { data: saldoData } = await supabase
@@ -259,6 +261,12 @@ export default function Treasury() {
           </Button>
           <Button variant="outline" onClick={handleExportPDF}>
             <FileText className="w-4 h-4 mr-2" /> PDF
+          </Button>
+          <Button
+            onClick={() => setIsDepositOpen(true)}
+            className="bg-emerald-600 hover:bg-emerald-700"
+          >
+            <ArrowDownRight className="w-4 h-4 mr-2" /> Registrar Depósito
           </Button>
           <Button onClick={() => setIsReconcileOpen(true)}>
             <Scale className="w-4 h-4 mr-2" /> Reconciliar Saldo
@@ -485,6 +493,14 @@ export default function Treasury() {
         open={isReconcileOpen}
         onClose={setIsReconcileOpen}
         currentBalance={stats.saldo}
+        onSuccess={() => {
+          fetchDashboard()
+          fetchMovimentacoes()
+        }}
+      />
+      <DepositModal
+        open={isDepositOpen}
+        onClose={setIsDepositOpen}
         onSuccess={() => {
           fetchDashboard()
           fetchMovimentacoes()

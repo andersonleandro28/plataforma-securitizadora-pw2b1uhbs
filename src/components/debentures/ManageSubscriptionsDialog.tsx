@@ -83,12 +83,52 @@ export function ManageSubscriptionsDialog({
       }
 
       if (addingNew) {
-        const { error } = await supabase.from('debenture_subscriptions').insert({
-          ...payload,
-          series_id: series.id,
-          status: 'Ativo',
-        })
+        const { data: newSub, error } = await supabase
+          .from('debenture_subscriptions')
+          .insert({
+            ...payload,
+            series_id: series.id,
+            status: 'Ativo',
+          })
+          .select()
+          .single()
         if (error) throw error
+
+        // FLUXO 1 - Integração com Tesouraria
+        const { data: mapped } = await supabase
+          .from('mapeamento_movimentacoes')
+          .select('id')
+          .eq('origem_id', newSub.id)
+          .maybeSingle()
+        if (!mapped) {
+          const { data: mov, error: movErr } = await supabase
+            .from('movimentacoes_caixa')
+            .insert({
+              tipo: 'entrada',
+              categoria: 'subscrição_debênture',
+              descricao: `Subscrição de debênture — ${payload.investor_name}`,
+              valor: payload.total_amount,
+              saldo_anterior: 0,
+              saldo_novo: 0,
+              referencia_id: newSub.id,
+              referencia_tipo: 'subscrição',
+              user_id: user?.id,
+            })
+            .select()
+            .single()
+
+          if (!movErr && mov) {
+            await supabase.from('mapeamento_movimentacoes').insert({
+              movimentacao_caixa_id: mov.id,
+              origem_tabela: 'subscrições',
+              origem_id: newSub.id,
+              sincronizado: true,
+              user_id: user?.id,
+            })
+            toast.success('Subscrição registrada no caixa')
+          }
+        }
+
         toast.success('Subscrição adicionada e sincronizada com os dashboards dos investidores.')
       } else {
         const { error } = await supabase
