@@ -4,9 +4,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, x-supabase-client-platform, apikey, content-type',
-}
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, x-supabase-client-platform, apikey, content-type',
+};
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -18,9 +17,8 @@ Deno.serve(async (req: Request) => {
     const { email, password, role, entity_type, ...profileData } = body
 
     if (!email || !password) {
-      return new Response(JSON.stringify({ error: 'Email e senha são obrigatórios' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      return new Response(JSON.stringify({ error: 'Email e senha são obrigatórios' }), { 
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       })
     }
 
@@ -33,13 +31,12 @@ Deno.serve(async (req: Request) => {
       email,
       password,
       email_confirm: true,
-      user_metadata: { name: profileData.full_name || profileData.pj_company_name },
+      user_metadata: { name: profileData.full_name || profileData.pj_company_name }
     })
 
     if (error) {
-      return new Response(JSON.stringify({ error: error.message }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      return new Response(JSON.stringify({ error: error.message }), { 
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       })
     }
 
@@ -66,31 +63,26 @@ Deno.serve(async (req: Request) => {
         address_city: profileData.address_city,
         address_state: profileData.address_state,
         lgpd_accepted: true,
-        lgpd_accepted_at: new Date().toISOString(),
-      }
+        lgpd_accepted_at: new Date().toISOString()
+      };
 
       await adminClient.from('profiles').update(updatePayload).eq('id', data.user.id)
 
       // Try safely to update new migration fields if they exist
-      await adminClient
-        .from('profiles')
-        .update({
-          pf_birth_date: profileData.pf_birth_date || null,
-          pj_state_registration: profileData.pj_state_registration || null,
-        })
-        .eq('id', data.user.id)
-        .catch(() => {})
+      await adminClient.from('profiles').update({
+        pf_birth_date: profileData.pf_birth_date || null,
+        pj_state_registration: profileData.pj_state_registration || null
+      }).eq('id', data.user.id).catch(() => {})
 
       // Send customized welcome email
       const resendApiKey = Deno.env.get('RESEND_API_KEY')
       if (resendApiKey) {
-        const nomeExibicao =
-          entity_type === 'pj' ? profileData.pj_company_name : profileData.full_name
+        const nomeExibicao = entity_type === 'pj' ? profileData.pj_company_name : profileData.full_name;
         await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${resendApiKey}`,
+            'Authorization': `Bearer ${resendApiKey}`
           },
           body: JSON.stringify({
             from: 'Plataforma Securitizadora <contato@seaconnection.api.br>',
@@ -104,8 +96,8 @@ Deno.serve(async (req: Request) => {
                 <br/>
                 <p>Atenciosamente,<br/>Equipe Plataforma Securitizadora</p>
               </div>
-            `,
-          }),
+            `
+          })
         })
       }
     }
@@ -113,10 +105,11 @@ Deno.serve(async (req: Request) => {
     return new Response(JSON.stringify({ success: true, user: data.user }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
+
   } catch (error: any) {
-    return new Response(JSON.stringify({ error: error.message || 'Internal Server Error' }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    return new Response(
+      JSON.stringify({ error: error.message || 'Internal Server Error' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
   }
 })
