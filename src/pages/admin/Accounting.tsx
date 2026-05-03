@@ -45,6 +45,7 @@ export default function Accounting() {
   const [periodoInicio, setPeriodoInicio] = useState(startOfMonth)
   const [periodoFim, setPeriodoFim] = useState(endOfMonth)
   const [filtroTipo, setFiltroTipo] = useState('todas')
+  const [filtroCategoria, setFiltroCategoria] = useState('todas')
   const [busca, setBusca] = useState('')
   const [page, setPage] = useState(1)
   const [isReconcileOpen, setIsReconcileOpen] = useState(false)
@@ -54,6 +55,7 @@ export default function Accounting() {
     inicio: startOfMonth,
     fim: endOfMonth,
     tipo: 'todas',
+    categoria: 'todas',
     busca: '',
   })
 
@@ -64,7 +66,13 @@ export default function Accounting() {
   }, [refetch])
 
   const handleApplyFilters = () => {
-    setActiveFiltros({ inicio: periodoInicio, fim: periodoFim, tipo: filtroTipo, busca })
+    setActiveFiltros({
+      inicio: periodoInicio,
+      fim: periodoFim,
+      tipo: filtroTipo,
+      categoria: filtroCategoria,
+      busca,
+    })
     setPage(1)
   }
 
@@ -79,6 +87,8 @@ export default function Accounting() {
       if (activeFiltros.inicio && d < new Date(activeFiltros.inicio + 'T00:00:00')) match = false
       if (activeFiltros.fim && d > new Date(activeFiltros.fim + 'T23:59:59')) match = false
       if (activeFiltros.tipo !== 'todas' && t.type !== activeFiltros.tipo) match = false
+      if (activeFiltros.categoria !== 'todas' && t.category !== activeFiltros.categoria)
+        match = false
       if (activeFiltros.busca) {
         const b = activeFiltros.busca.toLowerCase()
         if (!t.description.toLowerCase().includes(b) && !t.category.toLowerCase().includes(b)) {
@@ -269,6 +279,26 @@ export default function Accounting() {
                 <SelectItem value="todas">Todas</SelectItem>
                 <SelectItem value="in">Entradas</SelectItem>
                 <SelectItem value="out">Saídas</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-1">
+            <span className="text-xs font-medium text-muted-foreground">Categoria</span>
+            <Select value={filtroCategoria} onValueChange={setFiltroCategoria}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas</SelectItem>
+                <SelectItem value="Pagamento de Parcela CCB">Pagamento de Parcela CCB</SelectItem>
+                <SelectItem value="Liquidação de Recebível">Liquidação de Recebível</SelectItem>
+                <SelectItem value="Subscrição de Debênture">Subscrição de Debênture</SelectItem>
+                <SelectItem value="Despesa">Despesa</SelectItem>
+                <SelectItem value="Pagamento Fornecedor">Pagamento Fornecedor</SelectItem>
+                <SelectItem value="Aquisição de CCB">Aquisição de CCB</SelectItem>
+                <SelectItem value="Aquisição de Recebível">Aquisição de Recebível</SelectItem>
+                <SelectItem value="Desembolso de Crédito">Desembolso de Crédito</SelectItem>
+                <SelectItem value="Resgate de Investimento">Resgate de Investimento</SelectItem>
               </SelectContent>
             </Select>
           </div>

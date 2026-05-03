@@ -36,12 +36,12 @@ export function useAccounting() {
         supabase
           .from('recebiveis_ccb')
           .select(
-            'id, acquisition_value, created_at, updated_at, boletos, profiles!recebiveis_ccb_tomador_id_fkey(full_name, pj_company_name)',
+            'id, acquisition_value, created_at, updated_at, boletos, ccb_id, profiles!recebiveis_ccb_tomador_id_fkey(full_name, pj_company_name)',
           ),
         supabase
           .from('operacoes_antecipacao')
           .select(
-            'id, net_value, created_at, updated_at, installments, ccb_solicitacoes(profiles(full_name, pj_company_name))',
+            'id, net_value, created_at, updated_at, installments, ccb_id, ccb_solicitacoes(profiles(full_name, pj_company_name))',
           ),
         supabase
           .from('expenses')
@@ -51,7 +51,7 @@ export function useAccounting() {
         supabase
           .from('credit_operations')
           .select(
-            'id, requested_value, issue_date, created_at, updated_at, status, sacado, operation_calculations(net_value)',
+            'id, requested_value, face_value, issue_date, created_at, updated_at, status, sacado, liquidation_date, liquidation_value, operation_calculations(net_value)',
           ),
         supabase
           .from('investment_redemptions')
@@ -100,7 +100,7 @@ export function useAccounting() {
               date: bol.payment_date || rec.updated_at || rec.created_at,
               type: 'in',
               category: 'Liquidação de Recebível',
-              description: `Recebível liquidado — Tomador: ${tomador}`,
+              description: `Recebível liquidado — Boleto ${i + 1} - Tomador: ${tomador}`,
               value: val,
             })
           }
@@ -130,13 +130,13 @@ export function useAccounting() {
 
         const installments = Array.isArray(ant.installments) ? ant.installments : []
         installments.forEach((inst: any, i: number) => {
-          if (inst.status === 'paga') {
+          if (inst.status === 'paga' || inst.status === 'Pago') {
             transactions.push({
               id: `inst-${ant.id}-${i}`,
               date: inst.payment_date || ant.updated_at || ant.created_at,
               type: 'in',
-              category: 'Pagamento de CCB',
-              description: `Pagamento CCB — Tomador: ${tomador}`,
+              category: 'Pagamento de Parcela CCB',
+              description: `Parcela ${inst.number || i + 1} — ${tomador} — CCB ${ant.ccb_id ? ant.ccb_id.substring(0, 8) : ant.id.substring(0, 8)}`,
               value: Number(inst.value || 0),
             })
           }
@@ -167,12 +167,23 @@ export function useAccounting() {
             : op.operation_calculations
           const val = calc?.net_value || op.requested_value
           transactions.push({
-            id: `op-${op.id}`,
-            date: op.updated_at || op.issue_date || op.created_at,
+            id: `op-out-${op.id}`,
+            date: op.issue_date || op.created_at,
             type: 'out',
             category: 'Desembolso de Crédito',
             description: `Operação de Crédito — Sacado: ${op.sacado}`,
             value: Number(val || 0),
+          })
+        }
+
+        if (op.status === 'liquidado') {
+          transactions.push({
+            id: `op-in-${op.id}`,
+            date: op.liquidation_date || op.updated_at || op.created_at,
+            type: 'in',
+            category: 'Liquidação de Recebível',
+            description: `Recebível liquidado — Operação de Crédito — Sacado: ${op.sacado}`,
+            value: Number(op.liquidation_value || op.face_value || 0),
           })
         }
       })
