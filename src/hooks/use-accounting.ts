@@ -91,17 +91,21 @@ export function useAccounting() {
 
         const boletos = Array.isArray(rec.boletos) ? rec.boletos : []
         boletos.forEach((bol: any, i: number) => {
-          if (bol.status === 'Pago' && bol.payment_date) {
+          const pDate = bol.data_pagamento || bol.payment_date || bol.data_liquidacao
+          if (
+            (bol.status === 'Pago' || bol.status === 'pago' || bol.status === 'liquidado') &&
+            pDate
+          ) {
             const val =
-              Number(bol.unit_value || 0) +
+              Number(bol.valor || bol.unit_value || 0) +
               Number(bol.interest_applied || 0) +
               Number(bol.penalty_applied || 0)
             transactions.push({
               id: `bol-${rec.id}-${i}`,
-              date: bol.payment_date,
+              date: pDate,
               type: 'in',
               category: 'Liquidação de Recebível',
-              description: `Recebível liquidado — Boleto ${bol.number || i + 1} - Tomador: ${tomador}`,
+              description: `Recebível liquidado — Boleto ${bol.numero || bol.number || i + 1} - Tomador: ${tomador}`,
               value: val,
             })
           }
@@ -120,26 +124,20 @@ export function useAccounting() {
           : null
         const tomador = prof?.pj_company_name || prof?.full_name || 'Desconhecido'
 
-        const valNet = Number(ant.net_value || 0)
-        transactions.push({
-          id: `ant-${ant.id}`,
-          date: ant.created_at,
-          type: 'out',
-          category: 'Aquisição de CCB',
-          description: `Aquisição de CCB — ${tomador} — R$ ${valNet.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          value: valNet,
-        })
-
         const installments = Array.isArray(ant.installments) ? ant.installments : []
         installments.forEach((inst: any, i: number) => {
-          if ((inst.status === 'paga' || inst.status === 'Pago') && inst.payment_date) {
+          const pDate = inst.data_pagamento || inst.payment_date
+          if (
+            (inst.status === 'paga' || inst.status === 'Pago' || inst.status === 'pago') &&
+            pDate
+          ) {
             transactions.push({
               id: `inst-${ant.id}-${i}`,
-              date: inst.payment_date,
+              date: pDate,
               type: 'in',
               category: 'Pagamento de Parcela CCB',
-              description: `Parcela ${inst.number || i + 1} — ${tomador} — CCB ${ant.ccb_id ? ant.ccb_id.substring(0, 8) : ant.id.substring(0, 8)}`,
-              value: Number(inst.value || 0),
+              description: `Parcela ${inst.numero || inst.number || i + 1} — ${tomador} — CCB ${ant.ccb_id ? ant.ccb_id.substring(0, 8) : ant.id.substring(0, 8)}`,
+              value: Number(inst.valor || inst.value || 0),
             })
           }
         })
