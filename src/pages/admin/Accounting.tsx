@@ -52,7 +52,12 @@ export default function Accounting() {
       setLoading(true)
       const [{ data: movs, error: movErr }, { data: saldo, error: saldoErr }] = await Promise.all([
         supabase.from('movimentacoes_caixa').select('*').order('created_at', { ascending: false }),
-        supabase.from('saldo_caixa').select('saldo_atual').limit(1).maybeSingle(),
+        supabase
+          .from('saldo_caixa')
+          .select('saldo_atual')
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ])
 
       if (movErr) throw movErr
