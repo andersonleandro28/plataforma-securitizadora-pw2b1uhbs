@@ -68,13 +68,15 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
       setIsValidating(true)
 
       try {
+        const isSuperAdmin = user.email === 'andersonleandro28@gmail.com'
+
         const { data: profile, error } = await supabase
           .from('profiles')
           .select('role, is_admin, is_staff, is_accountant, is_investor, is_borrower, is_blocked')
           .eq('id', user.id)
           .maybeSingle()
 
-        if (error || !profile) {
+        if ((error || !profile) && !isSuperAdmin) {
           if (mounted) {
             toast.error('Suas permissões foram alteradas. Faça login novamente.')
             await signOut()
@@ -83,7 +85,7 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
           return
         }
 
-        if (profile.is_blocked) {
+        if (profile?.is_blocked && !isSuperAdmin) {
           if (mounted) {
             toast.error('Seu acesso à plataforma foi temporariamente suspenso.')
             await signOut()
@@ -93,29 +95,22 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
         }
 
         const roles: AppRole[] = []
-        const isSuperAdmin = user.email === 'andersonleandro28@gmail.com'
 
-        const isAdmin = profile.is_admin || profile.role === 'admin' || isSuperAdmin
-        const isStaff = profile.is_staff || profile.role === 'staff'
-        const isAccountant = profile.is_accountant || profile.role === 'accountant'
+        const isAdmin = profile?.is_admin || profile?.role === 'admin' || isSuperAdmin
+        const isStaff = profile?.is_staff || profile?.role === 'staff'
+        const isAccountant =
+          profile?.is_accountant || profile?.role === 'accountant' || isSuperAdmin
 
         if (isAdmin) roles.push('admin')
         if (isStaff) roles.push('staff')
         if (isAccountant) roles.push('accountant')
-        if (profile.is_investor || profile.role === 'investor' || isAdmin || isStaff)
+        if (profile?.is_investor || profile?.role === 'investor' || isAdmin || isStaff)
           roles.push('investor')
-        if (profile.is_borrower || profile.role === 'borrower' || isAdmin || isStaff)
+        if (profile?.is_borrower || profile?.role === 'borrower' || isAdmin || isStaff)
           roles.push('borrower')
-
-        if (roles.length === 0 && isSuperAdmin) {
-          roles.push('admin')
-          roles.push('investor')
-          roles.push('borrower')
-          roles.push('accountant')
-        }
 
         // If the current active role is no longer in the user's valid roles
-        if (activeRole && !roles.includes(activeRole)) {
+        if (activeRole && !roles.includes(activeRole) && !isSuperAdmin) {
           if (mounted) {
             toast.error(
               'Você não tem permissão para acessar esta área. Redirecionando para seu dashboard...',
@@ -166,11 +161,13 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
     )
   }
 
-  if (!activeRole) {
+  const isSuperAdmin = user?.email === 'andersonleandro28@gmail.com'
+
+  if (!activeRole && !isSuperAdmin) {
     return <Navigate to="/" replace />
   }
 
-  if (!allowedRoles.includes(activeRole)) {
+  if (activeRole && !allowedRoles.includes(activeRole) && !isSuperAdmin) {
     return <RedirectWithToast />
   }
 

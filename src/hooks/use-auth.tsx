@@ -3,18 +3,19 @@ import { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 
-export type AppRole = 'admin' | 'staff' | 'investor' | 'borrower'
+export type AppRole = 'admin' | 'staff' | 'investor' | 'borrower' | 'accountant'
 
 export interface Profile {
   id: string
   full_name: string | null
   email?: string | null
   avatar_url: string | null
-  role: 'admin' | 'investor' | 'borrower' | 'staff'
+  role: 'admin' | 'investor' | 'borrower' | 'staff' | 'accountant'
   is_admin: boolean
   is_staff: boolean
   is_investor: boolean
   is_borrower: boolean
+  is_accountant?: boolean
   is_blocked?: boolean
   force_password_change?: boolean
   kyc_status?: 'pending' | 'under_review' | 'approved' | 'rejected'
@@ -147,8 +148,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (error) throw error
 
         const p = data ? (data as Profile) : null
+        const isSuperAdmin = currentUser.email === 'andersonleandro28@gmail.com'
 
-        if (p?.is_blocked) {
+        if (p?.is_blocked && !isSuperAdmin) {
           toast.error('Seu acesso à plataforma foi temporariamente suspenso.')
           supabase.auth.signOut().catch(() => {})
           setProfile(null)
@@ -161,49 +163,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         setProfile(p)
 
-        if (p) {
-          const roles: AppRole[] = []
+        const roles: AppRole[] = []
 
-          const isSuperAdmin = currentUser.email === 'andersonleandro28@gmail.com'
+        const isAdmin = p?.is_admin || p?.role === 'admin' || isSuperAdmin
+        const isStaff = p?.is_staff || p?.role === 'staff'
+        const isAccountant = p?.is_accountant || p?.role === 'accountant' || isSuperAdmin
 
-          const isAdmin = p.is_admin || p.role === 'admin' || isSuperAdmin
-          const isStaff = p.is_staff || p.role === 'staff'
+        if (isAdmin) roles.push('admin')
+        if (isStaff) roles.push('staff')
+        if (isAccountant) roles.push('accountant')
+        if (p?.is_investor || p?.role === 'investor' || isAdmin || isStaff) roles.push('investor')
+        if (p?.is_borrower || p?.role === 'borrower' || isAdmin || isStaff) roles.push('borrower')
 
-          if (isAdmin) roles.push('admin')
-          if (isStaff) roles.push('staff')
-          if (p.is_investor || p.role === 'investor' || isAdmin || isStaff) roles.push('investor')
-          if (p.is_borrower || p.role === 'borrower' || isAdmin || isStaff) roles.push('borrower')
+        const uniqueRoles = Array.from(new Set(roles))
+        setAvailableRoles(uniqueRoles)
 
-          if (roles.length === 0 && isSuperAdmin) {
-            roles.push('admin')
-            roles.push('investor')
-            roles.push('borrower')
-          }
+        const currentActive = sessionStorage.getItem('activeRole') as AppRole | null
 
-          const uniqueRoles = Array.from(new Set(roles))
-          setAvailableRoles(uniqueRoles)
-
-          const currentActive = sessionStorage.getItem('activeRole') as AppRole | null
-
-          if (uniqueRoles.length === 1) {
-            setActiveRole(uniqueRoles[0])
-          } else if (uniqueRoles.length > 1) {
-            if (currentActive && uniqueRoles.includes(currentActive)) {
-              setActiveRole(currentActive)
-            } else {
-              setActiveRole(null)
-            }
+        if (uniqueRoles.length > 0) {
+          if (currentActive && uniqueRoles.includes(currentActive)) {
+            setActiveRole(currentActive)
           } else {
-            setActiveRole(null)
+            const defaultRole = uniqueRoles.includes('admin') ? 'admin' : uniqueRoles[0]
+            setActiveRole(defaultRole)
           }
         } else {
-          if (currentUser.email === 'andersonleandro28@gmail.com') {
-            setAvailableRoles(['admin'])
-            setActiveRole('admin')
-          } else {
-            setAvailableRoles([])
-            setActiveRole(null)
-          }
+          setActiveRole(null)
         }
 
         setProfileLoadedFor(currentUser.id)
