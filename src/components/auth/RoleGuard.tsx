@@ -70,7 +70,7 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
       try {
         const { data: profile, error } = await supabase
           .from('profiles')
-          .select('role, is_admin, is_staff, is_investor, is_borrower, is_blocked')
+          .select('role, is_admin, is_staff, is_accountant, is_investor, is_borrower, is_blocked')
           .eq('id', user.id)
           .maybeSingle()
 
@@ -97,9 +97,11 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
 
         const isAdmin = profile.is_admin || profile.role === 'admin' || isSuperAdmin
         const isStaff = profile.is_staff || profile.role === 'staff'
+        const isAccountant = profile.is_accountant || profile.role === 'accountant'
 
         if (isAdmin) roles.push('admin')
         if (isStaff) roles.push('staff')
+        if (isAccountant) roles.push('accountant')
         if (profile.is_investor || profile.role === 'investor' || isAdmin || isStaff)
           roles.push('investor')
         if (profile.is_borrower || profile.role === 'borrower' || isAdmin || isStaff)
@@ -109,6 +111,7 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
           roles.push('admin')
           roles.push('investor')
           roles.push('borrower')
+          roles.push('accountant')
         }
 
         // If the current active role is no longer in the user's valid roles
