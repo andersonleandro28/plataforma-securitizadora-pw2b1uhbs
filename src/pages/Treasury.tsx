@@ -1,19 +1,17 @@
 import { useState, useEffect } from 'react'
 import {
-  Wallet,
   ArrowDownRight,
   ArrowUpRight,
-  Lock,
-  Plus,
+  Scale,
   FileSpreadsheet,
-  Pencil,
-  Trash2,
-  Loader2,
+  FileText,
+  ChevronLeft,
+  ChevronRight,
+  Inbox,
 } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   Table,
   TableBody,
@@ -23,492 +21,475 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-} from '@/components/ui/dialog'
-import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Checkbox } from '@/components/ui/checkbox'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { NewTransactionDialog } from '@/components/Treasury/NewTransactionDialog'
-import { EditTransactionDialog } from '@/components/Treasury/EditTransactionDialog'
-import { Download, ExternalLink } from 'lucide-react'
-import { Link } from 'react-router-dom'
-import useSecurityStore from '@/stores/useSecurityStore'
+import { exportToCSV } from '@/lib/export-utils'
+import { TransactionDetailsModal } from '@/components/Treasury/TransactionDetailsModal'
+import { ReconcileModal } from '@/components/Treasury/ReconcileModal'
+import { Skeleton } from '@/components/ui/skeleton'
 
 export default function Treasury() {
-  const requestClearance = useSecurityStore((state) => state.requestClearance)
-  const [transactions, setTransactions] = useState<any[]>([])
-  const [filteredTx, setFilteredTx] = useState<any[]>([])
+  const [stats, setStats] = useState({ saldo: 0, entradas: 0, saidas: 0, fluxo: 0 })
+  const [movimentacoes, setMovimentacoes] = useState<any[]>([])
+  const [totalCount, setTotalCount] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [bals, setBalances] = useState({ total: 0, escrow: 0, own: 0, inToday: 0, outToday: 0 })
-  const [filterType, setFilterType] = useState('all')
-  const [filterEscrow, setFilterEscrow] = useState(false)
-  const [isNewEntryOpen, setIsNewEntryOpen] = useState(false)
-  const [editingTx, setEditingTx] = useState<any>(null)
-  const [deletingTx, setDeletingTx] = useState<any>(null)
-  const [isDeleting, setIsDeleting] = useState(false)
+  const [error, setError] = useState('')
+  const [page, setPage] = useState(1)
 
-  useEffect(() => {
-    fetchTransactions()
-    const channel = supabase
-      .channel('treasury_changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'treasury_transactions' },
-        () => fetchTransactions(),
-      )
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'credit_operations' }, () =>
-        fetchTransactions(),
-      )
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'investments' }, () =>
-        fetchTransactions(),
-      )
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () =>
-        fetchTransactions(),
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'investment_redemptions' },
-        () => fetchTransactions(),
-      )
-      .subscribe()
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [])
+  const [filters, setFilters] = useState({ dateFrom: '', dateTo: '', type: 'all', category: 'all' })
 
-  const fetchTransactions = async () => {
+  const [selectedTx, setSelectedTx] = useState(null)
+  const [isReconcileOpen, setIsReconcileOpen] = useState(false)
+
+  const fetchDashboard = async () => {
+    const { data: saldoData } = await supabase
+      .from('saldo_caixa')
+      .select('saldo_atual')
+      .limit(1)
+      .maybeSingle()
+
+    const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
+    const { data: monthData } = await supabase
+      .from('movimentacoes_caixa')
+      .select('tipo, valor')
+      .gte('created_at', startOfMonth)
+
+    let entradas = 0,
+      saidas = 0
+    monthData?.forEach((m) => {
+      if (m.tipo === 'entrada') entradas += Number(m.valor)
+      if (m.tipo === 'saída') saidas += Number(m.valor)
+    })
+
+    setStats({
+      saldo: Number(saldoData?.saldo_atual || 0),
+      entradas,
+      saidas,
+      fluxo: entradas - saidas,
+    })
+  }
+
+  const fetchMovimentacoes = async () => {
     setLoading(true)
+    setError('')
     try {
-      const [{ data: invs }, { data: ops }, { data: manuals }] = await Promise.all([
-        supabase.from('investments').select('id, total_value, transfer_date, created_at, status'),
-        supabase
-          .from('credit_operations')
-          .select(
-            'id, requested_value, liquidation_value, issue_date, liquidation_date, status, sacado',
-          ),
-        supabase.from('treasury_transactions').select('*'),
-      ])
+      let query = supabase.from('movimentacoes_caixa').select('*', { count: 'exact' })
 
-      const allTx: any[] = []
+      if (filters.type !== 'all') query = query.eq('tipo', filters.type)
+      if (filters.category !== 'all') query = query.eq('categoria', filters.category)
+      if (filters.dateFrom)
+        query = query.gte('created_at', new Date(filters.dateFrom + 'T00:00:00Z').toISOString())
+      if (filters.dateTo)
+        query = query.lte('created_at', new Date(filters.dateTo + 'T23:59:59Z').toISOString())
 
-      invs
-        ?.filter((i) => ['approved', 'resgatado'].includes(i.status))
-        .forEach((i) =>
-          allTx.push({
-            id: `inv-${i.id}`,
-            date: i.transfer_date || i.created_at.split('T')[0],
-            description: 'Aporte de Investidor',
-            category: 'Investimento',
-            type: 'in',
-            amount: Number(i.total_value),
-            is_escrow: true,
-          }),
-        )
-      ops?.forEach((o) => {
-        if (['pago', 'liquidado'].includes(o.status))
-          allTx.push({
-            id: `buy-${o.id}`,
-            date: o.issue_date || o.created_at?.split('T')[0],
-            description: `Compra CCB - ${o.sacado}`,
-            category: 'Compra CCB',
-            type: 'out',
-            amount: Number(o.requested_value),
-            is_escrow: true,
-          })
-        if (o.status === 'liquidado' && o.liquidation_date)
-          allTx.push({
-            id: `liq-${o.id}`,
-            date: o.liquidation_date,
-            description: `Liquidação CCB - ${o.sacado}`,
-            category: 'Liquidação CCB',
-            type: 'in',
-            amount: Number(o.liquidation_value || o.requested_value),
-            is_escrow: true,
-          })
-      })
-      manuals?.forEach((m) =>
-        allTx.push({
-          id: `man-${m.id}`,
-          rawId: m.id,
-          referenceId: m.reference_id,
-          date: m.date,
-          description: m.description,
-          category: m.category,
-          categoryId: m.category_id,
-          type: m.type,
-          amount: Number(m.amount),
-          is_escrow: m.is_escrow,
-        }),
-      )
+      const from = (page - 1) * 20
+      const to = from + 19
+      query = query.order('created_at', { ascending: false }).range(from, to)
 
-      allTx.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      const { data, count, error: err } = await query
+      if (err) throw err
 
-      let bal = 0,
-        escrowBal = 0,
-        ownBal = 0,
-        inToday = 0,
-        outToday = 0
-      const today = new Date().toLocaleDateString('en-CA')
-
-      allTx.forEach((tx) => {
-        const val = tx.type === 'in' ? tx.amount : -tx.amount
-        bal += val
-        if (tx.is_escrow) escrowBal += val
-        else ownBal += val
-        tx.progressiveBalance = bal
-
-        if (tx.date && tx.date.startsWith(today)) {
-          if (tx.type === 'in') inToday += tx.amount
-          else outToday += tx.amount
-        }
-      })
-      allTx.reverse()
-      setTransactions(allTx)
-      setBalances({ total: bal, escrow: escrowBal, own: ownBal, inToday, outToday })
-    } catch (err) {
-      toast.error('Erro ao carregar tesouraria.')
+      setMovimentacoes(data || [])
+      setTotalCount(count || 0)
+    } catch (err: any) {
+      setError('Erro ao carregar movimentações: ' + err.message)
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    let res = transactions
-    if (filterType !== 'all') res = res.filter((t) => t.type === filterType)
-    if (filterEscrow) res = res.filter((t) => t.is_escrow)
-    setFilteredTx(res)
-  }, [transactions, filterType, filterEscrow])
+    fetchDashboard()
+  }, [])
+
+  useEffect(() => {
+    fetchMovimentacoes()
+  }, [page])
 
   const formatC = (v: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 
-  const handleDelete = async () => {
-    if (!deletingTx) return
-    setIsDeleting(true)
-    try {
-      const { error } = await supabase
-        .from('treasury_transactions')
-        .delete()
-        .eq('id', deletingTx.rawId)
-
-      if (error) throw error
-
-      toast.success('Lançamento excluído com sucesso.')
-      setDeletingTx(null)
-      fetchTransactions()
-    } catch (err: any) {
-      toast.error('Erro ao excluir lançamento.')
-    } finally {
-      setIsDeleting(false)
-    }
+  const applyFilters = () => {
+    setPage(1)
+    fetchMovimentacoes()
+    toast.success('Filtros aplicados')
   }
 
-  const generateReceipt = async (redemptionId: string) => {
-    try {
-      toast.info('Gerando comprovante...')
-      const { data, error } = await supabase.functions.invoke('generate-redemption-receipt', {
-        body: { redemptionId },
-      })
-      if (error) throw error
-      if (data?.url) window.open(data.url, '_blank')
-    } catch (err) {
-      toast.error('Erro ao gerar comprovante.')
-    }
+  const clearFilters = () => {
+    setFilters({ dateFrom: '', dateTo: '', type: 'all', category: 'all' })
+    setPage(1)
+    setTimeout(() => fetchMovimentacoes(), 50)
+  }
+
+  const buildExportQuery = () => {
+    let query = supabase
+      .from('movimentacoes_caixa')
+      .select('*')
+      .order('created_at', { ascending: false })
+    if (filters.type !== 'all') query = query.eq('tipo', filters.type)
+    if (filters.category !== 'all') query = query.eq('categoria', filters.category)
+    if (filters.dateFrom)
+      query = query.gte('created_at', new Date(filters.dateFrom + 'T00:00:00Z').toISOString())
+    if (filters.dateTo)
+      query = query.lte('created_at', new Date(filters.dateTo + 'T23:59:59Z').toISOString())
+    return query
+  }
+
+  const handleExportCSV = async () => {
+    const { data } = await buildExportQuery()
+    if (!data || data.length === 0) return toast.info('Nenhuma movimentação para exportar')
+
+    const csvData = data.map((m) => ({
+      Data: new Date(m.created_at).toLocaleString('pt-BR'),
+      Tipo: m.tipo,
+      Categoria: m.categoria,
+      Descricao: m.descricao,
+      Referencia: m.referencia_numero || m.referencia_id || '',
+      Valor: m.valor,
+      Saldo: m.saldo_novo,
+    }))
+    exportToCSV(csvData, `Livro_Caixa_${new Date().getTime()}.csv`)
+  }
+
+  const handleExportPDF = async () => {
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) return toast.error('Permita popups para gerar o relatório')
+
+    const { data } = await buildExportQuery().order('created_at', { ascending: true })
+    const list = data || []
+
+    let totIn = 0
+    let totOut = 0
+    list.forEach((m) => {
+      if (m.tipo === 'entrada') totIn += Number(m.valor)
+      if (m.tipo === 'saída') totOut += Number(m.valor)
+    })
+
+    const initialBalance = list.length > 0 ? list[0].saldo_anterior : 0
+    const finalBalance = list.length > 0 ? list[list.length - 1].saldo_novo : 0
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <title>Livro Caixa - Relatório</title>
+        <style>
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; color: #333; }
+          .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; padding-bottom: 20px; margin-bottom: 30px; }
+          .header h1 { margin: 0; color: #0f172a; font-size: 24px; }
+          .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 30px; }
+          .summary-card { padding: 15px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; }
+          .summary-card span { display: block; font-size: 12px; color: #64748b; text-transform: uppercase; }
+          .summary-card strong { display: block; font-size: 18px; margin-top: 5px; color: #0f172a; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+          th, td { border: 1px solid #e2e8f0; padding: 10px; text-align: left; }
+          th { background-color: #f1f5f9; color: #334155; font-weight: 600; text-transform: uppercase; }
+          tr:nth-child(even) { background-color: #f8fafc; }
+          .in { color: #16a34a; font-weight: 500; }
+          .out { color: #dc2626; font-weight: 500; }
+          .right { text-align: right; }
+          .footer { margin-top: 50px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 20px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <h1>Livro Caixa - Plataforma Securitizadora</h1>
+            <p style="margin: 5px 0 0 0; color: #64748b; font-size: 14px;">
+              Período: ${filters.dateFrom ? new Date(filters.dateFrom + 'T00:00:00Z').toLocaleDateString('pt-BR') : 'Início'} até ${filters.dateTo ? new Date(filters.dateTo + 'T23:59:59Z').toLocaleDateString('pt-BR') : 'Hoje'}
+            </p>
+          </div>
+        </div>
+        <div class="summary">
+          <div class="summary-card"><span>Saldo Inicial do Período</span><strong>${formatC(initialBalance)}</strong></div>
+          <div class="summary-card"><span>Total Entradas</span><strong class="in">${formatC(totIn)}</strong></div>
+          <div class="summary-card"><span>Total Saídas</span><strong class="out">${formatC(totOut)}</strong></div>
+          <div class="summary-card"><span>Saldo Final do Período</span><strong>${formatC(finalBalance)}</strong></div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th><th>Tipo</th><th>Categoria</th><th>Descrição</th><th class="right">Valor</th><th class="right">Saldo</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${list
+              .map(
+                (m: any) => `
+              <tr>
+                <td>${new Date(m.created_at).toLocaleString('pt-BR')}</td>
+                <td class="${m.tipo === 'entrada' ? 'in' : 'out'}">${m.tipo.toUpperCase()}</td>
+                <td style="text-transform: capitalize;">${m.categoria.replace('_', ' ')}</td>
+                <td>${m.descricao}</td>
+                <td class="right ${m.tipo === 'entrada' ? 'in' : 'out'}">${formatC(m.valor)}</td>
+                <td class="right"><strong>${formatC(m.saldo_novo)}</strong></td>
+              </tr>
+            `,
+              )
+              .join('')}
+          </tbody>
+        </table>
+        <div class="footer">Gerado digitalmente em ${new Date().toLocaleString('pt-BR')} por Plataforma Securitizadora.<br>Documento com validade para conferência interna.</div>
+        <script>window.onload = function() { window.print(); }; window.onafterprint = function() { window.close(); };</script>
+      </body>
+      </html>
+    `
+    printWindow.document.open()
+    printWindow.document.write(html)
+    printWindow.document.close()
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up pb-10">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Tesouraria & Escrow</h1>
-          <p className="text-muted-foreground">
-            Extrato bancário consolidado e Livro-Razão em tempo real.
-          </p>
+          <p className="text-sm text-muted-foreground mb-1">Home &gt; Tesouraria</p>
+          <h1 className="text-3xl font-bold tracking-tight">Tesouraria — Livro Caixa</h1>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => {
-              const csv =
-                'Data,Descricao,Categoria,Tipo,Valor,Saldo\n' +
-                filteredTx
-                  .map(
-                    (t) =>
-                      `${t.date},"${t.description}",${t.category},${t.type},${t.amount},${t.progressiveBalance}`,
-                  )
-                  .join('\n')
-              const blob = new Blob([csv], { type: 'text/csv' })
-              const a = document.createElement('a')
-              a.href = URL.createObjectURL(blob)
-              a.download = 'extrato.csv'
-              a.click()
-            }}
-          >
-            <FileSpreadsheet className="w-4 h-4 mr-2" /> Exportar CSV
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={handleExportCSV}>
+            <FileSpreadsheet className="w-4 h-4 mr-2" /> CSV
           </Button>
-          <Button
-            className="bg-primary"
-            onClick={() => {
-              requestClearance('acesso à criação de novo lançamento de tesouraria', () => {
-                setIsNewEntryOpen(true)
-              })
-            }}
-          >
-            <Plus className="w-4 h-4 mr-2" /> Novo Lançamento
+          <Button variant="outline" onClick={handleExportPDF}>
+            <FileText className="w-4 h-4 mr-2" /> PDF
           </Button>
-          <NewTransactionDialog
-            open={isNewEntryOpen}
-            onOpenChange={setIsNewEntryOpen}
-            onSuccess={fetchTransactions}
-          />
+          <Button onClick={() => setIsReconcileOpen(true)}>
+            <Scale className="w-4 h-4 mr-2" /> Reconciliar Saldo
+          </Button>
         </div>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-6">
-        <Card className="bg-primary text-primary-foreground md:col-span-1">
+      <div className="grid md:grid-cols-4 gap-4">
+        <Card className="bg-primary text-primary-foreground border-none">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-primary-foreground/80">
-              Saldo Conta Principal (Próprio)
+            <CardTitle className="text-sm font-medium opacity-90">Saldo Atual</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold font-mono">{formatC(stats.saldo)}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-emerald-600 flex items-center">
+              <ArrowDownRight className="w-4 h-4 mr-1" /> Entradas (Mês)
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold font-mono">{formatC(bals.own)}</div>
-            <div className="mt-4 space-y-1">
-              <p className="text-xs text-emerald-400 flex items-center gap-1">
-                <ArrowDownRight className="h-3 w-3" /> Entradas Hoje: {formatC(bals.inToday)}
-              </p>
-              <p className="text-xs text-rose-400 flex items-center gap-1">
-                <ArrowUpRight className="h-3 w-3" /> Saídas Hoje: {formatC(bals.outToday)}
-              </p>
-            </div>
+            <div className="text-2xl font-bold font-mono">{formatC(stats.entradas)}</div>
           </CardContent>
         </Card>
-        <Card className="border-accent/30 bg-accent/5 md:col-span-2">
-          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Lock className="h-5 w-5 text-accent" /> Conta Escrow (Terceiros)
-              </CardTitle>
-              <CardDescription>Fundo de reserva de aportes e liquidações.</CardDescription>
-            </div>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-rose-600 flex items-center">
+              <ArrowUpRight className="w-4 h-4 mr-1" /> Saídas (Mês)
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold font-mono text-accent mt-2">
-              {formatC(bals.escrow)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Saldo total histórico contabilizado na plataforma.
-            </p>
+            <div className="text-2xl font-bold font-mono">{formatC(stats.saidas)}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-primary flex items-center">
+              <Scale className="w-4 h-4 mr-1" /> Fluxo Líquido (Mês)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold font-mono">{formatC(stats.fluxo)}</div>
           </CardContent>
         </Card>
       </div>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="flex items-center gap-2">
-            <Wallet className="h-5 w-5" /> Extrato Conciliado (Livro-Razão)
-          </CardTitle>
-          <div className="flex gap-2">
-            <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="w-[120px]">
-                <SelectValue placeholder="Tipo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="in">Entradas</SelectItem>
-                <SelectItem value="out">Saídas</SelectItem>
-              </SelectContent>
-            </Select>
-            <div className="flex items-center space-x-2 border rounded-md px-3">
-              <Checkbox
-                id="filter-escrow"
-                checked={filterEscrow}
-                onCheckedChange={(c) => setFilterEscrow(!!c)}
+        <CardHeader className="pb-4 border-b">
+          <div className="flex flex-col lg:flex-row gap-4 items-end lg:items-center">
+            <div className="grid grid-cols-2 md:flex gap-2 w-full lg:w-auto flex-1">
+              <Input
+                type="date"
+                value={filters.dateFrom}
+                onChange={(e) => setFilters((f) => ({ ...f, dateFrom: e.target.value }))}
+                className="w-full"
+                title="Data Início"
               />
-              <Label htmlFor="filter-escrow" className="text-sm cursor-pointer">
-                Apenas Escrow
-              </Label>
+              <Input
+                type="date"
+                value={filters.dateTo}
+                onChange={(e) => setFilters((f) => ({ ...f, dateTo: e.target.value }))}
+                className="w-full"
+                title="Data Fim"
+              />
+              <Select
+                value={filters.type}
+                onValueChange={(v) => setFilters((f) => ({ ...f, type: v }))}
+              >
+                <SelectTrigger className="w-full md:w-[150px]">
+                  <SelectValue placeholder="Tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  <SelectItem value="entrada">Entradas</SelectItem>
+                  <SelectItem value="saída">Saídas</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select
+                value={filters.category}
+                onValueChange={(v) => setFilters((f) => ({ ...f, category: v }))}
+              >
+                <SelectTrigger className="w-full md:w-[220px]">
+                  <SelectValue placeholder="Categoria" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as Categorias</SelectItem>
+                  <SelectItem value="subscrição_debênture">Subscrição Debênture</SelectItem>
+                  <SelectItem value="liquidação_recebível">Liquidação Recebível</SelectItem>
+                  <SelectItem value="pagamento_ccb">Pagamento CCB</SelectItem>
+                  <SelectItem value="depósito">Depósito</SelectItem>
+                  <SelectItem value="juros_entrada">Juros Entrada</SelectItem>
+                  <SelectItem value="fornecedor">Fornecedor</SelectItem>
+                  <SelectItem value="aquisição_ccb">Aquisição CCB</SelectItem>
+                  <SelectItem value="aquisição_recebível">Aquisição Recebível</SelectItem>
+                  <SelectItem value="despesa">Despesa</SelectItem>
+                  <SelectItem value="juros_saída">Juros Saída</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex gap-2 w-full lg:w-auto">
+              <Button variant="ghost" onClick={clearFilters} className="flex-1 lg:flex-none">
+                Limpar Filtros
+              </Button>
+              <Button onClick={applyFilters} className="flex-1 lg:flex-none">
+                Aplicar Filtros
+              </Button>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Descrição</TableHead>
-                  <TableHead>Categoria</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead className="text-right">Valor</TableHead>
-                  <TableHead className="text-right">Saldo Progressivo</TableHead>
-                  <TableHead className="w-[50px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredTx.length === 0 ? (
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="p-6 space-y-4">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          ) : error ? (
+            <div className="text-center text-rose-500 py-12 flex flex-col items-center">
+              <p className="mb-4">{error}</p>
+              <Button onClick={fetchMovimentacoes} variant="outline">
+                Tentar Novamente
+              </Button>
+            </div>
+          ) : movimentacoes.length === 0 ? (
+            <div className="text-center text-muted-foreground py-16 flex flex-col items-center">
+              <Inbox className="w-16 h-16 mb-4 opacity-20" />
+              <p className="text-lg">Nenhuma movimentação encontrada</p>
+              <Button variant="link" onClick={clearFilters} className="mt-2">
+                Limpar Filtros
+              </Button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
-                      Nenhuma movimentação encontrada.
-                    </TableCell>
+                    <TableHead className="pl-6">Data</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Categoria</TableHead>
+                    <TableHead>Descrição</TableHead>
+                    <TableHead>Referência</TableHead>
+                    <TableHead className="text-right">Valor</TableHead>
+                    <TableHead className="text-right pr-6">Saldo</TableHead>
                   </TableRow>
-                ) : (
-                  filteredTx.map((tx) => (
-                    <TableRow key={tx.id}>
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                        {new Date(tx.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
-                      </TableCell>
-                      <TableCell
-                        className="font-medium max-w-[200px] truncate"
-                        title={tx.description}
-                      >
-                        {tx.description}
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-xs px-2 py-1 bg-secondary rounded">
-                          {tx.category}
-                        </span>{' '}
-                        {tx.is_escrow && (
-                          <span className="ml-1 text-[10px] text-accent font-medium uppercase">
-                            Escrow
-                          </span>
-                        )}
+                </TableHeader>
+                <TableBody>
+                  {movimentacoes.map((m) => (
+                    <TableRow
+                      key={m.id}
+                      className="cursor-pointer hover:bg-muted/50 transition-colors"
+                      onClick={() => setSelectedTx(m)}
+                    >
+                      <TableCell className="whitespace-nowrap text-xs pl-6">
+                        {new Date(m.created_at).toLocaleDateString('pt-BR')}
                       </TableCell>
                       <TableCell>
                         <span
-                          className={`text-xs font-medium px-2 py-1 rounded ${tx.type === 'in' ? 'text-emerald-600 bg-emerald-50' : 'text-rose-600 bg-rose-50'}`}
+                          className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${m.tipo === 'entrada' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}
                         >
-                          {tx.type === 'in' ? 'Entrada' : 'Saída'}
+                          {m.tipo}
                         </span>
                       </TableCell>
+                      <TableCell className="text-xs capitalize">
+                        {m.categoria.replace('_', ' ')}
+                      </TableCell>
+                      <TableCell className="max-w-[250px] truncate text-xs" title={m.descricao}>
+                        {m.descricao}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {m.referencia_numero || m.referencia_id?.split('-')[0] || '-'}
+                      </TableCell>
                       <TableCell
-                        className={`text-right font-mono ${tx.type === 'in' ? 'text-emerald-600' : 'text-rose-600'}`}
+                        className={`text-right font-mono text-sm ${m.tipo === 'entrada' ? 'text-emerald-600' : 'text-rose-600'}`}
                       >
-                        {tx.type === 'in' ? '+' : '-'} {formatC(tx.amount)}
+                        {m.tipo === 'entrada' ? '+' : '-'} {formatC(m.valor)}
                       </TableCell>
-                      <TableCell className="text-right font-mono font-medium">
-                        {formatC(tx.progressiveBalance)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex justify-end gap-1">
-                          {tx.id.startsWith('man-') && (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => {
-                                  requestClearance(
-                                    `edição de lançamento de tesouraria no registro ${tx.rawId}`,
-                                    () => {
-                                      setEditingTx(tx)
-                                    },
-                                  )
-                                }}
-                                title="Editar Lançamento"
-                              >
-                                <Pencil className="h-4 w-4 text-muted-foreground hover:text-primary" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => {
-                                  requestClearance(
-                                    `exclusão de lançamento de tesouraria no registro ${tx.rawId}`,
-                                    () => {
-                                      setDeletingTx(tx)
-                                    },
-                                  )
-                                }}
-                                title="Excluir Lançamento"
-                              >
-                                <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
-                              </Button>
-                            </>
-                          )}
-                          {tx.referenceId && tx.description.includes('Resgate') && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => generateReceipt(tx.referenceId)}
-                              title="Comprovante de Resgate"
-                            >
-                              <Download className="h-4 w-4 text-muted-foreground hover:text-primary" />
-                            </Button>
-                          )}
-                          {tx.category?.includes('CCB') && tx.referenceId && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              asChild
-                              title="Ver Detalhes da Operação"
-                            >
-                              <Link
-                                to={
-                                  tx.category.includes('Aquisição')
-                                    ? `/admin/ccb-purchases`
-                                    : `/admin/ccb-requests`
-                                }
-                              >
-                                <ExternalLink className="h-4 w-4 text-muted-foreground hover:text-primary" />
-                              </Link>
-                            </Button>
-                          )}
-                        </div>
+                      <TableCell className="text-right font-mono text-sm font-medium pr-6">
+                        {formatC(m.saldo_novo)}
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
+          {!loading && movimentacoes.length > 0 && (
+            <div className="flex flex-col sm:flex-row justify-between items-center p-4 border-t gap-4">
+              <p className="text-sm text-muted-foreground">
+                Mostrando {Math.min(totalCount, (page - 1) * 20 + movimentacoes.length)} de{' '}
+                {totalCount} registros
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                >
+                  <ChevronLeft className="w-4 h-4 mr-1" /> Anterior
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => p + 1)}
+                  disabled={page * 20 >= totalCount}
+                >
+                  Próxima <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      <EditTransactionDialog
-        open={!!editingTx}
-        onOpenChange={(op: boolean) => !op && setEditingTx(null)}
-        transaction={editingTx}
+      <TransactionDetailsModal
+        tx={selectedTx}
+        open={!!selectedTx}
+        onClose={() => setSelectedTx(null)}
+      />
+      <ReconcileModal
+        open={isReconcileOpen}
+        onClose={setIsReconcileOpen}
+        currentBalance={stats.saldo}
         onSuccess={() => {
-          setEditingTx(null)
-          fetchTransactions()
+          fetchDashboard()
+          fetchMovimentacoes()
         }}
       />
-
-      <Dialog open={!!deletingTx} onOpenChange={(op) => !op && setDeletingTx(null)}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Confirmar Exclusão</DialogTitle>
-          </DialogHeader>
-          <div className="py-4 text-sm text-muted-foreground">
-            Tem certeza que deseja excluir o lançamento <strong>"{deletingTx?.description}"</strong>{' '}
-            no valor de <strong>{deletingTx && formatC(deletingTx.amount)}</strong>?
-            <br />
-            <br />
-            Esta ação é irreversível e afetará os saldos em tempo real.
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeletingTx(null)} disabled={isDeleting}>
-              Cancelar
-            </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
-              {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Excluir Definitivamente
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
