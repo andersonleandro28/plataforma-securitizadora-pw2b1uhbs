@@ -36,7 +36,7 @@ export function useAccounting() {
         supabase
           .from('recebiveis_ccb')
           .select(
-            'id, acquisition_value, created_at, updated_at, boletos, ccb_id, profiles!recebiveis_ccb_tomador_id_fkey(full_name, pj_company_name)',
+            'id, acquisition_value, created_at, boletos, ccb_id, profiles!recebiveis_ccb_tomador_id_fkey(full_name, pj_company_name)',
           ),
         supabase
           .from('operacoes_antecipacao')
