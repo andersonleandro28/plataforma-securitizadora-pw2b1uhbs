@@ -39,24 +39,28 @@ export function ReconcileModal({
     if (diff === 0) return toast.error('O saldo informado é igual ao contabilizado')
 
     setLoading(true)
-    const tipo = diff > 0 ? 'entrada' : 'saída'
-    const valor = Math.abs(diff)
 
-    const { error } = await supabase.from('movimentacoes_caixa').insert({
-      tipo,
-      categoria: tipo === 'entrada' ? 'depósito' : 'despesa',
-      descricao: `Reconciliação Manual: ${reason}`,
-      valor,
+    // A tabela movimentacoes_caixa foi removida em prol da leitura direta das raízes.
+    // Registramos a reconciliação diretamente nos logs de auditoria como histórico.
+    const { error } = await supabase.from('audit_logs').insert({
+      entity_type: 'accounting_reconciliation',
+      entity_id: user?.id,
+      action: 'manual_balance_adjustment',
       user_id: user?.id,
-      referencia_tipo: 'outro',
+      details: {
+        old_balance: currentBalance,
+        new_balance: nb,
+        difference: diff,
+        reason: reason,
+      },
     })
 
     setLoading(false)
 
     if (error) {
-      toast.error('Erro ao reconciliar: ' + error.message)
+      toast.error('Erro ao registrar reconciliação: ' + error.message)
     } else {
-      toast.success('Saldo reconciliado com sucesso')
+      toast.success('Reconciliação registrada no log de auditoria com sucesso.')
       setNewBalance('')
       setReason('')
       onSuccess()
@@ -75,7 +79,7 @@ export function ReconcileModal({
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label>Saldo Atual Contabilizado</Label>
+            <Label>Saldo Atual Consolidado</Label>
             <Input disabled value={formatC(currentBalance)} className="bg-muted font-mono" />
           </div>
           <div className="space-y-2">
@@ -89,7 +93,8 @@ export function ReconcileModal({
               className="font-mono"
             />
             <p className="text-xs text-muted-foreground">
-              Informe o valor real da conta para gerar o lançamento de ajuste.
+              Apenas registra a diferença nos logs de auditoria, já que o Livro Caixa consolida
+              automaticamente as raízes do negócio.
             </p>
           </div>
           <div className="space-y-2">
@@ -97,7 +102,7 @@ export function ReconcileModal({
             <Input
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="Ex: Ajuste de juros bancários não contabilizados..."
+              placeholder="Ex: Validação de extrato bancário..."
             />
           </div>
         </div>
@@ -106,7 +111,7 @@ export function ReconcileModal({
             Cancelar
           </Button>
           <Button onClick={handleSave} disabled={loading}>
-            Confirmar Ajuste
+            Registrar Ajuste
           </Button>
         </DialogFooter>
       </DialogContent>

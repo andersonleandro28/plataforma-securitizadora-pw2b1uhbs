@@ -23,52 +23,46 @@ export function TransactionDetailsModal({
         <div className="space-y-4 text-sm mt-2">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <span className="text-muted-foreground block text-xs mb-1">Data e Hora Exata</span>
-              <span className="font-medium">{new Date(tx.created_at).toLocaleString('pt-BR')}</span>
+              <span className="text-muted-foreground block text-xs mb-1">Data da Transação</span>
+              <span className="font-medium">{new Date(tx.date).toLocaleString('pt-BR')}</span>
             </div>
             <div>
               <span className="text-muted-foreground block text-xs mb-1">Tipo</span>
               <span
-                className={`font-medium ${tx.tipo === 'entrada' ? 'text-emerald-600' : 'text-rose-600'}`}
+                className={`font-medium ${tx.type === 'in' ? 'text-emerald-600' : 'text-rose-600'}`}
               >
-                {tx.tipo.toUpperCase()}
+                {tx.type === 'in' ? 'ENTRADA' : 'SAÍDA'}
               </span>
             </div>
             <div>
               <span className="text-muted-foreground block text-xs mb-1">Categoria</span>
-              <span className="font-medium capitalize">{tx.categoria.replace('_', ' ')}</span>
+              <span className="font-medium capitalize">{tx.category}</span>
             </div>
             <div>
               <span className="text-muted-foreground block text-xs mb-1">
                 Valor da Movimentação
               </span>
-              <span className="font-medium">{formatC(tx.valor)}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground block text-xs mb-1">Saldo Anterior</span>
-              <span className="font-medium">{formatC(tx.saldo_anterior)}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground block text-xs mb-1">Saldo Novo</span>
-              <span className="font-medium">{formatC(tx.saldo_novo)}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground block text-xs mb-1">Referência</span>
-              <span className="font-medium">
-                {tx.referencia_tipo || 'N/A'} -{' '}
-                {tx.referencia_numero || tx.referencia_id?.split('-')[0] || 'N/A'}
+              <span
+                className={`font-medium ${tx.type === 'in' ? 'text-emerald-600' : 'text-rose-600'}`}
+              >
+                {tx.type === 'in' ? '+' : '-'}
+                {formatC(tx.value)}
               </span>
             </div>
             <div>
-              <span className="text-muted-foreground block text-xs mb-1">Usuário (ID)</span>
-              <span className="font-medium text-xs truncate max-w-[200px] block" title={tx.user_id}>
-                {tx.user_id}
+              <span className="text-muted-foreground block text-xs mb-1">Saldo Acumulado Após</span>
+              <span className="font-medium">{formatC(tx.accumulated_balance)}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground block text-xs mb-1">ID do Registro Base</span>
+              <span className="font-medium text-xs truncate max-w-[200px] block" title={tx.id}>
+                {tx.id}
               </span>
             </div>
           </div>
           <div>
             <span className="text-muted-foreground block text-xs mb-1">Descrição Completa</span>
-            <div className="bg-muted p-3 rounded-md text-foreground">{tx.descricao}</div>
+            <div className="bg-muted p-3 rounded-md text-foreground">{tx.description}</div>
           </div>
         </div>
       </DialogContent>
