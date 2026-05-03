@@ -15,6 +15,7 @@ import { Loader2, AlertTriangle, Database, DollarSign, ArrowRight } from 'lucide
 import { toast } from 'sonner'
 import { useNavigate } from 'react-router-dom'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { cn } from '@/lib/utils'
 import {
   Dialog,
   DialogContent,
@@ -74,6 +75,12 @@ export default function DataMigration() {
       clearInterval(interval)
 
       if (error) throw error
+
+      if (data && data.success === false) {
+        toast.error(data.message || 'Erro na migração')
+        setLoading(false)
+        return
+      }
 
       setProgress(data.count || 0)
       toast.success(`Migração concluída! ${data.count || 0} registros migrados com sucesso.`)
@@ -135,8 +142,8 @@ export default function DataMigration() {
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Dados já foram migrados</AlertTitle>
           <AlertDescription>
-            Já existem registros de caixa. Deseja migrar novamente? (Os registros atuais serão
-            deletados e recalculados a partir do histórico).
+            Os registros históricos já foram migrados para a nova página de Tesouraria. Para evitar
+            duplicações e problemas de integridade, esta ação foi bloqueada.
           </AlertDescription>
         </Alert>
       )}
@@ -157,11 +164,15 @@ export default function DataMigration() {
             <Checkbox
               id="confirm"
               checked={confirmed}
+              disabled={hasData}
               onCheckedChange={(checked) => setConfirmed(checked === true)}
             />
             <label
               htmlFor="confirm"
-              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              className={cn(
+                'text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70',
+                hasData && 'opacity-50',
+              )}
             >
               Confirmo que desejo migrar todos os dados históricos
             </label>
@@ -206,7 +217,11 @@ export default function DataMigration() {
             </DialogContent>
           </Dialog>
 
-          <Button onClick={handleMigrate} disabled={!confirmed || loading} className="gap-2">
+          <Button
+            onClick={handleMigrate}
+            disabled={hasData || !confirmed || loading}
+            className="gap-2"
+          >
             {loading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" /> Migrando {progress} de {totalExpected}{' '}
