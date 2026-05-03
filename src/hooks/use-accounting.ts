@@ -91,7 +91,12 @@ export function useAccounting() {
 
         const boletos = Array.isArray(rec.boletos) ? rec.boletos : []
         boletos.forEach((bol: any, i: number) => {
-          const pDate = bol.data_pagamento || bol.payment_date || bol.data_liquidacao
+          const pDate =
+            bol.data_pagamento ||
+            bol.payment_date ||
+            bol.data_liquidacao ||
+            bol.data_vencimento ||
+            bol.due_date
           if (
             (bol.status === 'Pago' || bol.status === 'pago' || bol.status === 'liquidado') &&
             pDate
@@ -126,7 +131,8 @@ export function useAccounting() {
 
         const installments = Array.isArray(ant.installments) ? ant.installments : []
         installments.forEach((inst: any, i: number) => {
-          const pDate = inst.data_pagamento || inst.payment_date
+          const pDate =
+            inst.data_pagamento || inst.payment_date || inst.data_vencimento || inst.due_date
           if (
             (inst.status === 'paga' || inst.status === 'Pago' || inst.status === 'pago') &&
             pDate
