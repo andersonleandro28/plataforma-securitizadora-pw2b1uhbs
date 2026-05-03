@@ -175,6 +175,25 @@ export default function CcbPurchases() {
       ...(form.created_at && { created_at: new Date(form.created_at).toISOString() }),
     }
 
+    if (!editingId) {
+      const { data: mappedCheck } = await supabase
+        .from('mapeamento_movimentacoes')
+        .select('id')
+        .eq('origem_id', form.ccb_id)
+        .maybeSingle()
+      if (mappedCheck) {
+        return toast.error('Esta operação já foi registrada no caixa')
+      }
+      const { data: saldo } = await supabase
+        .from('saldo_caixa')
+        .select('saldo_atual')
+        .limit(1)
+        .maybeSingle()
+      if ((saldo?.saldo_atual || 0) < acq) {
+        return toast.error('Saldo insuficiente para esta aquisição')
+      }
+    }
+
     if (editingId) {
       const { error } = await supabase.from('recebiveis_ccb').update(payload).eq('id', editingId)
       if (error) return toast.error('Erro: ' + error.message)
@@ -186,8 +205,46 @@ export default function CcbPurchases() {
       })
       toast.success('Editado com sucesso!')
     } else {
-      const { error } = await supabase.from('recebiveis_ccb').insert(payload)
+      const { data: newPurchase, error } = await supabase
+        .from('recebiveis_ccb')
+        .insert(payload)
+        .select()
+        .single()
       if (error) return toast.error('Erro: ' + error.message)
+
+      const tomadorName =
+        selectedCcb?.profiles?.full_name || selectedCcb?.profiles?.pj_company_name || 'Desconhecido'
+
+      const { data: mov, error: movErr } = await supabase
+        .from('movimentacoes_caixa')
+        .insert({
+          tipo: 'saída',
+          categoria: 'aquisição_ccb',
+          descricao: `Aquisição de CCB — ${tomadorName}`,
+          valor: acq,
+          saldo_anterior: 0,
+          saldo_novo: 0,
+          referencia_id: newPurchase.id,
+          referencia_tipo: 'ccb',
+          referencia_numero: selectedCcb?.id,
+          user_id: user?.id,
+        })
+        .select()
+        .single()
+
+      if (movErr) {
+        toast.error(movErr.message)
+      } else if (mov) {
+        await supabase.from('mapeamento_movimentacoes').insert({
+          movimentacao_caixa_id: mov.id,
+          origem_tabela: 'ccb',
+          origem_id: newPurchase.id,
+          sincronizado: true,
+          user_id: user?.id,
+        })
+        toast.success('Aquisição de CCB registrada no caixa')
+      }
+
       await supabase
         .from('ccb_solicitacoes')
         .update({ status: 'comprada_bdigital' })

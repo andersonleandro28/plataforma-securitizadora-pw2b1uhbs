@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Trash2, Edit2, Save, X, Plus, Loader2 } from 'lucide-react'
+import { Trash2, Edit2, Save, X, Plus, Loader2, DollarSign } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/use-auth'
@@ -43,6 +43,9 @@ export function ManageSubscriptionsDialog({
   const [loading, setLoading] = useState(false)
   const [addingNew, setAddingNew] = useState(false)
   const [activeTab, setActiveTab] = useState<'ativos' | 'historico'>('ativos')
+
+  const [interestOpen, setInterestOpen] = useState(false)
+  const [interestForm, setInterestForm] = useState<any>(null)
 
   useEffect(() => {
     if (series) {
@@ -236,6 +239,76 @@ export function ManageSubscriptionsDialog({
       unit_price: 1000,
       subscription_date: `${yyyy}-${mm}-${dd}`,
     })
+  }
+
+  const openInterestPayment = (sub: any) => {
+    setInterestForm({
+      sub_id: sub.id,
+      investor_name: sub.investor_name,
+      amount: '',
+      date: new Date().toISOString().split('T')[0],
+    })
+    setInterestOpen(true)
+  }
+
+  const handlePayInterest = async () => {
+    const val = Number(interestForm.amount)
+    if (!val || val <= 0) return toast.error('Valor inválido')
+
+    const { data: mapped } = await supabase
+      .from('mapeamento_movimentacoes')
+      .select('id')
+      .eq('origem_id', interestForm.sub_id)
+      .eq('origem_tabela', 'subscrições')
+      .maybeSingle()
+    if (mapped) {
+      return toast.error('Esta operação já foi registrada no caixa')
+    }
+
+    const { data: saldo } = await supabase
+      .from('saldo_caixa')
+      .select('saldo_atual')
+      .limit(1)
+      .maybeSingle()
+    if ((saldo?.saldo_atual || 0) < val) {
+      return toast.error('Saldo insuficiente para este pagamento')
+    }
+
+    setLoading(true)
+    const { data: mov, error: movErr } = await supabase
+      .from('movimentacoes_caixa')
+      .insert({
+        tipo: 'saída',
+        categoria: 'juros_saída',
+        descricao: `Pagamento de juros — ${interestForm.investor_name}`,
+        valor: val,
+        saldo_anterior: 0,
+        saldo_novo: 0,
+        referencia_id: interestForm.sub_id,
+        referencia_tipo: 'subscrição',
+        referencia_numero: null,
+        user_id: user?.id,
+      })
+      .select()
+      .single()
+
+    if (movErr) {
+      toast.error(movErr.message)
+      setLoading(false)
+      return
+    }
+
+    await supabase.from('mapeamento_movimentacoes').insert({
+      movimentacao_caixa_id: mov.id,
+      origem_tabela: 'subscrições',
+      origem_id: interestForm.sub_id,
+      sincronizado: true,
+      user_id: user?.id,
+    })
+
+    toast.success('Pagamento de juros registrado no caixa')
+    setInterestOpen(false)
+    setLoading(false)
   }
 
   return (
@@ -510,6 +583,16 @@ export function ManageSubscriptionsDialog({
                               <Button
                                 variant="ghost"
                                 size="icon"
+                                className="h-8 w-8 text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
+                                onClick={() => openInterestPayment(sub)}
+                                disabled={!!editingId || loading}
+                                title="Pagar Juros"
+                              >
+                                <DollarSign className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
                                 className="h-8 w-8 text-muted-foreground hover:text-destructive"
                                 onClick={() => handleDelete(sub.id)}
                                 disabled={!!editingId || loading}
@@ -532,6 +615,35 @@ export function ManageSubscriptionsDialog({
           </div>
         </div>
       </DialogContent>
+
+      <Dialog open={interestOpen} onOpenChange={setInterestOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Pagar Juros</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Investidor: <strong>{interestForm?.investor_name}</strong>
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Valor dos Juros (R$)</label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={interestForm?.amount || ''}
+                onChange={(e) => setInterestForm({ ...interestForm, amount: e.target.value })}
+              />
+            </div>
+            <Button className="w-full" onClick={handlePayInterest} disabled={loading}>
+              {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Registrar Pagamento
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   )
 }

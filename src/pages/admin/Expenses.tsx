@@ -182,7 +182,83 @@ export default function Expenses() {
     setSaving(false)
   }
 
+  const registerTreasuryOutflow = async (expense: any, isNew: boolean = false) => {
+    const userResp = await supabase.auth.getUser()
+    const userId = userResp.data.user?.id
+
+    const { data: mapped } = await supabase
+      .from('mapeamento_movimentacoes')
+      .select('id')
+      .eq('origem_id', expense.id)
+      .maybeSingle()
+
+    if (mapped) {
+      if (!isNew) toast.error('Esta operação já foi registrada no caixa')
+      return false
+    }
+
+    const { data: saldo } = await supabase
+      .from('saldo_caixa')
+      .select('saldo_atual')
+      .limit(1)
+      .maybeSingle()
+    if ((saldo?.saldo_atual || 0) < Number(expense.amount)) {
+      toast.error('Saldo insuficiente para este pagamento')
+      return false
+    }
+
+    const isSupplier = !!expense.supplier_id
+    const supplierName =
+      suppliers.find((s) => s.id === expense.supplier_id)?.company_name || 'Desconhecido'
+
+    const { data: mov, error: movErr } = await supabase
+      .from('movimentacoes_caixa')
+      .insert({
+        tipo: 'saída',
+        categoria: isSupplier ? 'fornecedor' : 'despesa',
+        descricao: isSupplier
+          ? `Pagamento a fornecedor — ${supplierName}`
+          : `Despesa — ${expense.description}`,
+        valor: Number(expense.amount),
+        saldo_anterior: 0,
+        saldo_novo: 0,
+        referencia_id: isSupplier ? expense.supplier_id : expense.id,
+        referencia_tipo: isSupplier ? 'fornecedor' : 'despesa',
+        referencia_numero: expense.invoice_file_path ? 'NF' : null,
+        user_id: userId,
+      })
+      .select()
+      .single()
+
+    if (movErr) {
+      toast.error(movErr.message)
+      return false
+    }
+
+    await supabase.from('mapeamento_movimentacoes').insert({
+      movimentacao_caixa_id: mov.id,
+      origem_tabela: isSupplier ? 'fornecedores' : 'despesas',
+      origem_id: expense.id,
+      sincronizado: true,
+      user_id: userId,
+    })
+
+    toast.success('Pagamento registrado no caixa')
+    return true
+  }
+
   const handleSaveExpense = async () => {
+    if (expForm.status === 'paid' && !expForm.id) {
+      const { data: saldo } = await supabase
+        .from('saldo_caixa')
+        .select('saldo_atual')
+        .limit(1)
+        .maybeSingle()
+      if ((saldo?.saldo_atual || 0) < Number(expForm.amount)) {
+        return toast.error('Saldo insuficiente para esta despesa')
+      }
+    }
+
     setSaving(true)
     let filePath = null
 
@@ -223,14 +299,25 @@ export default function Expenses() {
       const { error } = await supabase.from('expenses').update(payload).eq('id', expForm.id)
       if (error) toast.error(error.message)
       else {
+        if (expForm.status === 'paid') {
+          const expense = { ...expForm, id: expForm.id, amount: Number(expForm.amount) }
+          await registerTreasuryOutflow(expense, false)
+        }
         toast.success('Despesa atualizada com sucesso.')
         setExpenseOpen(false)
         fetchData()
       }
     } else {
-      const { error } = await supabase.from('expenses').insert(payload)
+      const { data: newExp, error } = await supabase
+        .from('expenses')
+        .insert(payload)
+        .select()
+        .single()
       if (error) toast.error(error.message)
       else {
+        if (expForm.status === 'paid' && newExp) {
+          await registerTreasuryOutflow(newExp, true)
+        }
         toast.success('Despesa cadastrada com sucesso.')
         setExpenseOpen(false)
         fetchData()
@@ -241,12 +328,36 @@ export default function Expenses() {
 
   const handleMarkPaid = async (id: string) => {
     if (isReadOnly) return
+    const expense = expenses.find((e) => e.id === id)
+    if (!expense) return
+
+    const { data: saldo } = await supabase
+      .from('saldo_caixa')
+      .select('saldo_atual')
+      .limit(1)
+      .maybeSingle()
+    if ((saldo?.saldo_atual || 0) < expense.amount) {
+      return toast.error('Saldo insuficiente para este pagamento')
+    }
+
+    const { data: mapped } = await supabase
+      .from('mapeamento_movimentacoes')
+      .select('id')
+      .eq('origem_id', id)
+      .maybeSingle()
+    if (mapped) {
+      return toast.error('Esta operação já foi registrada no caixa')
+    }
+
     const { error } = await supabase
       .from('expenses')
       .update({ status: 'paid', payment_date: new Date().toISOString().split('T')[0] })
       .eq('id', id)
-    if (error) toast.error(error.message)
-    else {
+
+    if (error) {
+      toast.error(error.message)
+    } else {
+      await registerTreasuryOutflow(expense, false)
       toast.success('Despesa marcada como paga.')
       fetchData()
     }
