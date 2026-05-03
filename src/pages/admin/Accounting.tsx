@@ -35,7 +35,6 @@ export default function Accounting() {
   const [loading, setLoading] = useState(true)
   const [movimentacoes, setMovimentacoes] = useState<any[]>([])
   const [saldoCaixa, setSaldoCaixa] = useState(0)
-  const [divergencia, setDivergencia] = useState(0)
 
   const [periodoInicio, setPeriodoInicio] = useState('')
   const [periodoFim, setPeriodoFim] = useState('')
@@ -50,39 +49,27 @@ export default function Accounting() {
   const fetchData = async () => {
     try {
       setLoading(true)
-      const [{ data: movs, error: movErr }, { data: saldo, error: saldoErr }] = await Promise.all([
-        supabase.from('treasury_transactions').select('*').order('date', { ascending: false }),
-        supabase
-          .from('saldo_caixa')
-          .select('saldo_atual')
-          .order('updated_at', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-      ])
+      const { data: movs, error: movErr } = await supabase
+        .from('treasury_transactions')
+        .select('*')
+        .order('date', { ascending: false })
 
       if (movErr) throw movErr
-      if (saldoErr && saldoErr.code !== 'PGRST116') throw saldoErr
 
       // Log para auditoria de frontend confirmando que a reversão foi aplicada e voltamos para a treasury_transactions
-      console.log('Contabilidade: Dados revertidos carregados com sucesso.', {
+      console.log('Contabilidade: Dados carregados com sucesso.', {
         totalMovimentacoes: movs?.length || 0,
-        saldoCaixa: saldo?.saldo_atual || 0,
       })
 
       setMovimentacoes(movs || [])
-      setSaldoCaixa(saldo?.saldo_atual || 0)
 
       let calc = 0
       ;(movs || []).forEach((m) => {
         if (m.type === 'in') calc += Number(m.amount)
         if (m.type === 'out') calc -= Number(m.amount)
       })
-      const saldoAtualDB = saldo?.saldo_atual || 0
-      if (Math.abs(calc - saldoAtualDB) > 0.01) {
-        setDivergencia(calc)
-      } else {
-        setDivergencia(0)
-      }
+
+      setSaldoCaixa(calc)
     } catch (error: any) {
       console.error(error)
       toast.error('Erro ao carregar dados da contabilidade.')
@@ -193,19 +180,6 @@ export default function Accounting() {
           <FileSpreadsheet className="w-4 h-4" /> Exportar CSV
         </Button>
       </div>
-
-      {divergencia !== 0 && (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Divergência de saldo detectada!</AlertTitle>
-          <AlertDescription>
-            Saldo esperado pela soma das movimentações:{' '}
-            <strong>{formatCurrency(divergencia)}</strong>. Saldo atual no sistema:{' '}
-            <strong>{formatCurrency(saldoCaixa)}</strong>. Vá até a página de Migração de Dados para
-            recalcular o saldo e corrigir essa inconsistência.
-          </AlertDescription>
-        </Alert>
-      )}
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card className="border-l-4 border-l-emerald-500">

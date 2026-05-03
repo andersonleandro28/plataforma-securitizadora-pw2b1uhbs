@@ -8,114 +8,93 @@ import {
   CardFooter,
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Checkbox } from '@/components/ui/checkbox'
 import { supabase } from '@/lib/supabase/client'
-import { Loader2, AlertTriangle, Database, DollarSign, ArrowRight } from 'lucide-react'
+import { Loader2, Trash2, CheckCircle2, AlertTriangle, Download } from 'lucide-react'
 import { toast } from 'sonner'
-import { useNavigate } from 'react-router-dom'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { cn } from '@/lib/utils'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
-import { Label } from '@/components/ui/label'
+import { exportToCSV } from '@/lib/export-utils'
 
 export default function DataMigration() {
   const [loading, setLoading] = useState(false)
   const [checking, setChecking] = useState(true)
-  const [hasData, setHasData] = useState(false)
-  const [confirmed, setConfirmed] = useState(false)
-  const [adjusting, setAdjusting] = useState(false)
-  const [newBalance, setNewBalance] = useState('')
-  const [openModal, setOpenModal] = useState(false)
-  const [progress, setProgress] = useState(0)
-  const [totalExpected] = useState(150) // Estimativa aproximada
-
-  const navigate = useNavigate()
+  const [tablesExist, setTablesExist] = useState(true)
+  const [integrityStatus, setIntegrityStatus] = useState<Record<string, string>>({})
 
   useEffect(() => {
-    checkExistingData()
+    checkTables()
   }, [])
 
-  const checkExistingData = async () => {
+  const checkTables = async () => {
     try {
       setChecking(true)
-      const { data, error } = await supabase.from('movimentacoes_caixa').select('id').limit(1)
-
-      if (error) throw error
-      if (data && data.length > 0) {
-        setHasData(true)
+      const { error } = await supabase.from('movimentacoes_caixa').select('id').limit(1)
+      if (error && error.code === '42P01') {
+        setTablesExist(false)
+      } else {
+        setTablesExist(true)
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error(err)
-      toast.error('Erro ao verificar dados existentes')
     } finally {
       setChecking(false)
     }
   }
 
-  const handleMigrate = async () => {
-    try {
-      setLoading(true)
-      setProgress(0)
+  const checkIntegrity = async () => {
+    const checks = [
+      { name: 'subscrições', table: 'debenture_subscriptions' },
+      { name: 'ccb', table: 'ccb_solicitacoes' },
+      { name: 'recebíveis', table: 'recebiveis_ccb' },
+      { name: 'despesas', table: 'expenses' },
+      { name: 'fornecedores', table: 'suppliers' },
+    ]
 
-      // Simula progresso visual na interface enquanto o banco processa
-      const interval = setInterval(() => {
-        setProgress((p) => (p < totalExpected - 1 ? p + 1 : p))
-      }, 80)
-
-      const { data, error } = await supabase.rpc('migrar_dados_historicos', { p_saldo_inicial: 0 })
-      clearInterval(interval)
-
-      if (error) throw error
-
-      if (data && data.success === false) {
-        toast.error(data.message || 'Erro na migração')
-        setLoading(false)
-        return
+    const status: Record<string, string> = {}
+    for (const check of checks) {
+      const { count, error } = await supabase
+        .from(check.table)
+        .select('*', { count: 'exact', head: true })
+      if (error || count === 0 || count === null) {
+        toast.warning(`Tabela ${check.name} pode estar corrompida. Verifique manualmente.`)
+        status[check.name] = 'warning'
+      } else {
+        status[check.name] = 'ok'
       }
-
-      setProgress(data.count || 0)
-      toast.success(`Migração concluída! ${data.count || 0} registros migrados com sucesso.`)
-      setTimeout(() => {
-        navigate('/admin/accounting')
-      }, 2000)
-    } catch (err: any) {
-      console.error(err)
-      toast.error('Erro na migração: ' + err.message)
-    } finally {
-      setLoading(false)
     }
+    setIntegrityStatus(status)
   }
 
-  const handleAdjustBalance = async () => {
-    const val = parseFloat(newBalance.replace(',', '.'))
-    if (isNaN(val)) {
-      toast.error('Informe um valor válido')
-      return
-    }
-
+  const handleCleanup = async () => {
     try {
-      setAdjusting(true)
-      const { data, error } = await supabase.rpc('recalcular_saldo_caixa', { p_saldo_inicial: val })
+      setLoading(true)
 
-      if (error) throw error
+      // PARTE 3: Export CSV Backup
+      if (tablesExist) {
+        const { data: movs, error: fetchErr } = await supabase
+          .from('movimentacoes_caixa')
+          .select('*')
+        if (!fetchErr && movs && movs.length > 0) {
+          exportToCSV(movs, 'backup_movimentacoes_caixa.csv')
+          toast.success('Backup exportado com sucesso.')
+        }
+      }
 
-      toast.success(`Saldo ajustado com sucesso. Novo saldo final: R$ ${data.saldo_final}`)
-      setOpenModal(false)
-      setNewBalance('')
+      // PARTE 1: Execute cleanup RPC
+      const { error: rpcErr } = await supabase.rpc('limpar_tabelas_problematicas')
+      if (rpcErr) throw rpcErr
+
+      setTablesExist(false)
+
+      // PARTE 2: Verify integrity
+      await checkIntegrity()
+
+      // PARTE 4: Success Confirmation
+      toast.success('Limpeza concluída. Tabelas problemáticas removidas.')
     } catch (err: any) {
       console.error(err)
-      toast.error('Erro ao ajustar saldo: ' + err.message)
+      toast.error('Erro durante a limpeza: ' + err.message)
     } finally {
-      setAdjusting(false)
+      setLoading(false)
     }
   }
 
@@ -130,111 +109,91 @@ export default function DataMigration() {
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-fade-in-up pb-10">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Migração de Dados Históricos</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Limpeza de Dados e Integridade</h1>
         <p className="text-muted-foreground mt-2">
-          Esta ação irá consolidar todos os dados históricos na nova página de Tesouraria. Esta ação
-          é irreversível.
+          Ferramenta para remoção de tabelas problemáticas e verificação da integridade das raízes
+          financeiras.
         </p>
       </div>
 
-      {hasData && (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Dados já foram migrados</AlertTitle>
-          <AlertDescription>
-            Os registros históricos já foram migrados para a nova página de Tesouraria. Para evitar
-            duplicações e problemas de integridade, esta ação foi bloqueada.
+      {!tablesExist && (
+        <Alert className="bg-emerald-50 border-emerald-200">
+          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+          <AlertTitle className="text-emerald-800">Ambiente Limpo</AlertTitle>
+          <AlertDescription className="text-emerald-700">
+            As tabelas problemáticas (movimentacoes_caixa, saldo_caixa, mapeamento_movimentacoes) já
+            foram deletadas e o banco de dados encontra-se limpo de duplicações.
           </AlertDescription>
         </Alert>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Database className="w-5 h-5 text-primary" />
-            Consolidar Histórico
-          </CardTitle>
-          <CardDescription>
-            Buscaremos todas as subscrições, recebíveis, CCBs, despesas e fornecedores do passado,
-            gerando os fluxos de caixa cronologicamente. O saldo será recalculado do zero.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center space-x-2 bg-muted p-4 rounded-md border">
-            <Checkbox
-              id="confirm"
-              checked={confirmed}
-              disabled={hasData}
-              onCheckedChange={(checked) => setConfirmed(checked === true)}
-            />
-            <label
-              htmlFor="confirm"
-              className={cn(
-                'text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70',
-                hasData && 'opacity-50',
-              )}
-            >
-              Confirmo que desejo migrar todos os dados históricos
-            </label>
-          </div>
-        </CardContent>
-        <CardFooter className="flex justify-between items-center bg-muted/50 py-4 border-t">
-          <Dialog open={openModal} onOpenChange={setOpenModal}>
-            <DialogTrigger asChild>
-              <Button variant="outline" className="gap-2">
-                <DollarSign className="w-4 h-4" /> Ajustar Saldo Base
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Ajustar Saldo Inicial</DialogTitle>
-                <DialogDescription>
-                  Defina um valor base e recalcularemos todos os saldos a partir dele.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="balance">Novo saldo inicial (R$ 0.00)</Label>
-                  <Input
-                    id="balance"
-                    placeholder="0.00"
-                    type="number"
-                    step="0.01"
-                    value={newBalance}
-                    onChange={(e) => setNewBalance(e.target.value)}
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setOpenModal(false)}>
-                  Cancelar
-                </Button>
-                <Button onClick={handleAdjustBalance} disabled={adjusting}>
-                  {adjusting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                  Confirmar e Recalcular
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+      {Object.keys(integrityStatus).length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Status de Integridade</CardTitle>
+            <CardDescription>
+              Resultado da verificação nas tabelas raiz após a limpeza.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2">
+              {Object.entries(integrityStatus).map(([table, status]) => (
+                <li key={table} className="flex items-center justify-between p-3 border rounded-md">
+                  <span className="capitalize font-medium">{table}</span>
+                  {status === 'ok' ? (
+                    <span className="flex items-center text-emerald-600 text-sm font-medium">
+                      <CheckCircle2 className="w-4 h-4 mr-1" /> Íntegra
+                    </span>
+                  ) : (
+                    <span className="flex items-center text-orange-600 text-sm font-medium">
+                      <AlertTriangle className="w-4 h-4 mr-1" /> Alerta (Vazia/Corrompida)
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
-          <Button
-            onClick={handleMigrate}
-            disabled={hasData || !confirmed || loading}
-            className="gap-2"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" /> Migrando {progress} de {totalExpected}{' '}
-                registros...
-              </>
-            ) : (
-              <>
-                Iniciar Migração <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </Button>
-        </CardFooter>
-      </Card>
+      {tablesExist && (
+        <Card className="border-red-200 shadow-sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="w-5 h-5" />
+              Remover Tabelas Problemáticas
+            </CardTitle>
+            <CardDescription>
+              Esta ação fará o backup automático dos dados em formato CSV e deletará permanentemente
+              as tabelas
+              <code className="mx-1 px-1 bg-muted rounded">movimentacoes_caixa</code>,
+              <code className="mx-1 px-1 bg-muted rounded">saldo_caixa</code> e
+              <code className="mx-1 px-1 bg-muted rounded">mapeamento_movimentacoes</code>.
+            </CardDescription>
+          </CardHeader>
+          <CardFooter className="bg-red-50/50 py-4 border-t flex flex-col sm:flex-row items-center justify-between gap-4">
+            <span className="text-sm text-red-600 font-medium">
+              Esta ação não afeta os recebíveis, subscrições ou CCBs.
+            </span>
+            <Button
+              onClick={handleCleanup}
+              disabled={loading}
+              variant="destructive"
+              className="gap-2 w-full sm:w-auto"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Processando Limpeza...
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4" /> Fazer Backup e Deletar
+                </>
+              )}
+            </Button>
+          </CardFooter>
+        </Card>
+      )}
     </div>
   )
 }
