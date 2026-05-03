@@ -1,4 +1,4 @@
-import { ReactNode, useEffect } from 'react'
+import { ReactNode, useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth, AppRole } from '@/hooks/use-auth'
 import { Loader2 } from 'lucide-react'
@@ -11,23 +11,42 @@ interface RoleGuardProps {
 
 export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
   const { user, profile, activeRole, loading, isLoadingProfile, signOut } = useAuth()
+  const [showFallback, setShowFallback] = useState(false)
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>
+    if (loading || isLoadingProfile) {
+      // Falha graciosa: se demorar mais de 3 segundos, libera o componente para validação posterior
+      timer = setTimeout(() => setShowFallback(true), 3000)
+    }
+    return () => {
+      if (timer) clearTimeout(timer)
+    }
+  }, [loading, isLoadingProfile])
 
   // Prioridade Absoluta: Bypass imediato para o Super Administrador
-  const isSuperAdmin = user?.email === 'andersonleandro28@gmail.com'
+  // Verifica também no cache local para liberar instantaneamente
+  const isSuperAdmin =
+    user?.email === 'andersonleandro28@gmail.com' ||
+    (typeof window !== 'undefined' &&
+      localStorage
+        .getItem('sb-misoqvscsydxqcsfjaux-auth-token')
+        ?.includes('andersonleandro28@gmail.com'))
+
+  // 1. Liberação de Fluxo: Acesso direto e sem bloqueios para super admin
+  // MOVIDO PARA CIMA: Libera ANTES de verificar loading para evitar travamentos
+  if (isSuperAdmin) {
+    return <>{children}</>
+  }
 
   // Aguarda a resolução do estado de autenticação e do perfil globalmente
   // Isso evita travamentos locais e múltiplas chamadas ao banco de dados
-  if (loading || isLoadingProfile) {
+  if ((loading || isLoadingProfile) && !showFallback) {
     return (
       <div className="flex h-[80vh] w-full items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     )
-  }
-
-  // 1. Liberação de Fluxo: Acesso direto e sem bloqueios para super admin
-  if (isSuperAdmin) {
-    return <>{children}</>
   }
 
   // 2. Proteção básica: usuário não autenticado
