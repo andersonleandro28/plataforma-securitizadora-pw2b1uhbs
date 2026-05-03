@@ -85,12 +85,18 @@ export default function Expenses() {
   const fetchData = async () => {
     setLoading(true)
     const [supRes, expRes] = await Promise.all([
-      supabase.from('suppliers').select('*').order('created_at', { ascending: false }),
+      supabase.from('suppliers').select('*').order('company_name', { ascending: true }),
       supabase
         .from('expenses')
         .select('*, suppliers(company_name)')
         .order('created_at', { ascending: false }),
     ])
+
+    console.log('Fornecedores retornados da API:', supRes.data)
+    if (supRes.error) {
+      console.error('Erro ao buscar fornecedores:', supRes.error)
+    }
+
     if (supRes.data) setSuppliers(supRes.data)
     if (expRes.data) setExpenses(expRes.data)
     setLoading(false)
@@ -486,12 +492,12 @@ export default function Expenses() {
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
               <Label>Fornecedor</Label>
-              <Select value={expForm.supplier_id} onValueChange={handleSupplierChange}>
+              <Select value={expForm.supplier_id || undefined} onValueChange={handleSupplierChange}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione o fornecedor" />
                 </SelectTrigger>
                 <SelectContent>
-                  {suppliers.map((s) => (
+                  {suppliers?.map((s) => (
                     <SelectItem key={s.id} value={s.id}>
                       {s.company_name}
                     </SelectItem>
