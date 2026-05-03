@@ -496,7 +496,7 @@ export default function Expenses() {
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione o fornecedor" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[9999] relative" side="bottom">
                   {suppliers?.map((s) => (
                     <SelectItem key={s.id} value={s.id}>
                       {s.company_name}
@@ -560,7 +560,7 @@ export default function Expenses() {
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[9999] relative" side="bottom">
                     <SelectItem value="pending">Pendente</SelectItem>
                     <SelectItem value="paid">Pago</SelectItem>
                   </SelectContent>
