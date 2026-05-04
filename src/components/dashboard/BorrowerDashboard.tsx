@@ -26,6 +26,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase/client'
 import { useNavigate } from 'react-router-dom'
 import { formatDate } from '@/lib/utils'
+import { toast } from 'sonner'
 
 export function BorrowerDashboard() {
   const { user, profile, loading: authLoading } = useAuth()
@@ -62,6 +63,31 @@ export function BorrowerDashboard() {
   useEffect(() => {
     if (!authLoading && user && profile?.role === 'borrower') {
       fetchDashboardData()
+
+      const channel = supabase
+        .channel('borrower_operations')
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'credit_operations',
+            filter: `borrower_id=eq.${user.id}`,
+          },
+          (payload) => {
+            const newStatus = payload.new.status
+            const oldStatus = payload.old.status
+            if (newStatus !== oldStatus) {
+              toast.info(`Sua solicitação de recebível mudou para o status: ${newStatus}`)
+              fetchDashboardData()
+            }
+          },
+        )
+        .subscribe()
+
+      return () => {
+        supabase.removeChannel(channel)
+      }
     } else if (!authLoading && user && profile?.role !== 'borrower') {
       setLoading(false)
     }
@@ -69,6 +95,23 @@ export function BorrowerDashboard() {
 
   const handleSolicitar = async () => {
     if (!formData.valor || !formData.data_vencimento) return
+
+    const valorNum = Number(formData.valor)
+    if (valorNum <= 0) {
+      toast.error('O valor deve ser maior que zero.')
+      return
+    }
+
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    // Ajuste de timezone para evitar inconsistências com inputs do tipo date
+    const dueDate = new Date(formData.data_vencimento + 'T12:00:00')
+    dueDate.setHours(0, 0, 0, 0)
+    if (dueDate < today) {
+      toast.error('A data de vencimento não pode ser retroativa.')
+      return
+    }
+
     setSubmitting(true)
     try {
       const { error: insertErr } = await supabase.from('credit_operations').insert({
@@ -114,7 +157,16 @@ export function BorrowerDashboard() {
 
   if (profile?.role !== 'borrower') {
     return (
-      <div className="flex flex-col h-[70vh] items-center justify-center space-y-4 animate-fade-in"></div>
+      <div className="flex flex-col h-[70vh] items-center justify-center space-y-4 animate-fade-in">
+        <AlertCircle className="h-16 w-16 text-destructive" />
+        <h2 className="text-3xl font-bold">Acesso Negado</h2>
+        <p className="text-muted-foreground">
+          Você não tem permissão para acessar a área de tomador.
+        </p>
+        <Button onClick={() => (window.location.href = '/login')} size="lg" className="mt-4">
+          Voltar ao Login
+        </Button>
+      </div>
     )
   }
 

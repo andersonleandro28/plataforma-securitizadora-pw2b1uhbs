@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { Navigate } from 'react-router-dom'
+import { useAuth } from '@/hooks/use-auth'
 import {
   RefreshCw,
   DollarSign,
@@ -51,6 +53,7 @@ const formatCurrency = (val: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
 
 export default function Index() {
+  const { activeRole, loading: authLoading } = useAuth()
   const [status, setStatus] = useState<Status>('loading')
   const [data, setData] = useState<{ recebiveis: any[]; investimentos: any[] } | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
@@ -59,6 +62,8 @@ export default function Index() {
   const fetchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const fetchData = useCallback(() => {
+    if (activeRole !== 'admin' && activeRole !== 'staff' && activeRole !== 'accountant') return
+
     if (fetchTimeout.current) clearTimeout(fetchTimeout.current)
 
     fetchTimeout.current = setTimeout(async () => {
@@ -92,9 +97,11 @@ export default function Index() {
         })
       }
     }, 300)
-  }, [toast])
+  }, [toast, activeRole])
 
   useEffect(() => {
+    if (activeRole !== 'admin' && activeRole !== 'staff' && activeRole !== 'accountant') return
+
     fetchData()
 
     const channel = supabase
@@ -110,7 +117,7 @@ export default function Index() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [fetchData])
+  }, [fetchData, activeRole])
 
   const processedData = useMemo(() => {
     if (!data) return null
@@ -344,6 +351,221 @@ export default function Index() {
 
   const isEmpty = processedData?.totalAUM === 0 && processedData?.totalEscrituras === 0
 
-  return
-  null
+  if (authLoading) {
+    return (
+      <div className="flex h-[80vh] items-center justify-center">
+        <Skeleton className="h-12 w-12 rounded-full" />
+      </div>
+    )
+  }
+
+  if (activeRole === 'investor') {
+    return <Navigate to="/investidor" replace />
+  }
+
+  if (activeRole === 'borrower') {
+    return <Navigate to="/tomador" replace />
+  }
+
+  return (
+    <div className="space-y-6 max-w-7xl mx-auto p-6 animate-fade-in-up pb-10">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Dashboard Administrativo</h1>
+        <p className="text-muted-foreground">Visão geral das operações e portfólio.</p>
+      </div>
+
+      {status === 'loading' && !processedData ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
+        </div>
+      ) : isEmpty ? (
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Nenhum dado encontrado</AlertTitle>
+          <AlertDescription>Ainda não há operações ou investimentos registrados.</AlertDescription>
+        </Alert>
+      ) : (
+        <>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {cards.map((card, i) => (
+              <Card key={i} className="animate-fade-in" style={{ animationDelay: card.delay }}>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    {card.title}
+                  </CardTitle>
+                  <card.icon className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{card.value}</div>
+                  <p className="text-xs text-muted-foreground mt-1">{card.sub}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {processedData && processedData.insights.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-lg font-semibold">Insights e Alertas</h2>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {processedData.insights.map((insight) => (
+                  <Alert
+                    key={insight.id}
+                    variant={insight.type === 'critical' ? 'destructive' : 'default'}
+                    className={insight.type === 'warning' ? 'border-amber-500 text-amber-600' : ''}
+                  >
+                    <insight.icon className="h-4 w-4" />
+                    <AlertTitle className="mb-1">
+                      {insight.type === 'critical' ? 'Atenção' : 'Aviso'}
+                    </AlertTitle>
+                    <AlertDescription className="flex flex-col gap-2 mt-2 sm:flex-row sm:justify-between sm:items-center">
+                      <span>{insight.message}</span>
+                      <Button variant="link" size="sm" className="p-0 h-auto font-semibold">
+                        {insight.actionText} <ChevronRight className="h-3 w-3 ml-1" />
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Exposição por Risco</CardTitle>
+                <CardDescription>Distribuição do AUM por rating</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[300px]">
+                <ChartContainer config={riskConfig} className="h-full w-full">
+                  <PieChart>
+                    <Pie
+                      data={processedData?.riskData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={2}
+                    >
+                      {processedData?.riskData.map((entry, idx) => (
+                        <Cell key={`cell-${idx}`} fill={entry.fill} />
+                      ))}
+                    </Pie>
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <ChartLegend content={<ChartLegendContent />} />
+                  </PieChart>
+                </ChartContainer>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Maiores Emissores</CardTitle>
+                <CardDescription>Top 3 emissores por volume</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[300px]">
+                <ChartContainer config={issuerConfig} className="h-full w-full">
+                  <BarChart
+                    data={processedData?.issuerData}
+                    layout="vertical"
+                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                    <XAxis
+                      type="number"
+                      tickFormatter={(val) => `R$ ${(val / 1000000).toFixed(1)}M`}
+                    />
+                    <YAxis dataKey="name" type="category" width={100} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Bar dataKey="exposure" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ChartContainer>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Próximos Vencimentos</CardTitle>
+                <CardDescription>Parcelas a receber nos próximos 30 dias</CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {paginatedBoletos.length === 0 ? (
+                <div className="py-8 text-center text-muted-foreground">
+                  Nenhum vencimento previsto para os próximos 30 dias.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Data</TableHead>
+                        <TableHead>Emissor</TableHead>
+                        <TableHead>Valor</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedBoletos.map((boleto) => (
+                        <TableRow key={boleto.id}>
+                          <TableCell className="font-medium">{boleto.date}</TableCell>
+                          <TableCell>{boleto.issuer}</TableCell>
+                          <TableCell className="font-mono">
+                            {formatCurrency(boleto.amount)}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                boleto.status === 'Pago'
+                                  ? 'default'
+                                  : boleto.dateObj < new Date()
+                                    ? 'destructive'
+                                    : 'secondary'
+                              }
+                              className={boleto.status === 'Pago' ? 'bg-emerald-500' : ''}
+                            >
+                              {boleto.status}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-end space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                      >
+                        Anterior
+                      </Button>
+                      <span className="text-sm text-muted-foreground">
+                        Página {currentPage} de {totalPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                      >
+                        Próxima
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
+  )
 }
