@@ -1,5 +1,17 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { RefreshCw, DollarSign, TrendingUp, Calendar, FileText, AlertCircle } from 'lucide-react'
+import {
+  RefreshCw,
+  DollarSign,
+  TrendingUp,
+  Calendar,
+  FileText,
+  AlertCircle,
+  AlertTriangle,
+  Info,
+  Activity,
+  ChevronRight,
+  Sparkles,
+} from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -208,6 +220,73 @@ export default function Index() {
     })
     upcomingBoletos.sort((a, b) => a.dateObj.getTime() - b.dateObj.getTime())
 
+    const insights = []
+
+    const upcoming7Days = upcomingBoletos.filter(
+      (b) => b.dateObj.getTime() <= today.getTime() + 7 * 24 * 60 * 60 * 1000,
+    )
+    if (upcoming7Days.length > 0) {
+      insights.push({
+        id: 'parcelas_7d',
+        type: upcoming7Days.length > 5 ? 'critical' : 'warning',
+        message: `${upcoming7Days.length} parcela(s) vencem nos próximos 7 dias`,
+        actionText: 'Ver parcelas',
+        icon: AlertCircle,
+        action: 'scrollToBoletos',
+      })
+    }
+
+    const hasConcentration = Object.entries(emissorMap).some(
+      ([_, val]) => totalAUM > 0 && val / totalAUM > 0.3,
+    )
+    if (hasConcentration) {
+      insights.push({
+        id: 'concentracao',
+        type: 'warning',
+        message: 'Concentração acima de 30% em 1 emissor',
+        actionText: 'Ver emissores',
+        icon: AlertTriangle,
+        action: 'scrollToEmissores',
+      })
+    }
+
+    if (pdlMonths > 0 && pdlMonths < 6) {
+      insights.push({
+        id: 'pdl_baixo',
+        type: 'info',
+        message: 'PDL médio abaixo de 6 meses',
+        actionText: 'Ver PDL',
+        icon: Info,
+        action: 'scrollToCards',
+      })
+    }
+
+    const ratingScores: Record<string, number> = { AAA: 5, AA: 4, A: 3, BBB: 2, BB: 1 }
+    let sumRatingScores = 0
+    let totalRatedValue = 0
+    recebiveis.forEach((r) => {
+      const val = Number(r.acquisition_value) || 0
+      const tir = Number(r.tir_effective) || 0
+      let rating = 'BB'
+      if (tir < 1.5) rating = 'AAA'
+      else if (tir < 2.0) rating = 'AA'
+      else if (tir < 3.0) rating = 'A'
+      else if (tir < 4.0) rating = 'BBB'
+      sumRatingScores += val * ratingScores[rating]
+      totalRatedValue += val
+    })
+    const avgRatingScore = totalRatedValue > 0 ? sumRatingScores / totalRatedValue : 0
+    if (totalRatedValue > 0 && avgRatingScore < 3) {
+      insights.push({
+        id: 'rating_baixo',
+        type: 'critical',
+        message: 'Rating médio abaixo de A',
+        actionText: 'Ver risco',
+        icon: Activity,
+        action: 'scrollToRisco',
+      })
+    }
+
     return {
       totalAUM,
       receitaMensal,
@@ -216,6 +295,7 @@ export default function Index() {
       riskData,
       issuerData,
       upcomingBoletos,
+      insights,
     }
   }, [data])
 
@@ -300,7 +380,59 @@ export default function Index() {
 
       {(status === 'loading' || (status === 'success' && !isEmpty)) && (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {processedData?.insights && processedData.insights.length > 0 && (
+            <Card className="border-primary/20 bg-primary/5 animate-fade-in-up">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-primary">
+                  <Sparkles className="h-5 w-5" />
+                  AI Insights
+                </CardTitle>
+                <CardDescription>Anomalias e alertas automáticos da carteira</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                {processedData.insights.map((insight) => (
+                  <div
+                    key={insight.id}
+                    className={cn(
+                      'p-4 rounded-lg border flex flex-col gap-3',
+                      insight.type === 'critical' && 'bg-red-500/10 border-red-500/20 text-red-600',
+                      insight.type === 'warning' &&
+                        'bg-orange-500/10 border-orange-500/20 text-orange-600',
+                      insight.type === 'info' &&
+                        'bg-yellow-500/10 border-yellow-500/20 text-yellow-600',
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <insight.icon className="h-5 w-5 shrink-0 mt-0.5" />
+                      <p className="text-sm font-medium leading-tight flex-1">{insight.message}</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={cn(
+                        'w-fit h-8 px-2 -ml-2 hover:bg-transparent hover:underline',
+                        insight.type === 'critical' && 'text-red-600 hover:text-red-700',
+                        insight.type === 'warning' && 'text-orange-600 hover:text-orange-700',
+                        insight.type === 'info' && 'text-yellow-600 hover:text-yellow-700',
+                      )}
+                      onClick={() => {
+                        document
+                          .getElementById(insight.action)
+                          ?.scrollIntoView({ behavior: 'smooth' })
+                      }}
+                    >
+                      {insight.actionText} <ChevronRight className="w-3 h-3 ml-1" />
+                    </Button>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          <div
+            id="scrollToCards"
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 scroll-mt-20"
+          >
             {cards.map((card, i) => (
               <Card key={i}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -325,7 +457,7 @@ export default function Index() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card className="flex flex-col">
+            <Card id="scrollToRisco" className="flex flex-col scroll-mt-20">
               <CardHeader>
                 <CardTitle>Risco da Carteira</CardTitle>
                 <CardDescription>Distribuição por rating</CardDescription>
@@ -365,7 +497,7 @@ export default function Index() {
               </CardContent>
             </Card>
 
-            <Card className="flex flex-col">
+            <Card id="scrollToEmissores" className="flex flex-col scroll-mt-20">
               <CardHeader>
                 <CardTitle>Top 3 Emissores</CardTitle>
                 <CardDescription>Maiores exposições (R$)</CardDescription>
@@ -420,7 +552,7 @@ export default function Index() {
             </Card>
           </div>
 
-          <Card>
+          <Card id="scrollToBoletos" className="scroll-mt-20">
             <CardHeader>
               <CardTitle>Volume Vencendo (Próximos 30 dias)</CardTitle>
               <CardDescription>Próximas parcelas e amortizações a vencer</CardDescription>
