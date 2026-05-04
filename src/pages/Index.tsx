@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { RefreshCw, DollarSign, TrendingUp, Calendar, FileText, AlertCircle } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -22,73 +22,247 @@ import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-
-const riskData = [
-  { name: 'AAA', value: 40, fill: '#22c55e' },
-  { name: 'AA', value: 30, fill: '#84cc16' },
-  { name: 'A', value: 15, fill: '#eab308' },
-  { name: 'BBB', value: 10, fill: '#f97316' },
-  { name: 'BB', value: 5, fill: '#ef4444' },
-]
+import { supabase } from '@/lib/supabase/client'
+import { useToast } from '@/hooks/use-toast'
 
 const riskConfig = {
   value: { label: 'Participação' },
 }
 
-const issuerData = [
-  { name: 'Emissor A', exposure: 15000000 },
-  { name: 'Emissor B', exposure: 10000000 },
-  { name: 'Emissor C', exposure: 8000000 },
-]
-
 const issuerConfig = {
   exposure: { label: 'Exposição', color: 'hsl(var(--primary))' },
 }
 
-const tableData = [
-  { id: 1, date: '15/06/2026', issuer: 'Construtora Alpha', amount: 500000, status: 'A Vencer' },
-  { id: 2, date: '20/06/2026', issuer: 'Tech Solutions SA', amount: 300000, status: 'A Vencer' },
-  { id: 3, date: '25/06/2026', issuer: 'Agro Investimentos', amount: 150000, status: 'A Vencer' },
-  { id: 4, date: '05/07/2026', issuer: 'Logística Brasil', amount: 800000, status: 'A Vencer' },
-  { id: 5, date: '10/07/2026', issuer: 'Varejo Center', amount: 250000, status: 'A Vencer' },
-]
-
-const cards = [
-  {
-    title: 'Total AUM',
-    icon: DollarSign,
-    value: 'R$ 0,00',
-    sub: 'Soma de todas as emissões',
-    delay: '0ms',
-  },
-  {
-    title: 'Receita Estimada (Fees)',
-    icon: TrendingUp,
-    value: 'R$ 0,00/mês',
-    sub: 'Projeção mensal',
-    delay: '50ms',
-  },
-  {
-    title: 'PDL Médio',
-    icon: Calendar,
-    value: '0 meses',
-    sub: 'Prazo médio ponderado',
-    delay: '100ms',
-  },
-  { title: 'Escrituras Base', icon: FileText, value: '0', sub: 'Emissões ativas', delay: '150ms' },
-]
-
 type Status = 'loading' | 'success' | 'error' | 'empty'
+
+const formatCurrency = (val: number) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
 
 export default function Index() {
   const [status, setStatus] = useState<Status>('loading')
+  const [data, setData] = useState<{ recebiveis: any[]; investimentos: any[] } | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 10
+  const { toast } = useToast()
+  const fetchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const fetchData = () => {
-    setStatus('loading')
-    setTimeout(() => setStatus('success'), 1500)
-  }
+  const fetchData = useCallback(() => {
+    if (fetchTimeout.current) clearTimeout(fetchTimeout.current)
 
-  useEffect(() => fetchData(), [])
+    fetchTimeout.current = setTimeout(async () => {
+      try {
+        setStatus('loading')
+        const [{ data: recebiveis, error: err1 }, { data: investimentos, error: err2 }] =
+          await Promise.all([
+            supabase
+              .from('recebiveis_ccb')
+              .select(
+                '*, tomador:profiles!recebiveis_ccb_tomador_id_fkey(full_name, pj_company_name)',
+              )
+              .eq('status', 'Ativo'),
+            supabase
+              .from('investments')
+              .select('total_value, status')
+              .in('status', ['approved', 'Ativo']),
+          ])
+
+        if (err1) throw err1
+        if (err2) throw err2
+
+        setData({ recebiveis: recebiveis || [], investimentos: investimentos || [] })
+        setStatus('success')
+      } catch (error: any) {
+        setStatus('error')
+        toast({
+          title: 'Erro ao carregar dados',
+          description: error.message || 'Falha na comunicação com o servidor',
+          variant: 'destructive',
+        })
+      }
+    }, 300)
+  }, [toast])
+
+  useEffect(() => {
+    fetchData()
+
+    const channel = supabase
+      .channel('dashboard_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'recebiveis_ccb' }, () =>
+        fetchData(),
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'investments' }, () =>
+        fetchData(),
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [fetchData])
+
+  const processedData = useMemo(() => {
+    if (!data) return null
+    const { recebiveis, investimentos } = data
+
+    const aumRecebiveis = recebiveis.reduce(
+      (acc, curr) => acc + (Number(curr.acquisition_value) || 0),
+      0,
+    )
+    const aumInvestimentos = investimentos.reduce(
+      (acc, curr) => acc + (Number(curr.total_value) || 0),
+      0,
+    )
+    const totalAUM = aumRecebiveis + aumInvestimentos
+
+    const receitaMensal = recebiveis.reduce((acc, curr) => {
+      const val = Number(curr.acquisition_value) || 0
+      const taxa = Number(curr.tir_effective) || 0
+      return acc + (val * (taxa / 100)) / 12
+    }, 0)
+
+    let sumProd = 0
+    let sumVal = 0
+    recebiveis.forEach((r) => {
+      const val = Number(r.acquisition_value) || 0
+      let maxDate = new Date()
+      if (r.boletos && Array.isArray(r.boletos)) {
+        const dates = r.boletos
+          .map((b) => new Date(b.due_date || b.payment_date || new Date()))
+          .filter((d) => !isNaN(d.getTime()))
+        if (dates.length > 0) {
+          maxDate = new Date(Math.max(...dates.map((d) => d.getTime())))
+        }
+      }
+      const days = Math.max(0, (maxDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+      sumProd += val * days
+      sumVal += val
+    })
+    const pdlMonths = sumVal > 0 ? sumProd / sumVal / 30 : 0
+
+    const totalEscrituras = recebiveis.length
+
+    const riskMap: Record<string, number> = { AAA: 0, AA: 0, A: 0, BBB: 0, BB: 0 }
+    recebiveis.forEach((r) => {
+      const val = Number(r.acquisition_value) || 0
+      const tir = Number(r.tir_effective) || 0
+      let rating = 'BB'
+      if (tir < 1.5) rating = 'AAA'
+      else if (tir < 2.0) rating = 'AA'
+      else if (tir < 3.0) rating = 'A'
+      else if (tir < 4.0) rating = 'BBB'
+      riskMap[rating] += val
+    })
+    const riskData = Object.entries(riskMap)
+      .filter(([_, val]) => val > 0)
+      .map(([name, value]) => {
+        let fill = '#ef4444'
+        if (name === 'AAA') fill = '#22c55e'
+        if (name === 'AA') fill = '#84cc16'
+        if (name === 'A') fill = '#eab308'
+        if (name === 'BBB') fill = '#f97316'
+        return { name, value, fill }
+      })
+
+    const emissorMap: Record<string, number> = {}
+    recebiveis.forEach((r) => {
+      const val = Number(r.acquisition_value) || 0
+      const emissorObj = Array.isArray(r.tomador) ? r.tomador[0] : r.tomador
+      const emissor = emissorObj?.pj_company_name || emissorObj?.full_name || 'Desconhecido'
+      emissorMap[emissor] = (emissorMap[emissor] || 0) + val
+    })
+    const issuerData = Object.entries(emissorMap)
+      .map(([name, exposure]) => ({ name, exposure }))
+      .sort((a, b) => b.exposure - a.exposure)
+      .slice(0, 3)
+
+    const upcomingBoletos: any[] = []
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const next30Days = new Date(today)
+    next30Days.setDate(today.getDate() + 30)
+
+    recebiveis.forEach((r) => {
+      if (r.boletos && Array.isArray(r.boletos)) {
+        r.boletos.forEach((b, idx) => {
+          if (!b.due_date) return
+          const bDate = new Date(b.due_date)
+          bDate.setHours(0, 0, 0, 0)
+          const bStatus = b.status || 'Pendente'
+          if (
+            bStatus.toLowerCase() !== 'pago' &&
+            bDate.getTime() >= today.getTime() &&
+            bDate.getTime() <= next30Days.getTime()
+          ) {
+            const emissorObj = Array.isArray(r.tomador) ? r.tomador[0] : r.tomador
+            upcomingBoletos.push({
+              id: `${r.id}-${idx}`,
+              date: bDate.toLocaleDateString('pt-BR', { timeZone: 'UTC' }),
+              dateObj: bDate,
+              issuer: emissorObj?.pj_company_name || emissorObj?.full_name || 'Desconhecido',
+              amount: Number(b.unit_value || b.face_value || r.boleto_unit_value) || 0,
+              status: bStatus,
+            })
+          }
+        })
+      }
+    })
+    upcomingBoletos.sort((a, b) => a.dateObj.getTime() - b.dateObj.getTime())
+
+    return {
+      totalAUM,
+      receitaMensal,
+      pdlMonths,
+      totalEscrituras,
+      riskData,
+      issuerData,
+      upcomingBoletos,
+    }
+  }, [data])
+
+  const totalPages = processedData
+    ? Math.ceil(processedData.upcomingBoletos.length / itemsPerPage)
+    : 0
+  const paginatedBoletos = processedData
+    ? processedData.upcomingBoletos.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage,
+      )
+    : []
+
+  const cards = processedData
+    ? [
+        {
+          title: 'Total AUM',
+          icon: DollarSign,
+          value: formatCurrency(processedData.totalAUM),
+          sub: 'Soma de todas as emissões',
+          delay: '0ms',
+        },
+        {
+          title: 'Receita Estimada (Fees)',
+          icon: TrendingUp,
+          value: `${formatCurrency(processedData.receitaMensal)}/mês`,
+          sub: 'Projeção mensal baseada em taxa anual',
+          delay: '50ms',
+        },
+        {
+          title: 'PDL Médio',
+          icon: Calendar,
+          value: `${processedData.pdlMonths.toFixed(1).replace('.', ',')} meses`,
+          sub: 'Prazo médio ponderado',
+          delay: '100ms',
+        },
+        {
+          title: 'Escrituras Base',
+          icon: FileText,
+          value: String(processedData.totalEscrituras),
+          sub: 'Emissões ativas no fundo',
+          delay: '150ms',
+        },
+      ]
+    : []
+
+  const isEmpty = processedData?.totalAUM === 0 && processedData?.totalEscrituras === 0
 
   return (
     <div className="flex flex-col gap-6 p-6 w-full animate-fade-in">
@@ -116,7 +290,7 @@ export default function Index() {
         </Alert>
       )}
 
-      {status === 'empty' && (
+      {status === 'success' && isEmpty && (
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Sem Dados</AlertTitle>
@@ -124,7 +298,7 @@ export default function Index() {
         </Alert>
       )}
 
-      {(status === 'loading' || status === 'success') && (
+      {(status === 'loading' || (status === 'success' && !isEmpty)) && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {cards.map((card, i) => (
@@ -170,15 +344,16 @@ export default function Index() {
                       <PieChart>
                         <ChartTooltip content={<ChartTooltipContent hideLabel />} />
                         <Pie
-                          data={riskData}
+                          data={processedData?.riskData || []}
                           cx="50%"
                           cy="50%"
                           innerRadius={60}
                           outerRadius={100}
                           paddingAngle={2}
                           dataKey="value"
+                          nameKey="name"
                         >
-                          {riskData.map((entry, index) => (
+                          {processedData?.riskData?.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={entry.fill} />
                           ))}
                         </Pie>
@@ -208,13 +383,23 @@ export default function Index() {
                     style={{ animationDelay: '250ms' }}
                   >
                     <ChartContainer config={issuerConfig} className="h-full w-full">
-                      <BarChart data={issuerData} layout="vertical" margin={{ left: 20 }}>
+                      <BarChart
+                        data={processedData?.issuerData || []}
+                        layout="vertical"
+                        margin={{ left: 20 }}
+                      >
                         <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                         <XAxis
                           type="number"
                           tickFormatter={(value) => `R$ ${(value / 1000000).toFixed(0)}M`}
                         />
-                        <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} />
+                        <YAxis
+                          dataKey="name"
+                          type="category"
+                          axisLine={false}
+                          tickLine={false}
+                          width={100}
+                        />
                         <ChartTooltip
                           content={
                             <ChartTooltipContent
@@ -259,33 +444,57 @@ export default function Index() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {tableData.map((row) => (
-                        <TableRow key={row.id}>
-                          <TableCell>{row.date}</TableCell>
-                          <TableCell>{row.issuer}</TableCell>
-                          <TableCell className="text-right">
-                            R$ {row.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant="outline"
-                              className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20"
-                            >
-                              {row.status}
-                            </Badge>
+                      {paginatedBoletos.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                            Nenhuma parcela vencendo nos próximos 30 dias
                           </TableCell>
                         </TableRow>
-                      ))}
+                      ) : (
+                        paginatedBoletos.map((row) => (
+                          <TableRow key={row.id}>
+                            <TableCell>{row.date}</TableCell>
+                            <TableCell>{row.issuer}</TableCell>
+                            <TableCell className="text-right">
+                              R$ {row.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant="outline"
+                                className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20"
+                              >
+                                {row.status}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
                     </TableBody>
                   </Table>
-                  <div className="flex items-center justify-end space-x-2 py-4">
-                    <Button variant="outline" size="sm" disabled>
-                      Anterior
-                    </Button>
-                    <Button variant="outline" size="sm" disabled>
-                      Próxima
-                    </Button>
-                  </div>
+
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-end space-x-2 py-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                      >
+                        Anterior
+                      </Button>
+                      <span className="text-sm text-muted-foreground">
+                        Página {currentPage} de {totalPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                      >
+                        Próxima
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
