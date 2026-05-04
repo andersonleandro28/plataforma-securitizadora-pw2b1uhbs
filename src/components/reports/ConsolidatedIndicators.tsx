@@ -71,12 +71,18 @@ export function ConsolidatedIndicators() {
     }
   }, [treasuryData, selectedMonth])
 
-  const formatMonth = (yyyyMM: string) => {
-    if (!yyyyMM) return ''
-    const [y, m] = yyyMM.split('-')
-    const date = new Date(Number(y), Number(m) - 1, 1, 12, 0, 0)
-    const str = date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
-    return str.charAt(0).toUpperCase() + str.slice(1)
+  const formatMonth = (monthStr: string) => {
+    if (!monthStr) return ''
+    try {
+      const parts = monthStr.split('-')
+      if (parts.length !== 2) return monthStr
+      const [y, m] = parts
+      const date = new Date(Number(y), Number(m) - 1, 1, 12, 0, 0)
+      const str = date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+      return str.charAt(0).toUpperCase() + str.slice(1)
+    } catch (e) {
+      return monthStr
+    }
   }
 
   const formatCurrency = (val: number) =>
