@@ -53,14 +53,7 @@ export function Header() {
     <header className="h-16 border-b bg-background flex items-center justify-between px-4 sticky top-0 z-30">
       <div className="flex items-center gap-4 flex-1">
         <SidebarTrigger />
-        <div className="relative w-full max-w-md hidden md:block">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Buscar Cedentes, Sacados ou Borderôs..."
-            className="w-full bg-muted/50 pl-9 border-none focus-visible:ring-1 focus-visible:ring-primary"
-          />
-        </div>
+        <div className="relative w-full max-w-md hidden md:block"></div>
       </div>
 
       <div className="flex items-center gap-4">

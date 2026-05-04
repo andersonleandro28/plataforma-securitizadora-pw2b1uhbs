@@ -31,12 +31,7 @@ const pendingActions = [
 export function ActionCenter() {
   return (
     <Sheet>
-      <SheetTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative">
-          <Bell className="h-5 w-5 text-muted-foreground" />
-          <span className="absolute top-1 right-1 h-2.5 w-2.5 rounded-full bg-destructive animate-pulse-ring" />
-        </Button>
-      </SheetTrigger>
+      <SheetTrigger asChild></SheetTrigger>
       <SheetContent className="w-full sm:max-w-md bg-background border-l">
         <SheetHeader className="pb-4 border-b">
           <SheetTitle className="flex items-center gap-2 text-foreground">
