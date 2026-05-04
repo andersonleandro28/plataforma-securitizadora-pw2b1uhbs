@@ -236,8 +236,22 @@ const App = () => (
           >
             <Route path="/" element={<Index />} />
 
-            <Route path="/investidor" element={<InvestorDashboard />} />
-            <Route path="/tomador" element={<BorrowerDashboard />} />
+            <Route
+              path="/investidor"
+              element={
+                <RoleGuard allowedRoles={['investor']}>
+                  <InvestorDashboard />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/tomador"
+              element={
+                <RoleGuard allowedRoles={['borrower']}>
+                  <BorrowerDashboard />
+                </RoleGuard>
+              }
+            />
 
             <Route
               path="/kyc"

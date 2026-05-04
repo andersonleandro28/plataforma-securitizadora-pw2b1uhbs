@@ -17,7 +17,7 @@ import { formatDate } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 
 export function InvestorDashboard() {
-  const { profile, user, loading: authLoading } = useAuth()
+  const { profile, user, activeRole, loading: authLoading } = useAuth()
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -45,12 +45,12 @@ export function InvestorDashboard() {
   }, [user])
 
   useEffect(() => {
-    if (!authLoading && user && profile?.role === 'investor') {
+    if (!authLoading && user && activeRole === 'investor') {
       fetchDashboardData()
-    } else if (!authLoading && user && profile?.role !== 'investor') {
+    } else if (!authLoading && user && activeRole !== 'investor') {
       setLoading(false)
     }
-  }, [authLoading, user, profile, fetchDashboardData])
+  }, [authLoading, user, activeRole, fetchDashboardData])
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0)
@@ -69,7 +69,7 @@ export function InvestorDashboard() {
     )
   }
 
-  if (profile?.role !== 'investor') {
+  if (activeRole !== 'investor') {
     return (
       <div className="flex flex-col h-[70vh] items-center justify-center space-y-4 animate-fade-in">
         <AlertCircle className="h-16 w-16 text-destructive" />
@@ -77,8 +77,8 @@ export function InvestorDashboard() {
         <p className="text-muted-foreground">
           Você não tem permissão para acessar a área de investidor.
         </p>
-        <Button onClick={() => (window.location.href = '/login')} size="lg" className="mt-4">
-          Voltar ao Login
+        <Button onClick={() => (window.location.href = '/')} size="lg" className="mt-4">
+          Voltar
         </Button>
       </div>
     )
