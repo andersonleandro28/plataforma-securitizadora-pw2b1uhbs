@@ -36,6 +36,8 @@ import { AuthGuard } from './components/auth/AuthGuard'
 import { RoleGuard } from './components/auth/RoleGuard'
 import { PendingSignatures } from './components/docusign/PendingSignatures'
 import { GlobalSecurityModal } from './components/admin/GlobalSecurityModal'
+import { InvestorDashboard } from './components/dashboard/InvestorDashboard'
+import { BorrowerDashboard } from './components/dashboard/BorrowerDashboard'
 
 // Ignore browser extension errors (e.g., MetaMask) that crash the preview
 if (typeof window !== 'undefined') {
@@ -233,6 +235,9 @@ const App = () => (
             }
           >
             <Route path="/" element={<Index />} />
+
+            <Route path="/investidor" element={<InvestorDashboard />} />
+            <Route path="/tomador" element={<BorrowerDashboard />} />
 
             <Route
               path="/kyc"
