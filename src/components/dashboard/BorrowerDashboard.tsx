@@ -114,16 +114,7 @@ export function BorrowerDashboard() {
 
   if (profile?.role !== 'borrower') {
     return (
-      <div className="flex flex-col h-[70vh] items-center justify-center space-y-4 animate-fade-in">
-        <AlertCircle className="h-16 w-16 text-destructive" />
-        <h2 className="text-3xl font-bold">Acesso Negado</h2>
-        <p className="text-muted-foreground">
-          Você não tem permissão para acessar a área de tomador.
-        </p>
-        <Button onClick={() => (window.location.href = '/login')} size="lg" className="mt-4">
-          Voltar ao Login
-        </Button>
-      </div>
+      <div className="flex flex-col h-[70vh] items-center justify-center space-y-4 animate-fade-in"></div>
     )
   }
 
