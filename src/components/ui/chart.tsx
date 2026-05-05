@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Tooltip } from 'recharts'
+import { Tooltip, Legend } from 'recharts'
 import { cn } from '@/lib/utils'
 
 export function ChartContainer({
@@ -30,4 +30,19 @@ export function ChartTooltipContent({ active, payload, label }: any) {
     )
   }
   return null
+}
+
+export const ChartLegend = Legend
+
+export function ChartLegendContent({ payload }: any) {
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-4 text-sm pt-2">
+      {payload?.map((entry: any, index: number) => (
+        <div key={`item-${index}`} className="flex items-center gap-2">
+          <div className="h-2 w-2 rounded-[2px]" style={{ backgroundColor: entry.color }} />
+          <span className="text-muted-foreground">{entry.value}</span>
+        </div>
+      ))}
+    </div>
+  )
 }
