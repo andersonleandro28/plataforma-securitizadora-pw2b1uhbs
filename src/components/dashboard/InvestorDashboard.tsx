@@ -1,5 +1,13 @@
-import { useEffect, useState, useCallback } from 'react'
-import { Wallet, TrendingUp, PieChart, AlertCircle, AlertTriangle } from 'lucide-react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
+import {
+  Wallet,
+  TrendingUp,
+  PieChart,
+  AlertCircle,
+  AlertTriangle,
+  RefreshCcw,
+  FolderOpen,
+} from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase/client'
@@ -12,16 +20,144 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
-import { useNavigate } from 'react-router-dom'
 import { formatDate } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell } from 'recharts'
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
+
+const formatCurrency = (val: number) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0)
+
+const calculateGain = (inv: any) => {
+  if (inv.transfer_value == null) return 0
+  const total = Number(inv.total_value) || 0
+  const transfer = Number(inv.transfer_value) || 0
+  return transfer - total
+}
+
+const TabContent = ({ statusLabel, investmentsList, chartConfig, onViewOtherStatus }: any) => {
+  if (investmentsList.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center border rounded-lg bg-muted/10 border-dashed mt-4 animate-fade-in">
+        <FolderOpen className="h-12 w-12 text-muted-foreground/30 mb-4" />
+        <h3 className="text-lg font-medium">Nenhum investimento neste status</h3>
+        <p className="text-sm text-muted-foreground mt-1 mb-4">
+          Você não possui investimentos {statusLabel.toLowerCase()}.
+        </p>
+        <Button variant="outline" onClick={onViewOtherStatus}>
+          Ver outros status
+        </Button>
+      </div>
+    )
+  }
+
+  const individualChartData = investmentsList.map((inv: any) => ({
+    produto: inv.investment_products?.title || 'Desconhecido',
+    ganho: calculateGain(inv),
+  }))
+
+  return (
+    <div className="space-y-6 mt-4 animate-fade-in">
+      <Card>
+        <CardHeader>
+          <CardTitle>Ganhos por Investimento</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ChartContainer config={chartConfig} className="h-[250px] w-full">
+            <BarChart
+              data={individualChartData}
+              margin={{ top: 20, right: 0, left: 0, bottom: 20 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="produto" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
+              <YAxis
+                tickFormatter={(value) => `R$ ${value}`}
+                tickLine={false}
+                axisLine={false}
+                tick={{ fontSize: 12 }}
+              />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Bar dataKey="ganho" radius={[4, 4, 0, 0]}>
+                {individualChartData.map((entry: any, index: number) => (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={
+                      entry.ganho > 0
+                        ? 'hsl(var(--success, 142.1 76.2% 36.3%))'
+                        : entry.ganho < 0
+                          ? 'hsl(var(--destructive, 0 84.2% 60.2%))'
+                          : 'hsl(var(--muted-foreground, 215.4 16.3% 46.9%))'
+                    }
+                  />
+                ))}
+              </Bar>
+            </BarChart>
+          </ChartContainer>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Produto</TableHead>
+                <TableHead>Quotas</TableHead>
+                <TableHead>Valor Unitário</TableHead>
+                <TableHead>Valor Total</TableHead>
+                <TableHead>Valor Resgatado</TableHead>
+                <TableHead>Ganho</TableHead>
+                <TableHead>Data</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {investmentsList.map((inv: any) => {
+                const unitPrice = Number(inv.unit_price) || 0
+                const totalValue = Number(inv.total_value) || 0
+                const transferValue = Number(inv.transfer_value) || 0
+                const gain = calculateGain(inv)
+
+                return (
+                  <TableRow key={inv.id}>
+                    <TableCell className="font-medium">
+                      {inv.investment_products?.title || 'Desconhecido'}
+                    </TableCell>
+                    <TableCell>{inv.quotas}</TableCell>
+                    <TableCell>{formatCurrency(unitPrice)}</TableCell>
+                    <TableCell>{formatCurrency(totalValue)}</TableCell>
+                    <TableCell>
+                      {inv.transfer_value != null ? formatCurrency(transferValue) : '-'}
+                    </TableCell>
+                    <TableCell
+                      className={
+                        gain > 0
+                          ? 'text-emerald-600 font-medium'
+                          : gain < 0
+                            ? 'text-destructive font-medium'
+                            : ''
+                      }
+                    >
+                      {formatCurrency(gain)}
+                    </TableCell>
+                    <TableCell>{formatDate(inv.created_at)}</TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
 
 export function InvestorDashboard() {
-  const { profile, user, activeRole, loading: authLoading } = useAuth()
-  const navigate = useNavigate()
+  const { profile, user, loading: authLoading } = useAuth()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [myInvestments, setMyInvestments] = useState<any[]>([])
+  const [activeTab, setActiveTab] = useState('approved')
 
   const fetchDashboardData = useCallback(async () => {
     if (!user) return
@@ -45,15 +181,49 @@ export function InvestorDashboard() {
   }, [user])
 
   useEffect(() => {
-    if (!authLoading && user && activeRole === 'investor') {
+    if (!authLoading && user && profile?.role === 'investor') {
       fetchDashboardData()
-    } else if (!authLoading && user && activeRole !== 'investor') {
+    } else if (!authLoading && user && profile?.role !== 'investor') {
       setLoading(false)
     }
-  }, [authLoading, user, activeRole, fetchDashboardData])
+  }, [authLoading, user, profile, fetchDashboardData])
 
-  const formatCurrency = (val: number) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0)
+  const sumGains = (invs: any[]) => invs.reduce((acc, curr) => acc + calculateGain(curr), 0)
+
+  const { ativos, resgatados, cancelados, excluidos } = useMemo(() => {
+    return {
+      ativos: myInvestments.filter((i) => i.status === 'approved'),
+      resgatados: myInvestments.filter((i) => i.status === 'resgatado'),
+      cancelados: myInvestments.filter((i) => i.status === 'cancelled'),
+      excluidos: myInvestments.filter((i) => i.status === 'Excluído'),
+    }
+  }, [myInvestments])
+
+  const summaryChartData = useMemo(
+    () => [
+      { status: 'Ativos', ganho: sumGains(ativos), fill: 'hsl(var(--success, 142.1 76.2% 36.3%))' },
+      {
+        status: 'Resgatados',
+        ganho: sumGains(resgatados),
+        fill: 'hsl(var(--primary, 221.2 83.2% 53.3%))',
+      },
+      {
+        status: 'Cancelados',
+        ganho: sumGains(cancelados),
+        fill: 'hsl(var(--destructive, 0 84.2% 60.2%))',
+      },
+      {
+        status: 'Excluídos',
+        ganho: sumGains(excluidos),
+        fill: 'hsl(var(--muted-foreground, 215.4 16.3% 46.9%))',
+      },
+    ],
+    [ativos, resgatados, cancelados, excluidos],
+  )
+
+  const chartConfig = {
+    ganho: { label: 'Ganho', color: 'hsl(var(--primary))' },
+  }
 
   if (authLoading || loading) {
     return (
@@ -64,12 +234,13 @@ export function InvestorDashboard() {
           <Skeleton className="h-32 w-full" />
           <Skeleton className="h-32 w-full" />
         </div>
+        <Skeleton className="h-[250px] w-full" />
         <Skeleton className="h-[400px] w-full" />
       </div>
     )
   }
 
-  if (activeRole !== 'investor') {
+  if (profile?.role !== 'investor') {
     return (
       <div className="flex flex-col h-[70vh] items-center justify-center space-y-4 animate-fade-in">
         <AlertCircle className="h-16 w-16 text-destructive" />
@@ -77,8 +248,8 @@ export function InvestorDashboard() {
         <p className="text-muted-foreground">
           Você não tem permissão para acessar a área de investidor.
         </p>
-        <Button onClick={() => (window.location.href = '/')} size="lg" className="mt-4">
-          Voltar
+        <Button onClick={() => (window.location.href = '/login')} size="lg" className="mt-4">
+          Voltar ao Login
         </Button>
       </div>
     )
@@ -87,10 +258,11 @@ export function InvestorDashboard() {
   if (error) {
     return (
       <div className="flex flex-col h-[70vh] items-center justify-center space-y-4 animate-fade-in">
-        <AlertTriangle className="h-16 w-16 text-amber-500" />
+        <AlertTriangle className="h-16 w-16 text-destructive" />
         <h2 className="text-3xl font-bold">Erro ao carregar</h2>
-        <p className="text-muted-foreground">Ocorreu um erro ao buscar seus investimentos.</p>
-        <Button onClick={fetchDashboardData} variant="outline" size="lg" className="mt-4">
+        <p className="text-muted-foreground">Não foi possível carregar seus investimentos.</p>
+        <Button onClick={fetchDashboardData} size="lg" className="mt-4">
+          <RefreshCcw className="mr-2 h-4 w-4" />
           Tentar Novamente
         </Button>
       </div>
@@ -155,56 +327,73 @@ export function InvestorDashboard() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Meus Investimentos</CardTitle>
+          <CardTitle>Ganhos por Status</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nome</TableHead>
-                <TableHead>Valor</TableHead>
-                <TableHead>Rendimento Est.</TableHead>
-                <TableHead>Data</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {myInvestments.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center py-12 text-muted-foreground">
-                    <div className="flex flex-col items-center justify-center">
-                      <Wallet className="h-10 w-10 text-muted-foreground/30 mb-2" />
-                      <p>Nenhum investimento</p>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                myInvestments.map((inv) => {
-                  const amount = Number(inv.total_value) || 0
-                  const rateStr = inv.investment_products?.rate || '0'
-                  const rateMatch = rateStr.match(/(\d+[.,]\d+|\d+)/)
-                  const rate = rateMatch ? parseFloat(rateMatch[1].replace(',', '.')) / 100 : 0.01
-                  const estYield = amount * rate
-
-                  return (
-                    <TableRow key={inv.id}>
-                      <TableCell className="font-medium">
-                        {inv.investment_products?.title || 'Produto Desconhecido'}
-                      </TableCell>
-                      <TableCell className="font-mono text-primary">
-                        {formatCurrency(amount)}
-                      </TableCell>
-                      <TableCell className="font-mono text-emerald-600">
-                        +{formatCurrency(estYield)}
-                      </TableCell>
-                      <TableCell>{formatDate(inv.transfer_date || inv.created_at)}</TableCell>
-                    </TableRow>
-                  )
-                })
-              )}
-            </TableBody>
-          </Table>
+          <ChartContainer config={chartConfig} className="h-[250px] w-full">
+            <BarChart
+              layout="vertical"
+              data={summaryChartData}
+              margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+              <XAxis type="number" tickFormatter={(value) => `R$ ${value}`} />
+              <YAxis type="category" dataKey="status" width={100} />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Bar dataKey="ganho" radius={[0, 4, 4, 0]}>
+                {summaryChartData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.fill} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ChartContainer>
         </CardContent>
       </Card>
+
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight mb-4">Meus Investimentos</h2>
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="approved">Ativos</TabsTrigger>
+            <TabsTrigger value="resgatado">Resgatados</TabsTrigger>
+            <TabsTrigger value="cancelled">Cancelados</TabsTrigger>
+            <TabsTrigger value="Excluído">Excluídos</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="approved">
+            <TabContent
+              statusLabel="Ativos"
+              investmentsList={ativos}
+              chartConfig={chartConfig}
+              onViewOtherStatus={() => setActiveTab('resgatado')}
+            />
+          </TabsContent>
+          <TabsContent value="resgatado">
+            <TabContent
+              statusLabel="Resgatados"
+              investmentsList={resgatados}
+              chartConfig={chartConfig}
+              onViewOtherStatus={() => setActiveTab('approved')}
+            />
+          </TabsContent>
+          <TabsContent value="cancelled">
+            <TabContent
+              statusLabel="Cancelados"
+              investmentsList={cancelados}
+              chartConfig={chartConfig}
+              onViewOtherStatus={() => setActiveTab('approved')}
+            />
+          </TabsContent>
+          <TabsContent value="Excluído">
+            <TabContent
+              statusLabel="Excluídos"
+              investmentsList={excluidos}
+              chartConfig={chartConfig}
+              onViewOtherStatus={() => setActiveTab('approved')}
+            />
+          </TabsContent>
+        </Tabs>
+      </div>
     </div>
   )
 }
