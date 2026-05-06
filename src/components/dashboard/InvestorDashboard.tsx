@@ -36,66 +36,145 @@ const calculateGain = (inv: any) => {
   return transfer - total
 }
 
-const TabContent = ({ statusLabel, investmentsList, chartConfig, onViewOtherStatus }: any) => {
-  if (investmentsList.length === 0) {
+const TabContent = ({ status, statusLabel, user, chartConfig, onViewOtherStatus }: any) => {
+  const [data, setData] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<any>(null)
+
+  const fetchData = useCallback(async () => {
+    if (!user?.id) return
+    setLoading(true)
+    setError(null)
+
+    console.log(`Carregando ${statusLabel}... user_id = ${user.id}`)
+
+    try {
+      const { data: res, error: err } = await supabase
+        .from('investments')
+        .select('*, investment_products(*)')
+        .eq('user_id', user.id)
+        .eq('status', status)
+        .order('created_at', { ascending: false })
+
+      if (err) {
+        console.log(`Erro ao carregar: ${err.message}`)
+        throw err
+      }
+
+      console.log(`Dados retornados: ${res?.length || 0} registros`)
+      setData(res || [])
+    } catch (e: any) {
+      setError(e)
+    } finally {
+      setLoading(false)
+    }
+  }, [status, statusLabel, user?.id])
+
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
+
+  if (loading) {
+    return (
+      <div className="space-y-4 mt-4">
+        <Skeleton className="h-[250px] w-full" />
+        <Skeleton className="h-[300px] w-full" />
+      </div>
+    )
+  }
+
+  if (error) {
+    const isAuthError =
+      error.code === 'PGRST301' ||
+      error.code === '401' ||
+      error.code === '403' ||
+      error.status === 401 ||
+      error.status === 403
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center border rounded-lg bg-muted/10 border-dashed mt-4 animate-fade-in">
-        <FolderOpen className="h-12 w-12 text-muted-foreground/30 mb-4" />
-        <h3 className="text-lg font-medium">Nenhum investimento neste status</h3>
-        <p className="text-sm text-muted-foreground mt-1 mb-4">
-          Você não possui investimentos {statusLabel.toLowerCase()}.
-        </p>
-        <Button variant="outline" onClick={onViewOtherStatus}>
-          Ver outros status
+        <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+        <h3 className="text-lg font-medium">
+          {isAuthError
+            ? 'Acesso negado. Verifique suas permissoes.'
+            : 'Erro ao carregar dados. Tente novamente.'}
+        </h3>
+        <Button variant="outline" onClick={fetchData} className="mt-4">
+          <RefreshCcw className="mr-2 h-4 w-4" />
+          Recarregar
         </Button>
       </div>
     )
   }
 
-  const individualChartData = investmentsList.map((inv: any) => ({
+  if (data.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center border rounded-lg bg-muted/10 border-dashed mt-4 animate-fade-in">
+        <FolderOpen className="h-12 w-12 text-muted-foreground/30 mb-4" />
+        <h3 className="text-lg font-medium">Nenhum investimento neste status</h3>
+        <div className="flex gap-4 mt-4">
+          <Button variant="outline" onClick={fetchData}>
+            <RefreshCcw className="mr-2 h-4 w-4" />
+            Recarregar
+          </Button>
+          <Button variant="secondary" onClick={onViewOtherStatus}>
+            Ver outros status
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  const individualChartData = data.map((inv: any) => ({
     produto: inv.investment_products?.title || 'Desconhecido',
     ganho: calculateGain(inv),
   }))
 
   return (
     <div className="space-y-6 mt-4 animate-fade-in">
-      <Card>
-        <CardHeader>
-          <CardTitle>Ganhos por Investimento</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ChartContainer config={chartConfig} className="h-[250px] w-full">
-            <BarChart
-              data={individualChartData}
-              margin={{ top: 20, right: 0, left: 0, bottom: 20 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="produto" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
-              <YAxis
-                tickFormatter={(value) => `R$ ${value}`}
-                tickLine={false}
-                axisLine={false}
-                tick={{ fontSize: 12 }}
-              />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar dataKey="ganho" radius={[4, 4, 0, 0]}>
-                {individualChartData.map((entry: any, index: number) => (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={
-                      entry.ganho > 0
-                        ? 'hsl(var(--success, 142.1 76.2% 36.3%))'
-                        : entry.ganho < 0
-                          ? 'hsl(var(--destructive, 0 84.2% 60.2%))'
-                          : 'hsl(var(--muted-foreground, 215.4 16.3% 46.9%))'
-                    }
-                  />
-                ))}
-              </Bar>
-            </BarChart>
-          </ChartContainer>
-        </CardContent>
-      </Card>
+      {data.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Ganhos por Investimento</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ChartContainer config={chartConfig} className="h-[250px] w-full">
+              <BarChart
+                data={individualChartData}
+                margin={{ top: 20, right: 0, left: 0, bottom: 20 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis
+                  dataKey="produto"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 12 }}
+                />
+                <YAxis
+                  tickFormatter={(value) => `R$ ${value}`}
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 12 }}
+                />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Bar dataKey="ganho" radius={[4, 4, 0, 0]}>
+                  {individualChartData.map((entry: any, index: number) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={
+                        entry.ganho > 0
+                          ? 'hsl(var(--success, 142.1 76.2% 36.3%))'
+                          : entry.ganho < 0
+                            ? 'hsl(var(--destructive, 0 84.2% 60.2%))'
+                            : 'hsl(var(--muted-foreground, 215.4 16.3% 46.9%))'
+                      }
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="p-0">
@@ -112,7 +191,7 @@ const TabContent = ({ statusLabel, investmentsList, chartConfig, onViewOtherStat
               </TableRow>
             </TableHeader>
             <TableBody>
-              {investmentsList.map((inv: any) => {
+              {data.map((inv: any) => {
                 const unitPrice = Number(inv.unit_price) || 0
                 const totalValue = Number(inv.total_value) || 0
                 const transferValue = Number(inv.transfer_value) || 0
@@ -155,7 +234,7 @@ const TabContent = ({ statusLabel, investmentsList, chartConfig, onViewOtherStat
 export function InvestorDashboard() {
   const { profile, user, loading: authLoading } = useAuth()
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
+  const [error, setError] = useState<any>(null)
   const [myInvestments, setMyInvestments] = useState<any[]>([])
   const [activeTab, setActiveTab] = useState('approved')
 
@@ -172,9 +251,9 @@ export function InvestorDashboard() {
 
       if (fetchErr) throw fetchErr
       setMyInvestments(data || [])
-    } catch (err) {
+    } catch (err: any) {
       console.error(err)
-      setError(true)
+      setError(err)
     } finally {
       setLoading(false)
     }
@@ -256,14 +335,24 @@ export function InvestorDashboard() {
   }
 
   if (error) {
+    const isAuthError =
+      error.code === 'PGRST301' ||
+      error.code === '401' ||
+      error.code === '403' ||
+      error.status === 401 ||
+      error.status === 403
     return (
       <div className="flex flex-col h-[70vh] items-center justify-center space-y-4 animate-fade-in">
         <AlertTriangle className="h-16 w-16 text-destructive" />
         <h2 className="text-3xl font-bold">Erro ao carregar</h2>
-        <p className="text-muted-foreground">Não foi possível carregar seus investimentos.</p>
+        <p className="text-muted-foreground">
+          {isAuthError
+            ? 'Acesso negado. Verifique suas permissoes.'
+            : 'Erro ao carregar dados. Tente novamente.'}
+        </p>
         <Button onClick={fetchDashboardData} size="lg" className="mt-4">
           <RefreshCcw className="mr-2 h-4 w-4" />
-          Tentar Novamente
+          Recarregar
         </Button>
       </div>
     )
@@ -362,32 +451,36 @@ export function InvestorDashboard() {
 
           <TabsContent value="approved">
             <TabContent
+              status="approved"
               statusLabel="Ativos"
-              investmentsList={ativos}
+              user={user}
               chartConfig={chartConfig}
               onViewOtherStatus={() => setActiveTab('resgatado')}
             />
           </TabsContent>
           <TabsContent value="resgatado">
             <TabContent
+              status="resgatado"
               statusLabel="Resgatados"
-              investmentsList={resgatados}
+              user={user}
               chartConfig={chartConfig}
               onViewOtherStatus={() => setActiveTab('approved')}
             />
           </TabsContent>
           <TabsContent value="cancelled">
             <TabContent
+              status="cancelled"
               statusLabel="Cancelados"
-              investmentsList={cancelados}
+              user={user}
               chartConfig={chartConfig}
               onViewOtherStatus={() => setActiveTab('approved')}
             />
           </TabsContent>
           <TabsContent value="Excluído">
             <TabContent
+              status="Excluído"
               statusLabel="Excluídos"
-              investmentsList={excluidos}
+              user={user}
               chartConfig={chartConfig}
               onViewOtherStatus={() => setActiveTab('approved')}
             />
