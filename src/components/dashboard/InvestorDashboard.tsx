@@ -46,11 +46,12 @@ const TabContent = ({ status, statusLabel, user, chartConfig, onViewOtherStatus 
     setLoading(true)
     setError(null)
 
+    console.log(`Carregando ${statusLabel}... user_id = ${user.id}`)
     console.log('Auth UID:', user.id)
 
     try {
       const { data: res, error: err } = await supabase
-        .from('investments')
+        .from('investments_view')
         .select('*, investment_products(*)')
         .eq('user_id', user.id)
         .eq('status', status)
@@ -69,7 +70,7 @@ const TabContent = ({ status, statusLabel, user, chartConfig, onViewOtherStatus 
     } finally {
       setLoading(false)
     }
-  }, [status, user?.id])
+  }, [status, statusLabel, user?.id])
 
   useEffect(() => {
     fetchData()
@@ -248,7 +249,7 @@ export function InvestorDashboard() {
 
     try {
       const { data, error: fetchErr } = await supabase
-        .from('investments')
+        .from('investments_view')
         .select('*, investment_products(*)')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
@@ -261,7 +262,7 @@ export function InvestorDashboard() {
       console.log('Dados retornados (Dashboard):', data?.length || 0, 'registros')
       setMyInvestments(data || [])
     } catch (err: any) {
-      console.error('Erro:', err)
+      console.log('Erro:', err.message || err)
       setError(err)
     } finally {
       setLoading(false)
@@ -423,30 +424,32 @@ export function InvestorDashboard() {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Ganhos por Status</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ChartContainer config={chartConfig} className="h-[250px] w-full">
-            <BarChart
-              layout="vertical"
-              data={summaryChartData}
-              margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-              <XAxis type="number" tickFormatter={(value) => `R$ ${value}`} />
-              <YAxis type="category" dataKey="status" width={100} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar dataKey="ganho" radius={[0, 4, 4, 0]}>
-                {summaryChartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.fill} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ChartContainer>
-        </CardContent>
-      </Card>
+      {myInvestments.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Ganhos por Status</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ChartContainer config={chartConfig} className="h-[250px] w-full">
+              <BarChart
+                layout="vertical"
+                data={summaryChartData}
+                margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" tickFormatter={(value) => `R$ ${value}`} />
+                <YAxis type="category" dataKey="status" width={100} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Bar dataKey="ganho" radius={[0, 4, 4, 0]}>
+                  {summaryChartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+      )}
 
       <div>
         <h2 className="text-2xl font-bold tracking-tight mb-4">Meus Investimentos</h2>
