@@ -51,7 +51,7 @@ const TabContent = ({ status, statusLabel, user, chartConfig, onViewOtherStatus 
 
     try {
       const { data: res, error: err } = await supabase
-        .from('investments')
+        .from('investments_view')
         .select('*, investment_products(*)')
         .eq('user_id', user.id)
         .eq('status', status)
@@ -201,22 +201,23 @@ const TabContent = ({ status, statusLabel, user, chartConfig, onViewOtherStatus 
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.map((inv: any) => {
-                const unitPrice = Number(inv.unit_price) || 0
-                const totalValue = Number(inv.total_value) || 0
-                const transferValue = Number(inv.transfer_value) || 0
+              {data.map((inv: any, index: number) => {
+                console.log('Renderizando linha:', inv)
+                const unitPrice = inv.unit_price != null ? Number(inv.unit_price) : null
+                const totalValue = inv.total_value != null ? Number(inv.total_value) : null
+                const transferValue = inv.transfer_value != null ? Number(inv.transfer_value) : null
                 const gain = calculateGain(inv)
 
                 return (
-                  <TableRow key={inv.id}>
+                  <TableRow key={inv.id || index}>
                     <TableCell className="font-medium">
-                      {inv.investment_products?.title || 'Desconhecido'}
+                      {inv.investment_products?.title || '-'}
                     </TableCell>
-                    <TableCell>{inv.quotas}</TableCell>
-                    <TableCell>{formatCurrency(unitPrice)}</TableCell>
-                    <TableCell>{formatCurrency(totalValue)}</TableCell>
+                    <TableCell>{inv.quotas ?? '-'}</TableCell>
+                    <TableCell>{unitPrice != null ? formatCurrency(unitPrice) : '-'}</TableCell>
+                    <TableCell>{totalValue != null ? formatCurrency(totalValue) : '-'}</TableCell>
                     <TableCell>
-                      {inv.transfer_value != null ? formatCurrency(transferValue) : '-'}
+                      {transferValue != null ? formatCurrency(transferValue) : '-'}
                     </TableCell>
                     <TableCell
                       className={
@@ -229,7 +230,7 @@ const TabContent = ({ status, statusLabel, user, chartConfig, onViewOtherStatus 
                     >
                       {formatCurrency(gain)}
                     </TableCell>
-                    <TableCell>{formatDate(inv.created_at)}</TableCell>
+                    <TableCell>{inv.created_at ? formatDate(inv.created_at) : '-'}</TableCell>
                   </TableRow>
                 )
               })}
@@ -257,7 +258,7 @@ export function InvestorDashboard() {
 
     try {
       const { data, error: fetchErr } = await supabase
-        .from('investments')
+        .from('investments_view')
         .select('*, investment_products(*)')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
