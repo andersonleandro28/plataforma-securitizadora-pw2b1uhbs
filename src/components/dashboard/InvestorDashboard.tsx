@@ -86,7 +86,7 @@ const TabContent = ({ status, statusLabel, user, chartConfig, onViewOtherStatus 
 
   if (loading) {
     return (
-      <div className="space-y-4 mt-4">
+      <div className="space-y-4 mt-4 opacity-100 visible block">
         <Skeleton className="h-[250px] w-full" />
         <Skeleton className="h-[300px] w-full" />
       </div>
@@ -101,7 +101,7 @@ const TabContent = ({ status, statusLabel, user, chartConfig, onViewOtherStatus 
       error.status === 401 ||
       error.status === 403
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center border rounded-lg bg-muted/10 border-dashed mt-4 animate-fade-in">
+      <div className="flex flex-col items-center justify-center py-16 text-center border rounded-lg bg-muted/10 border-dashed mt-4 animate-in fade-in duration-500 opacity-100 visible block">
         <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
         <h3 className="text-lg font-medium">
           {isAuthError
@@ -118,7 +118,7 @@ const TabContent = ({ status, statusLabel, user, chartConfig, onViewOtherStatus 
 
   if (data.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center border rounded-lg bg-muted/10 border-dashed mt-4 animate-fade-in">
+      <div className="flex flex-col items-center justify-center py-16 text-center border rounded-lg bg-muted/10 border-dashed mt-4 animate-in fade-in duration-500 opacity-100 visible block">
         <FolderOpen className="h-12 w-12 text-muted-foreground/30 mb-4" />
         <h3 className="text-lg font-medium">Nenhum investimento neste status</h3>
         <div className="flex gap-4 mt-4">
@@ -140,9 +140,9 @@ const TabContent = ({ status, statusLabel, user, chartConfig, onViewOtherStatus 
   }))
 
   return (
-    <div className="space-y-6 mt-4 animate-fade-in">
+    <div className="space-y-6 mt-4 animate-in fade-in duration-500 opacity-100 visible block">
       {data.length > 0 && (
-        <Card>
+        <Card className="opacity-100 visible block">
           <CardHeader>
             <CardTitle>Ganhos por Investimento</CardTitle>
           </CardHeader>
@@ -186,57 +186,67 @@ const TabContent = ({ status, statusLabel, user, chartConfig, onViewOtherStatus 
         </Card>
       )}
 
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Produto</TableHead>
-                <TableHead>Quotas</TableHead>
-                <TableHead>Valor Unitário</TableHead>
-                <TableHead>Valor Total</TableHead>
-                <TableHead>Valor Resgatado</TableHead>
-                <TableHead>Ganho</TableHead>
-                <TableHead>Data</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+      <Card className="border border-border shadow-sm opacity-100 visible block overflow-hidden">
+        <div className="w-full overflow-x-auto bg-card">
+          <table
+            className="w-full text-sm text-left border-collapse"
+            style={{ width: '100%', borderCollapse: 'collapse' }}
+          >
+            <thead className="bg-muted/50 text-muted-foreground border-b border-border">
+              <tr>
+                <th className="px-4 py-3 font-medium whitespace-nowrap">Produto</th>
+                <th className="px-4 py-3 font-medium whitespace-nowrap">Quotas</th>
+                <th className="px-4 py-3 font-medium whitespace-nowrap">Valor Unitário</th>
+                <th className="px-4 py-3 font-medium whitespace-nowrap">Valor Total</th>
+                <th className="px-4 py-3 font-medium whitespace-nowrap">Valor Resgatado</th>
+                <th className="px-4 py-3 font-medium whitespace-nowrap">Ganho</th>
+                <th className="px-4 py-3 font-medium whitespace-nowrap">Data</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border bg-card">
               {data.map((inv: any, index: number) => {
-                console.log('Renderizando linha:', inv)
+                console.log('Renderizando linha HTML:', inv)
                 const unitPrice = inv.unit_price != null ? Number(inv.unit_price) : null
                 const totalValue = inv.total_value != null ? Number(inv.total_value) : null
                 const transferValue = inv.transfer_value != null ? Number(inv.transfer_value) : null
                 const gain = calculateGain(inv)
 
                 return (
-                  <TableRow key={inv.id || index}>
-                    <TableCell className="font-medium">
+                  <tr key={inv.id || index} className="hover:bg-muted/30 transition-colors">
+                    <td className="px-4 py-3 font-medium text-foreground whitespace-nowrap">
                       {inv.investment_products?.title || '-'}
-                    </TableCell>
-                    <TableCell>{inv.quotas ?? '-'}</TableCell>
-                    <TableCell>{unitPrice != null ? formatCurrency(unitPrice) : '-'}</TableCell>
-                    <TableCell>{totalValue != null ? formatCurrency(totalValue) : '-'}</TableCell>
-                    <TableCell>
+                    </td>
+                    <td className="px-4 py-3 text-foreground">{inv.quotas ?? '-'}</td>
+                    <td className="px-4 py-3 text-foreground">
+                      {unitPrice != null ? formatCurrency(unitPrice) : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-foreground">
+                      {totalValue != null ? formatCurrency(totalValue) : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-foreground">
                       {transferValue != null ? formatCurrency(transferValue) : '-'}
-                    </TableCell>
-                    <TableCell
+                    </td>
+                    <td
                       className={
-                        gain > 0
-                          ? 'text-emerald-600 font-medium'
+                        'px-4 py-3 font-medium whitespace-nowrap ' +
+                        (gain > 0
+                          ? 'text-emerald-600'
                           : gain < 0
-                            ? 'text-destructive font-medium'
-                            : ''
+                            ? 'text-red-500'
+                            : 'text-foreground')
                       }
                     >
                       {formatCurrency(gain)}
-                    </TableCell>
-                    <TableCell>{inv.created_at ? formatDate(inv.created_at) : '-'}</TableCell>
-                  </TableRow>
+                    </td>
+                    <td className="px-4 py-3 text-foreground whitespace-nowrap">
+                      {inv.created_at ? formatDate(inv.created_at) : '-'}
+                    </td>
+                  </tr>
                 )
               })}
-            </TableBody>
-          </Table>
-        </CardContent>
+            </tbody>
+          </table>
+        </div>
       </Card>
     </div>
   )
@@ -325,7 +335,7 @@ export function InvestorDashboard() {
 
   if (authLoading || loading) {
     return (
-      <div className="space-y-6 max-w-7xl mx-auto p-6 animate-fade-in">
+      <div className="space-y-6 max-w-7xl mx-auto p-6 animate-in fade-in duration-500 opacity-100 visible block">
         <Skeleton className="h-10 w-1/3" />
         <div className="grid gap-4 md:grid-cols-3">
           <Skeleton className="h-32 w-full" />
@@ -340,7 +350,7 @@ export function InvestorDashboard() {
 
   if (profile?.role !== 'investor') {
     return (
-      <div className="flex flex-col h-[70vh] items-center justify-center space-y-4 animate-fade-in">
+      <div className="flex flex-col h-[70vh] items-center justify-center space-y-4 animate-in fade-in duration-500 opacity-100 visible block">
         <AlertCircle className="h-16 w-16 text-destructive" />
         <h2 className="text-3xl font-bold">Acesso Negado</h2>
         <p className="text-muted-foreground">
@@ -361,7 +371,7 @@ export function InvestorDashboard() {
       error.status === 401 ||
       error.status === 403
     return (
-      <div className="flex flex-col h-[70vh] items-center justify-center space-y-4 animate-fade-in">
+      <div className="flex flex-col h-[70vh] items-center justify-center space-y-4 animate-in fade-in duration-500 opacity-100 visible block">
         <AlertTriangle className="h-16 w-16 text-destructive" />
         <h2 className="text-3xl font-bold">Erro ao carregar</h2>
         <p className="text-muted-foreground">
@@ -393,7 +403,7 @@ export function InvestorDashboard() {
   }, 0)
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto p-6 animate-fade-in-up pb-10">
+    <div className="space-y-6 max-w-7xl mx-auto p-6 animate-in slide-in-from-bottom-4 fade-in duration-500 opacity-100 visible block pb-10">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Dashboard do Investidor</h1>
         <p className="text-muted-foreground">Acompanhe seus investimentos e rendimentos.</p>
@@ -434,7 +444,7 @@ export function InvestorDashboard() {
       </div>
 
       {myInvestments.length > 0 && (
-        <Card>
+        <Card className="opacity-100 visible block">
           <CardHeader>
             <CardTitle>Ganhos por Status</CardTitle>
           </CardHeader>
