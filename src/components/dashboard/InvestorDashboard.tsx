@@ -46,7 +46,7 @@ const TabContent = ({ status, statusLabel, user, chartConfig, onViewOtherStatus 
     setLoading(true)
     setError(null)
 
-    console.log(`Carregando ${statusLabel}... user_id = ${user.id}`)
+    console.log('Auth UID:', user.id)
 
     try {
       const { data: res, error: err } = await supabase
@@ -57,18 +57,19 @@ const TabContent = ({ status, statusLabel, user, chartConfig, onViewOtherStatus 
         .order('created_at', { ascending: false })
 
       if (err) {
-        console.log(`Erro ao carregar: ${err.message}`)
+        console.log('Erro:', err.message)
         throw err
       }
 
-      console.log(`Dados retornados: ${res?.length || 0} registros`)
+      console.log('Dados retornados:', res?.length || 0, 'registros')
       setData(res || [])
     } catch (e: any) {
+      console.log('Erro:', e.message)
       setError(e)
     } finally {
       setLoading(false)
     }
-  }, [status, statusLabel, user?.id])
+  }, [status, user?.id])
 
   useEffect(() => {
     fetchData()
@@ -242,6 +243,9 @@ export function InvestorDashboard() {
     if (!user) return
     setLoading(true)
     setError(false)
+
+    console.log('Auth UID (Dashboard):', user.id)
+
     try {
       const { data, error: fetchErr } = await supabase
         .from('investments')
@@ -249,10 +253,15 @@ export function InvestorDashboard() {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
-      if (fetchErr) throw fetchErr
+      if (fetchErr) {
+        console.log('Erro:', fetchErr.message)
+        throw fetchErr
+      }
+
+      console.log('Dados retornados (Dashboard):', data?.length || 0, 'registros')
       setMyInvestments(data || [])
     } catch (err: any) {
-      console.error(err)
+      console.error('Erro:', err)
       setError(err)
     } finally {
       setLoading(false)
