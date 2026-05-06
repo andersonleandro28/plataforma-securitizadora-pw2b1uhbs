@@ -51,21 +51,29 @@ const TabContent = ({ status, statusLabel, user, chartConfig, onViewOtherStatus 
 
     try {
       const { data: res, error: err } = await supabase
-        .from('investments_view')
+        .from('investments')
         .select('*, investment_products(*)')
         .eq('user_id', user.id)
         .eq('status', status)
         .order('created_at', { ascending: false })
 
       if (err) {
-        console.log('Erro:', err.message)
+        console.log('Erro ao carregar:', err.message)
         throw err
       }
 
       console.log('Dados retornados:', res?.length || 0, 'registros')
+      console.log('Dados carregados:', res)
+
+      if (!res || res.length === 0) {
+        console.log('Nenhum investimento nesta aba')
+      } else {
+        console.log(`Renderizando ${res.length} investimentos`)
+      }
+
       setData(res || [])
     } catch (e: any) {
-      console.log('Erro:', e.message)
+      console.log('Erro ao carregar:', e.message)
       setError(e)
     } finally {
       setLoading(false)
@@ -249,7 +257,7 @@ export function InvestorDashboard() {
 
     try {
       const { data, error: fetchErr } = await supabase
-        .from('investments_view')
+        .from('investments')
         .select('*, investment_products(*)')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
