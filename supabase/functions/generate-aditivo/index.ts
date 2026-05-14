@@ -153,7 +153,7 @@ Deno.serve(async (req: Request) => {
       throw new Error(`Erro: Dados da operação não encontrados para o ID ${operationId}`)
     }
 
-    if (!op.face_value || !op.document_number || !op.sacado) {
+    if (op.face_value === undefined || op.face_value === null) {
       console.error(
         `Erro: Dados da operação incompletos ou itens do borderô ausentes (ID: ${operationId})`,
       )
@@ -241,7 +241,10 @@ Deno.serve(async (req: Request) => {
 
     const titulos = [op] // Array fallback based on schema design for operations/receivables
     for (const titulo of titulos) {
-      const row = `${(titulo.receivable_type || '').toUpperCase()} | ${titulo.document_number} | ${(titulo.sacado || '').substring(0, 25)} | ${new Date(titulo.due_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })} | R$ ${titulo.face_value.toFixed(2)}`
+      const docNum = titulo.document_number || 'N/A'
+      const sac = (titulo.sacado || 'N/A').substring(0, 25)
+      const fv = Number(titulo.face_value || 0)
+      const row = `${(titulo.receivable_type || '').toUpperCase()} | ${docNum} | ${sac} | ${new Date(titulo.due_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })} | R$ ${fv.toFixed(2)}`
       page.drawText(row, { x: margin, y: currentY, font, size: 10 })
       currentY -= 15
     }
@@ -269,10 +272,10 @@ Deno.serve(async (req: Request) => {
     const calcArr = op.operation_calculations
     const calc = Array.isArray(calcArr) ? calcArr[0] : calcArr || {}
     const totalDescontos = calc?.total_discounts || 0
-    const valorLiquido = calc?.net_value || op.face_value
+    const valorLiquido = calc?.net_value || Number(op.face_value || 0)
 
     currentY = drawTextWrap(
-      `Valor de Face Total: R$ ${op.face_value.toFixed(2)}`,
+      `Valor de Face Total: R$ ${Number(op.face_value || 0).toFixed(2)}`,
       margin,
       currentY,
       maxWidth,
