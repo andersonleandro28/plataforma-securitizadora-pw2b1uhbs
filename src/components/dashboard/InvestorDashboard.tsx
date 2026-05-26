@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button'
 import { formatDate } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell, AreaChart, Area } from 'recharts'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 
 const formatCurrency = (val: number) =>
@@ -36,85 +36,8 @@ const calculateGain = (inv: any) => {
   return transfer - total
 }
 
-const TabContent = ({ status, statusLabel, user, chartConfig, onViewOtherStatus }: any) => {
-  const [data, setData] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<any>(null)
-
-  const fetchData = useCallback(async () => {
-    if (!user?.id) return
-    setLoading(true)
-    setError(null)
-
-    console.log(`Carregando ${statusLabel}... user_id = ${user.id}`)
-    console.log('Auth UID:', user.id)
-
-    try {
-      const { data: res, error: err } = await supabase
-        .from('investments_view')
-        .select('*, investment_products(*)')
-        .eq('user_id', user.id)
-        .eq('status', status)
-        .order('created_at', { ascending: false })
-
-      if (err) {
-        console.log('Erro ao carregar:', err.message)
-        throw err
-      }
-
-      console.log('Dados retornados:', res?.length || 0, 'registros')
-      console.log('Dados carregados:', res)
-
-      if (!res || res.length === 0) {
-        console.log('Nenhum investimento nesta aba')
-      } else {
-        console.log(`Renderizando ${res.length} investimentos`)
-      }
-
-      setData(res || [])
-    } catch (e: any) {
-      console.log('Erro ao carregar:', e.message)
-      setError(e)
-    } finally {
-      setLoading(false)
-    }
-  }, [status, statusLabel, user?.id])
-
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
-
-  if (loading) {
-    return (
-      <div className="space-y-4 mt-4 opacity-100 visible block">
-        <Skeleton className="h-[250px] w-full" />
-        <Skeleton className="h-[300px] w-full" />
-      </div>
-    )
-  }
-
-  if (error) {
-    const isAuthError =
-      error.code === 'PGRST301' ||
-      error.code === '401' ||
-      error.code === '403' ||
-      error.status === 401 ||
-      error.status === 403
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-center border rounded-lg bg-muted/10 border-dashed mt-4 animate-in fade-in duration-500 opacity-100 visible block">
-        <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
-        <h3 className="text-lg font-medium">
-          {isAuthError
-            ? 'Acesso negado. Verifique suas permissoes.'
-            : 'Erro ao carregar dados. Tente novamente.'}
-        </h3>
-        <Button variant="outline" onClick={fetchData} className="mt-4">
-          <RefreshCcw className="mr-2 h-4 w-4" />
-          Recarregar
-        </Button>
-      </div>
-    )
-  }
+const TabContent = ({ data, statusLabel, chartConfig, onViewOtherStatus, onRefresh }: any) => {
+  if (!data) return null
 
   if (data.length === 0) {
     return (
@@ -122,7 +45,7 @@ const TabContent = ({ status, statusLabel, user, chartConfig, onViewOtherStatus 
         <FolderOpen className="h-12 w-12 text-muted-foreground/30 mb-4" />
         <h3 className="text-lg font-medium">Nenhum investimento neste status</h3>
         <div className="flex gap-4 mt-4">
-          <Button variant="outline" onClick={fetchData}>
+          <Button variant="outline" onClick={onRefresh}>
             <RefreshCcw className="mr-2 h-4 w-4" />
             Recarregar
           </Button>
@@ -187,66 +110,61 @@ const TabContent = ({ status, statusLabel, user, chartConfig, onViewOtherStatus 
       )}
 
       <Card className="border border-border shadow-sm opacity-100 visible block overflow-hidden">
-        <div className="w-full overflow-x-auto bg-card">
-          <table
-            className="w-full text-sm text-left border-collapse"
-            style={{ width: '100%', borderCollapse: 'collapse' }}
-          >
-            <thead className="bg-muted/50 text-muted-foreground border-b border-border">
-              <tr>
-                <th className="px-4 py-3 font-medium whitespace-nowrap">Produto</th>
-                <th className="px-4 py-3 font-medium whitespace-nowrap">Quotas</th>
-                <th className="px-4 py-3 font-medium whitespace-nowrap">Valor Unitário</th>
-                <th className="px-4 py-3 font-medium whitespace-nowrap">Valor Total</th>
-                <th className="px-4 py-3 font-medium whitespace-nowrap">Valor Resgatado</th>
-                <th className="px-4 py-3 font-medium whitespace-nowrap">Ganho</th>
-                <th className="px-4 py-3 font-medium whitespace-nowrap">Data</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border bg-card">
-              {data.map((inv: any, index: number) => {
-                console.log('Renderizando linha HTML:', inv)
-                const unitPrice = inv.unit_price != null ? Number(inv.unit_price) : null
-                const totalValue = inv.total_value != null ? Number(inv.total_value) : null
-                const transferValue = inv.transfer_value != null ? Number(inv.transfer_value) : null
-                const gain = calculateGain(inv)
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="whitespace-nowrap">Produto</TableHead>
+              <TableHead className="whitespace-nowrap">Quotas</TableHead>
+              <TableHead className="whitespace-nowrap">Valor Unitário</TableHead>
+              <TableHead className="whitespace-nowrap">Valor Total</TableHead>
+              <TableHead className="whitespace-nowrap">Valor Resgatado</TableHead>
+              <TableHead className="whitespace-nowrap">Ganho</TableHead>
+              <TableHead className="whitespace-nowrap">Data</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {data.map((inv: any, index: number) => {
+              const unitPrice = inv.unit_price != null ? Number(inv.unit_price) : null
+              const totalValue = inv.total_value != null ? Number(inv.total_value) : null
+              const redeemedQuotas = inv.redeemed_quotas != null ? Number(inv.redeemed_quotas) : 0
+              const redeemedValue = redeemedQuotas * (unitPrice || 0)
+              const gain = calculateGain(inv)
 
-                return (
-                  <tr key={inv.id || index} className="hover:bg-muted/30 transition-colors">
-                    <td className="px-4 py-3 font-medium text-foreground whitespace-nowrap">
-                      {inv.investment_products?.title || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-foreground">{inv.quotas ?? '-'}</td>
-                    <td className="px-4 py-3 text-foreground">
-                      {unitPrice != null ? formatCurrency(unitPrice) : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-foreground">
-                      {totalValue != null ? formatCurrency(totalValue) : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-foreground">
-                      {transferValue != null ? formatCurrency(transferValue) : '-'}
-                    </td>
-                    <td
-                      className={
-                        'px-4 py-3 font-medium whitespace-nowrap ' +
-                        (gain > 0
-                          ? 'text-emerald-600'
-                          : gain < 0
-                            ? 'text-red-500'
-                            : 'text-foreground')
-                      }
-                    >
-                      {formatCurrency(gain)}
-                    </td>
-                    <td className="px-4 py-3 text-foreground whitespace-nowrap">
-                      {inv.created_at ? formatDate(inv.created_at) : '-'}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+              return (
+                <TableRow key={inv.id || index}>
+                  <TableCell className="font-medium whitespace-nowrap text-foreground">
+                    {inv.investment_products?.title || '-'}
+                  </TableCell>
+                  <TableCell className="text-foreground">{inv.quotas ?? '-'}</TableCell>
+                  <TableCell className="text-foreground">
+                    {unitPrice != null ? formatCurrency(unitPrice) : '-'}
+                  </TableCell>
+                  <TableCell className="text-foreground">
+                    {totalValue != null ? formatCurrency(totalValue) : '-'}
+                  </TableCell>
+                  <TableCell className="text-foreground">
+                    {redeemedValue > 0 ? formatCurrency(redeemedValue) : '-'}
+                  </TableCell>
+                  <TableCell
+                    className={
+                      'font-medium whitespace-nowrap ' +
+                      (gain > 0
+                        ? 'text-emerald-600'
+                        : gain < 0
+                          ? 'text-red-500'
+                          : 'text-foreground')
+                    }
+                  >
+                    {formatCurrency(gain)}
+                  </TableCell>
+                  <TableCell className="text-foreground whitespace-nowrap">
+                    {inv.created_at ? formatDate(inv.created_at) : '-'}
+                  </TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
       </Card>
     </div>
   )
@@ -289,21 +207,21 @@ export function InvestorDashboard() {
   }, [user])
 
   useEffect(() => {
-    if (!authLoading && user && profile?.role === 'investor') {
+    if (!authLoading && user) {
       fetchDashboardData()
-    } else if (!authLoading && user && profile?.role !== 'investor') {
-      setLoading(false)
     }
-  }, [authLoading, user, profile, fetchDashboardData])
+  }, [authLoading, user, fetchDashboardData])
 
   const sumGains = (invs: any[]) => invs.reduce((acc, curr) => acc + calculateGain(curr), 0)
 
   const { ativos, resgatados, cancelados, excluidos } = useMemo(() => {
     return {
-      ativos: myInvestments.filter((i) => i.status === 'approved'),
-      resgatados: myInvestments.filter((i) => i.status === 'resgatado'),
-      cancelados: myInvestments.filter((i) => i.status === 'cancelled'),
-      excluidos: myInvestments.filter((i) => i.status === 'Excluído'),
+      ativos: myInvestments.filter((i) => ['approved', 'Ativo', 'active'].includes(i.status)),
+      resgatados: myInvestments.filter((i) => ['resgatado', 'Resgatado'].includes(i.status)),
+      cancelados: myInvestments.filter((i) => ['cancelled', 'Cancelado'].includes(i.status)),
+      excluidos: myInvestments.filter((i) =>
+        ['Excluído', 'deleted', 'Excluido'].includes(i.status),
+      ),
     }
   }, [myInvestments])
 
@@ -333,6 +251,56 @@ export function InvestorDashboard() {
     ganho: { label: 'Ganho', color: 'hsl(var(--primary))' },
   }
 
+  const activeInvestments = myInvestments.filter((i) =>
+    ['approved', 'Ativo', 'active'].includes(i.status),
+  )
+  const totalBalance = activeInvestments.reduce(
+    (acc, curr) => acc + (Number(curr.total_value) || 0),
+    0,
+  )
+  const totalYield = activeInvestments.reduce((acc, curr) => {
+    const amount = Number(curr.total_value) || 0
+    const rateStr = curr.investment_products?.rate || '0'
+    const rateMatch = rateStr.match(/(\d+[.,]\d+|\d+)/)
+    const rate = rateMatch ? parseFloat(rateMatch[1].replace(',', '.')) / 100 : 0.01
+    return acc + amount * rate
+  }, 0)
+
+  const evolutionData = useMemo(() => {
+    const activeInvs = myInvestments.filter((i) =>
+      ['approved', 'Ativo', 'active'].includes(i.status),
+    )
+    const sorted = [...activeInvs].sort((a, b) => {
+      const d1 = new Date(a.transfer_date || a.created_at || 0).getTime()
+      const d2 = new Date(b.transfer_date || b.created_at || 0).getTime()
+      return d1 - d2
+    })
+
+    let cumulative = 0
+    const dataByDate = new Map<string, number>()
+
+    sorted.forEach((inv) => {
+      const dateStr = formatDate(inv.transfer_date || inv.created_at)
+      const val = Number(inv.total_value) || 0
+      if (dataByDate.has(dateStr)) {
+        dataByDate.set(dateStr, dataByDate.get(dateStr)! + val)
+      } else {
+        dataByDate.set(dateStr, val)
+      }
+    })
+
+    const result = []
+    for (const [date, val] of dataByDate.entries()) {
+      cumulative += val
+      result.push({ date, valor: cumulative })
+    }
+    return result
+  }, [myInvestments])
+
+  const chartEvolutionConfig = {
+    valor: { label: 'Valor Acumulado', color: 'hsl(var(--primary))' },
+  }
+
   if (authLoading || loading) {
     return (
       <div className="space-y-6 max-w-7xl mx-auto p-6 animate-in fade-in duration-500 opacity-100 visible block">
@@ -344,21 +312,6 @@ export function InvestorDashboard() {
         </div>
         <Skeleton className="h-[250px] w-full" />
         <Skeleton className="h-[400px] w-full" />
-      </div>
-    )
-  }
-
-  if (profile?.role !== 'investor') {
-    return (
-      <div className="flex flex-col h-[70vh] items-center justify-center space-y-4 animate-in fade-in duration-500 opacity-100 visible block">
-        <AlertCircle className="h-16 w-16 text-destructive" />
-        <h2 className="text-3xl font-bold">Acesso Negado</h2>
-        <p className="text-muted-foreground">
-          Você não tem permissão para acessar a área de investidor.
-        </p>
-        <Button onClick={() => (window.location.href = '/login')} size="lg" className="mt-4">
-          Voltar ao Login
-        </Button>
       </div>
     )
   }
@@ -386,21 +339,6 @@ export function InvestorDashboard() {
       </div>
     )
   }
-
-  const activeInvestments = myInvestments.filter(
-    (i) => i.status === 'approved' || i.status === 'Ativo',
-  )
-  const totalBalance = activeInvestments.reduce(
-    (acc, curr) => acc + (Number(curr.total_value) || 0),
-    0,
-  )
-  const totalYield = activeInvestments.reduce((acc, curr) => {
-    const amount = Number(curr.total_value) || 0
-    const rateStr = curr.investment_products?.rate || '0'
-    const rateMatch = rateStr.match(/(\d+[.,]\d+|\d+)/)
-    const rate = rateMatch ? parseFloat(rateMatch[1].replace(',', '.')) / 100 : 0.01
-    return acc + amount * rate
-  }, 0)
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto p-6 animate-in slide-in-from-bottom-4 fade-in duration-500 opacity-100 visible block pb-10">
@@ -443,6 +381,42 @@ export function InvestorDashboard() {
         </Card>
       </div>
 
+      {evolutionData.length > 0 && (
+        <Card className="opacity-100 visible block">
+          <CardHeader>
+            <CardTitle>Evolução da Carteira</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ChartContainer config={chartEvolutionConfig} className="h-[300px] w-full">
+              <AreaChart data={evolutionData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorValor" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--color-valor)" stopOpacity={0.8} />
+                    <stop offset="95%" stopColor="var(--color-valor)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
+                <YAxis
+                  tickFormatter={(val) => `R$ ${val}`}
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 12 }}
+                />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Area
+                  type="monotone"
+                  dataKey="valor"
+                  stroke="var(--color-valor)"
+                  fillOpacity={1}
+                  fill="url(#colorValor)"
+                />
+              </AreaChart>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+      )}
+
       {myInvestments.length > 0 && (
         <Card className="opacity-100 visible block">
           <CardHeader>
@@ -482,38 +456,38 @@ export function InvestorDashboard() {
 
           <TabsContent value="approved">
             <TabContent
-              status="approved"
+              data={ativos}
               statusLabel="Ativos"
-              user={user}
               chartConfig={chartConfig}
               onViewOtherStatus={() => setActiveTab('resgatado')}
+              onRefresh={fetchDashboardData}
             />
           </TabsContent>
           <TabsContent value="resgatado">
             <TabContent
-              status="resgatado"
+              data={resgatados}
               statusLabel="Resgatados"
-              user={user}
               chartConfig={chartConfig}
               onViewOtherStatus={() => setActiveTab('approved')}
+              onRefresh={fetchDashboardData}
             />
           </TabsContent>
           <TabsContent value="cancelled">
             <TabContent
-              status="cancelled"
+              data={cancelados}
               statusLabel="Cancelados"
-              user={user}
               chartConfig={chartConfig}
               onViewOtherStatus={() => setActiveTab('approved')}
+              onRefresh={fetchDashboardData}
             />
           </TabsContent>
           <TabsContent value="Excluído">
             <TabContent
-              status="Excluído"
+              data={excluidos}
               statusLabel="Excluídos"
-              user={user}
               chartConfig={chartConfig}
               onViewOtherStatus={() => setActiveTab('approved')}
+              onRefresh={fetchDashboardData}
             />
           </TabsContent>
         </Tabs>
