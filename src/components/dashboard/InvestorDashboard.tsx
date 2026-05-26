@@ -110,6 +110,9 @@ const TabContent = ({ data, statusLabel, chartConfig, onViewOtherStatus, onRefre
       )}
 
       <Card className="border border-border shadow-sm opacity-100 visible block overflow-hidden">
+        <CardHeader className="pb-0 pt-6 px-6">
+          <CardTitle className="text-lg font-semibold">{statusLabel}</CardTitle>
+        </CardHeader>
         <Table>
           <TableHeader>
             <TableRow>
@@ -215,13 +218,30 @@ export function InvestorDashboard() {
   const sumGains = (invs: any[]) => invs.reduce((acc, curr) => acc + calculateGain(curr), 0)
 
   const { ativos, resgatados, cancelados, excluidos } = useMemo(() => {
+    const ativosArr: any[] = []
+    const resgatadosArr: any[] = []
+    const canceladosArr: any[] = []
+    const excluidosArr: any[] = []
+
+    myInvestments.forEach((i) => {
+      const st = (i.status || '').toLowerCase().trim()
+      if (st === 'resgatado') {
+        resgatadosArr.push(i)
+      } else if (['cancelled', 'cancelado'].includes(st)) {
+        canceladosArr.push(i)
+      } else if (['excluído', 'excluido', 'deleted'].includes(st)) {
+        excluidosArr.push(i)
+      } else {
+        // Fallback: active, approved, ativo, pending_transfer, etc.
+        ativosArr.push(i)
+      }
+    })
+
     return {
-      ativos: myInvestments.filter((i) => ['approved', 'Ativo', 'active'].includes(i.status)),
-      resgatados: myInvestments.filter((i) => ['resgatado', 'Resgatado'].includes(i.status)),
-      cancelados: myInvestments.filter((i) => ['cancelled', 'Cancelado'].includes(i.status)),
-      excluidos: myInvestments.filter((i) =>
-        ['Excluído', 'deleted', 'Excluido'].includes(i.status),
-      ),
+      ativos: ativosArr,
+      resgatados: resgatadosArr,
+      cancelados: canceladosArr,
+      excluidos: excluidosArr,
     }
   }, [myInvestments])
 
@@ -251,14 +271,8 @@ export function InvestorDashboard() {
     ganho: { label: 'Ganho', color: 'hsl(var(--primary))' },
   }
 
-  const activeInvestments = myInvestments.filter((i) =>
-    ['approved', 'Ativo', 'active'].includes(i.status),
-  )
-  const totalBalance = activeInvestments.reduce(
-    (acc, curr) => acc + (Number(curr.total_value) || 0),
-    0,
-  )
-  const totalYield = activeInvestments.reduce((acc, curr) => {
+  const totalBalance = ativos.reduce((acc, curr) => acc + (Number(curr.total_value) || 0), 0)
+  const totalYield = ativos.reduce((acc, curr) => {
     const amount = Number(curr.total_value) || 0
     const rateStr = curr.investment_products?.rate || '0'
     const rateMatch = rateStr.match(/(\d+[.,]\d+|\d+)/)
@@ -267,10 +281,7 @@ export function InvestorDashboard() {
   }, 0)
 
   const evolutionData = useMemo(() => {
-    const activeInvs = myInvestments.filter((i) =>
-      ['approved', 'Ativo', 'active'].includes(i.status),
-    )
-    const sorted = [...activeInvs].sort((a, b) => {
+    const sorted = [...ativos].sort((a, b) => {
       const d1 = new Date(a.transfer_date || a.created_at || 0).getTime()
       const d2 = new Date(b.transfer_date || b.created_at || 0).getTime()
       return d1 - d2
@@ -295,7 +306,7 @@ export function InvestorDashboard() {
       result.push({ date, valor: cumulative })
     }
     return result
-  }, [myInvestments])
+  }, [ativos])
 
   const chartEvolutionConfig = {
     valor: { label: 'Valor Acumulado', color: 'hsl(var(--primary))' },
@@ -365,7 +376,7 @@ export function InvestorDashboard() {
             <PieChart className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{activeInvestments.length}</div>
+            <div className="text-3xl font-bold">{ativos.length}</div>
           </CardContent>
         </Card>
         <Card>

@@ -239,7 +239,7 @@ const App = () => (
             <Route
               path="/investidor"
               element={
-                <RoleGuard allowedRoles={['investor']}>
+                <RoleGuard allowedRoles={['investor', 'admin']}>
                   <InvestorDashboard />
                 </RoleGuard>
               }
