@@ -3180,9 +3180,8 @@ export const Constants = {
 //     USING: true
 //     WITH CHECK: true
 // Table: investment_products
-//   Policy "auth_all_investment_products" (ALL, PERMISSIVE) roles={authenticated}
+//   Policy "auth_all_investment_products" (SELECT, PERMISSIVE) roles={authenticated}
 //     USING: true
-//     WITH CHECK: true
 // Table: investment_proofs
 //   Policy "auth_all_investment_proofs" (ALL, PERMISSIVE) roles={authenticated}
 //     USING: true
@@ -3200,7 +3199,7 @@ export const Constants = {
 //   Policy "investments_insert_policy" (INSERT, PERMISSIVE) roles={authenticated}
 //     WITH CHECK: ((user_id = auth.uid()) OR (EXISTS ( SELECT 1    FROM profiles   WHERE ((profiles.id = auth.uid()) AND (profiles.role = ANY (ARRAY['admin'::app_role, 'staff'::app_role]))))))
 //   Policy "investments_select_policy" (SELECT, PERMISSIVE) roles={authenticated}
-//     USING: ((user_id = auth.uid()) OR is_admin() OR (EXISTS ( SELECT 1    FROM profiles   WHERE ((profiles.id = auth.uid()) AND (profiles.role = ANY (ARRAY['admin'::app_role, 'staff'::app_role, 'accountant'::app_role]))))))
+//     USING: ((user_id = auth.uid()) OR (EXISTS ( SELECT 1    FROM profiles   WHERE ((profiles.id = auth.uid()) AND (profiles.role = ANY (ARRAY['admin'::app_role, 'staff'::app_role, 'accountant'::app_role]))))))
 //   Policy "investments_update_policy" (UPDATE, PERMISSIVE) roles={authenticated}
 //     USING: ((user_id = auth.uid()) OR (EXISTS ( SELECT 1    FROM profiles   WHERE ((profiles.id = auth.uid()) AND (profiles.role = ANY (ARRAY['admin'::app_role, 'staff'::app_role]))))))
 //     WITH CHECK: ((user_id = auth.uid()) OR (EXISTS ( SELECT 1    FROM profiles   WHERE ((profiles.id = auth.uid()) AND (profiles.role = ANY (ARRAY['admin'::app_role, 'staff'::app_role]))))))
