@@ -1,7 +1,7 @@
-import { ReactNode, useEffect } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/use-auth'
 import { Loader2 } from 'lucide-react'
+import { ReactNode } from 'react'
 
 interface AuthGuardProps {
   children: ReactNode
@@ -9,28 +9,19 @@ interface AuthGuardProps {
 
 export function AuthGuard({ children }: AuthGuardProps) {
   const { user, loading } = useAuth()
-  const navigate = useNavigate()
   const location = useLocation()
-
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate('/login', { replace: true, state: { from: location.pathname } })
-    }
-  }, [user, loading, navigate, location])
 
   if (loading) {
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-background">
-        <div className="flex flex-col items-center space-y-4">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground animate-pulse">Autenticando sessão...</p>
-        </div>
+      <div className="flex flex-col items-center justify-center min-h-screen space-y-4 bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Carregando sessão...</p>
       </div>
     )
   }
 
   if (!user) {
-    return null
+    return <Navigate to="/login" replace state={{ from: location }} />
   }
 
   return <>{children}</>

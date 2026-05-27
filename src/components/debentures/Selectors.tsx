@@ -14,11 +14,11 @@ export function IndexerSelect({
   onValueChange,
   disabled,
 }: {
-  value: string | null
+  value: string | null | undefined
   onValueChange: (val: string | null) => void
   disabled?: boolean
 }) {
-  const selectValue = value === null || value === 'Pré-fixado' || value === 'none' ? 'none' : value
+  const selectValue = !value || value === 'Pré-fixado' || value === 'none' ? 'none' : value
   return (
     <Select
       value={selectValue}
@@ -43,7 +43,7 @@ export function EscrituraSelect({
   onValueChange,
   disabled,
 }: {
-  value?: string
+  value?: string | null
   onValueChange: (val: string, obj: any) => void
   disabled?: boolean
 }) {
