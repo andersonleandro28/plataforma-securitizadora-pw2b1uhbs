@@ -32,7 +32,8 @@ import { toast } from 'sonner'
 import { useNavigate } from 'react-router-dom'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { formatDate } from '@/lib/utils'
-import { useCheckPermission } from '@/hooks/use-check-permission'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ProductDialog } from '@/components/admin/ProductDialog'
 
 export default function Investments() {
   const { profile, user } = useAuth()
@@ -41,12 +42,22 @@ export default function Investments() {
   const [loading, setLoading] = useState(true)
   const [investProduct, setInvestProduct] = useState<any>(null)
   const [detailsProduct, setDetailsProduct] = useState<any>(null)
+  const [editProduct, setEditProduct] = useState<any>(null)
   const [quotasToBuy, setQuotasToBuy] = useState<number>(1)
   const [acceptedTerms, setAcceptedTerms] = useState(false)
   const [saving, setSaving] = useState(false)
   const [activeBank, setActiveBank] = useState<any>(null)
   const [subscriptionStep, setSubscriptionStep] = useState<1 | 2>(1)
-  const { isAllowed } = useCheckPermission('investor')
+
+  const isAllowed = profile
+    ? profile.role === 'investor' ||
+      profile.role === 'admin' ||
+      profile.role === 'staff' ||
+      profile.is_admin ||
+      profile.is_staff
+    : null
+  const canEdit =
+    profile?.role === 'admin' || profile?.role === 'staff' || profile?.is_admin || profile?.is_staff
 
   const fetchData = async () => {
     setLoading(true)
@@ -253,13 +264,47 @@ export default function Investments() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6">
-            <div>
-              <h4 className="font-semibold text-sm">Descrição Comercial e Objetivo</h4>
-              <p className="text-sm text-muted-foreground mt-1">
-                {detailsProduct?.description || 'Descrição não informada pelo administrador.'}
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-4 bg-muted/20 p-4 rounded-lg border">
+            <Tabs defaultValue="geral" className="w-full">
+              <TabsList className="w-full grid grid-cols-4">
+                <TabsTrigger value="geral">Geral</TabsTrigger>
+                <TabsTrigger value="resgate">Resgate</TabsTrigger>
+                <TabsTrigger value="tributacao">Tributação</TabsTrigger>
+                <TabsTrigger value="gestao">Gestão</TabsTrigger>
+              </TabsList>
+              <TabsContent value="geral" className="space-y-4 pt-4">
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                  {detailsProduct?.description || 'Descrição não informada pelo administrador.'}
+                </p>
+              </TabsContent>
+              <TabsContent value="resgate" className="space-y-4 pt-4">
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                  {detailsProduct?.redemption_rules || 'Regras de resgate não informadas.'}
+                </p>
+              </TabsContent>
+              <TabsContent value="tributacao" className="space-y-4 pt-4">
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                  {detailsProduct?.ir_rules || 'Regras de tributação não informadas.'}
+                </p>
+              </TabsContent>
+              <TabsContent value="gestao" className="space-y-4 pt-4">
+                <div>
+                  <h4 className="font-semibold text-xs text-muted-foreground mb-1">Gestor</h4>
+                  <p className="text-sm font-medium">
+                    {detailsProduct?.manager || 'Gestão Interna'}
+                  </p>
+                </div>
+                <div className="mt-4">
+                  <h4 className="font-semibold text-xs text-muted-foreground mb-1">
+                    Política de Gestão
+                  </h4>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                    {detailsProduct?.management_policy || 'Política não informada.'}
+                  </p>
+                </div>
+              </TabsContent>
+            </Tabs>
+
+            <div className="grid grid-cols-2 gap-4 bg-muted/20 p-4 rounded-lg border mt-6">
               <div>
                 <h4 className="font-semibold text-xs text-muted-foreground">Rentabilidade Alvo</h4>
                 <p className="text-sm font-medium text-emerald-600">{detailsProduct?.rate}</p>
@@ -324,22 +369,57 @@ export default function Investments() {
               </div>
             </div>
           </div>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setDetailsProduct(null)}>
-              Fechar
-            </Button>
-            <Button
-              onClick={() => {
-                const p = detailsProduct
-                setDetailsProduct(null)
-                setTimeout(() => openInvestModal(p), 100)
-              }}
-            >
-              Investir Neste Produto
-            </Button>
+          <DialogFooter className="mt-6 flex flex-col sm:flex-row gap-2 sm:justify-between items-center w-full">
+            <div className="flex w-full sm:w-auto">
+              {canEdit && (
+                <Button
+                  variant="outline"
+                  className="w-full sm:w-auto"
+                  onClick={() => {
+                    const p = detailsProduct
+                    setDetailsProduct(null)
+                    setTimeout(() => setEditProduct(p), 100)
+                  }}
+                >
+                  Editar Produto
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+              <Button
+                variant="outline"
+                className="flex-1 sm:flex-none"
+                onClick={() => setDetailsProduct(null)}
+              >
+                Fechar
+              </Button>
+              <Button
+                className="flex-1 sm:flex-none"
+                onClick={() => {
+                  const p = detailsProduct
+                  setDetailsProduct(null)
+                  setTimeout(() => openInvestModal(p), 100)
+                }}
+              >
+                Investir Neste Produto
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Product Dialog */}
+      {editProduct && (
+        <ProductDialog
+          open={!!editProduct}
+          onOpenChange={(open) => !open && setEditProduct(null)}
+          product={editProduct}
+          onSuccess={() => {
+            setEditProduct(null)
+            fetchData()
+          }}
+        />
+      )}
 
       {/* Subscription Flow Modal */}
       <Dialog open={!!investProduct} onOpenChange={(open) => !open && setInvestProduct(null)}>

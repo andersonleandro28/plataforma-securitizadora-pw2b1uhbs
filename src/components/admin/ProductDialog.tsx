@@ -66,6 +66,10 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
           is_highlighted: false,
           description: '',
           target_audience: '',
+          manager: '',
+          management_policy: '',
+          redemption_rules: '',
+          ir_rules: '',
         })
       }
       fetchDropdownData()
@@ -183,6 +187,25 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   placeholder="Ex: Debênture XPTO"
                 />
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label>Tipo de Produto</Label>
+                <Select
+                  value={formData.type || ''}
+                  onValueChange={(v) => setFormData({ ...formData, type: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Debênture">Debênture</SelectItem>
+                    <SelectItem value="CRI">CRI</SelectItem>
+                    <SelectItem value="CRA">CRA</SelectItem>
+                    <SelectItem value="FIDC">FIDC</SelectItem>
+                    <SelectItem value="Outros">Outros</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
@@ -361,8 +384,47 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
                 />
               </div>
 
+              <div className="space-y-2">
+                <Label>Gestor</Label>
+                <Input
+                  value={formData.manager || ''}
+                  onChange={(e) => setFormData({ ...formData, manager: e.target.value })}
+                  placeholder="Ex: Gestão Interna"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Política de Gestão</Label>
+                <Textarea
+                  value={formData.management_policy || ''}
+                  onChange={(e) => setFormData({ ...formData, management_policy: e.target.value })}
+                  placeholder="Ex: Foco em crédito privado..."
+                  rows={3}
+                />
+              </div>
+
               <div className="space-y-2 md:col-span-2">
-                <Label>Descrição</Label>
+                <Label>Regras de Resgate</Label>
+                <Textarea
+                  value={formData.redemption_rules || ''}
+                  onChange={(e) => setFormData({ ...formData, redemption_rules: e.target.value })}
+                  placeholder="Ex: Resgate apenas no vencimento"
+                  rows={3}
+                />
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label>Regras de Tributação (IR)</Label>
+                <Textarea
+                  value={formData.ir_rules || ''}
+                  onChange={(e) => setFormData({ ...formData, ir_rules: e.target.value })}
+                  placeholder="Ex: Tabela regressiva de IR"
+                  rows={3}
+                />
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label>Descrição Comercial</Label>
                 <Textarea
                   value={formData.description || ''}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
