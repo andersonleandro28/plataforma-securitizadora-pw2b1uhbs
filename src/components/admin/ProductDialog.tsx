@@ -4,139 +4,401 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Loader2, Save } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Switch } from '@/components/ui/switch'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { ProductForm } from './ProductForm'
+import { Loader2 } from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
-export function ProductDialog({ open, onOpenChange, product, onSuccess }: any) {
+interface ProductDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  product: any
+  onSuccess: () => void
+}
+
+export function ProductDialog({ open, onOpenChange, product, onSuccess }: ProductDialogProps) {
+  const [series, setSeries] = useState<any[]>([])
+  const [statuses, setStatuses] = useState<any[]>([])
+  const [ratings, setRatings] = useState<any[]>([])
+  const [currencies, setCurrencies] = useState<any[]>([])
+
+  const [loadingSeries, setLoadingSeries] = useState(false)
+  const [loadingStatuses, setLoadingStatuses] = useState(false)
+  const [loadingRatings, setLoadingRatings] = useState(false)
+  const [loadingCurrencies, setLoadingCurrencies] = useState(false)
+
+  const [formData, setFormData] = useState<any>({})
   const [saving, setSaving] = useState(false)
-  const [seriesList, setSeriesList] = useState<any[]>([])
-  const [statusOptions, setStatusOptions] = useState<any[]>([])
-  const [riskOptions, setRiskOptions] = useState<any[]>([])
-  const [currencyOptions, setCurrencyOptions] = useState<any[]>([])
-  const [data, setData] = useState<any>({})
 
   useEffect(() => {
     if (open) {
-      fetchLookups()
       if (product) {
-        setData({ ...product })
+        setFormData({ ...product })
       } else {
-        setData({
+        setFormData({
           title: '',
-          rating: 'Risco Médio',
-          currency: 'BRL',
-          status: 'Ativo',
           type: 'Debênture',
+          rate: '',
+          term: '',
+          min_investment: 1000,
+          risk: 'Médio',
+          rating: '',
+          status: '',
+          series_id: '',
+          currency: 'BRL',
           global_quotas: 1000,
           quota_value: 1000,
-          min_quotas_per_investor: 1,
-          max_quotas_per_investor: 100,
-          sold_quotas: 0,
           is_active: true,
           is_highlighted: false,
-          is_archived: false,
-          allow_early_redemption: false,
-          early_redemption_penalty_pct: 0,
-          early_redemption_discount_pct: 0,
-          min_grace_period_months: 0,
+          description: '',
+          target_audience: '',
         })
       }
+      fetchDropdownData()
     }
   }, [open, product])
 
-  const fetchLookups = async () => {
+  const fetchDropdownData = async () => {
+    // Série
+    setLoadingSeries(true)
+    console.log('Buscando dados para o seletor: Série')
     try {
-      const [{ data: s }, { data: st }, { data: ri }, { data: cu }] = await Promise.all([
-        supabase.from('debenture_series').select('id, series_number, volume'),
-        supabase.from('product_statuses' as any).select('label'),
-        supabase.from('product_risk_ratings' as any).select('label'),
-        supabase.from('product_currencies' as any).select('code, label'),
-      ])
+      const { data, error } = await supabase.from('debenture_series').select('id, series_number')
+      if (error) throw error
+      setSeries(data || [])
+      console.log('Dados carregados com sucesso: Série')
+    } catch (e: any) {
+      console.error('ERRO CRÍTICO no seletor Série:', e.message)
+      toast.error('Erro ao carregar opções de Série')
+    } finally {
+      setLoadingSeries(false)
+    }
 
-      if (s) setSeriesList(s)
-      if (st) setStatusOptions(st.map((i: any) => ({ label: i.label, value: i.label })))
-      if (ri) setRiskOptions(ri.map((i: any) => ({ label: i.label, value: i.label })))
-      if (cu)
-        setCurrencyOptions(cu.map((i: any) => ({ label: `${i.code} - ${i.label}`, value: i.code })))
-    } catch (e) {
-      console.error('Failed to load lookups', e)
+    // Status
+    setLoadingStatuses(true)
+    console.log('Buscando dados para o seletor: Status')
+    try {
+      const { data, error } = await supabase.from('product_statuses').select('label')
+      if (error) throw error
+      setStatuses(data || [])
+      console.log('Dados carregados com sucesso: Status')
+    } catch (e: any) {
+      console.error('ERRO CRÍTICO no seletor Status:', e.message)
+      toast.error('Erro ao carregar opções de Status')
+    } finally {
+      setLoadingStatuses(false)
+    }
+
+    // Rating de Risco
+    setLoadingRatings(true)
+    console.log('Buscando dados para o seletor: Rating de Risco')
+    try {
+      const { data, error } = await supabase.from('product_risk_ratings').select('label')
+      if (error) throw error
+      setRatings(data || [])
+      console.log('Dados carregados com sucesso: Rating de Risco')
+    } catch (e: any) {
+      console.error('ERRO CRÍTICO no seletor Rating de Risco:', e.message)
+      toast.error('Erro ao carregar opções de Rating de Risco')
+    } finally {
+      setLoadingRatings(false)
+    }
+
+    // Moeda
+    setLoadingCurrencies(true)
+    console.log('Buscando dados para o seletor: Moeda')
+    try {
+      const { data, error } = await supabase.from('product_currencies').select('code, label')
+      if (error) throw error
+      setCurrencies(data || [])
+      console.log('Dados carregados com sucesso: Moeda')
+    } catch (e: any) {
+      console.error('ERRO CRÍTICO no seletor Moeda:', e.message)
+      toast.error('Erro ao carregar opções de Moeda')
+    } finally {
+      setLoadingCurrencies(false)
     }
   }
 
   const handleSave = async () => {
-    if (!data.title) return toast.error('O nome do produto é obrigatório.')
-    if (data.min_quotas_per_investor > data.max_quotas_per_investor) {
-      return toast.error('A quantidade mínima de cotas não pode ser maior que a máxima.')
-    }
-    if (data.max_quotas_per_investor > data.global_quotas) {
-      return toast.error('A quantidade máxima por investidor não pode superar a global.')
-    }
-
     setSaving(true)
     try {
-      const payload = { ...data, updated_at: new Date().toISOString() }
-      let error
+      const payload = { ...formData }
+      if (payload.series_id === '') payload.series_id = null
 
-      if (data.id) {
-        const res = await supabase.from('investment_products').update(payload).eq('id', data.id)
-        error = res.error
+      if (product?.id) {
+        const { error } = await supabase
+          .from('investment_products')
+          .update(payload)
+          .eq('id', product.id)
+        if (error) throw error
+        toast.success('Produto atualizado com sucesso!')
       } else {
-        const res = await supabase.from('investment_products').insert(payload)
-        error = res.error
+        const { error } = await supabase.from('investment_products').insert([payload])
+        if (error) throw error
+        toast.success('Produto criado com sucesso!')
       }
-
-      if (error) throw error
-      toast.success('Produto salvo com sucesso!')
-      onSuccess?.()
+      onSuccess()
       onOpenChange(false)
-    } catch (err: any) {
-      toast.error(err.message || 'Erro ao salvar produto.')
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao salvar produto')
     } finally {
       setSaving(false)
     }
   }
 
-  const handleChange = (field: string, value: any) =>
-    setData((prev: any) => ({ ...prev, [field]: value }))
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[750px] max-h-[90vh] flex flex-col p-0">
-        <DialogHeader className="p-6 pb-4 shrink-0 border-b bg-muted/10">
-          <DialogTitle>{data.id ? 'Editar Produto' : 'Novo Produto de Investimento'}</DialogTitle>
-          <DialogDescription>
-            Configure as regras de emissão, cotas e visualização da vitrine do investidor.
-          </DialogDescription>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{product ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto px-6 py-2">
-          <ProductForm
-            data={data}
-            onChange={handleChange}
-            seriesList={seriesList}
-            statusOptions={statusOptions}
-            riskOptions={riskOptions}
-            currencyOptions={currencyOptions}
-          />
-        </div>
+        <Tabs defaultValue="basic" className="mt-4">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="basic">Dados Básicos</TabsTrigger>
+            <TabsTrigger value="details">Detalhes e Configurações</TabsTrigger>
+          </TabsList>
 
-        <DialogFooter className="p-6 shrink-0 border-t bg-muted/10">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+          <TabsContent value="basic" className="space-y-4 pt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2 md:col-span-2">
+                <Label>Título do Produto</Label>
+                <Input
+                  value={formData.title || ''}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  placeholder="Ex: Debênture XPTO"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Série</Label>
+                <Select
+                  value={formData.series_id || ''}
+                  onValueChange={(v) => setFormData({ ...formData, series_id: v })}
+                  disabled={loadingSeries}
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={loadingSeries ? 'Carregando...' : 'Selecione uma série'}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {series.length === 0 ? (
+                      <SelectItem value="empty" disabled>
+                        Nenhuma opção cadastrada no banco
+                      </SelectItem>
+                    ) : (
+                      series.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.series_number}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select
+                  value={formData.status || ''}
+                  onValueChange={(v) => setFormData({ ...formData, status: v })}
+                  disabled={loadingStatuses}
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={loadingStatuses ? 'Carregando...' : 'Selecione o status'}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {statuses.length === 0 ? (
+                      <SelectItem value="empty" disabled>
+                        Nenhuma opção cadastrada no banco
+                      </SelectItem>
+                    ) : (
+                      statuses.map((s) => (
+                        <SelectItem key={s.label} value={s.label}>
+                          {s.label}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Rating de Risco</Label>
+                <Select
+                  value={formData.rating || ''}
+                  onValueChange={(v) => setFormData({ ...formData, rating: v, risk: v })}
+                  disabled={loadingRatings}
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={loadingRatings ? 'Carregando...' : 'Selecione o rating'}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ratings.length === 0 ? (
+                      <SelectItem value="empty" disabled>
+                        Nenhuma opção cadastrada no banco
+                      </SelectItem>
+                    ) : (
+                      ratings.map((r) => (
+                        <SelectItem key={r.label} value={r.label}>
+                          {r.label}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Moeda</Label>
+                <Select
+                  value={formData.currency || ''}
+                  onValueChange={(v) => setFormData({ ...formData, currency: v })}
+                  disabled={loadingCurrencies}
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={loadingCurrencies ? 'Carregando...' : 'Selecione a moeda'}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {currencies.length === 0 ? (
+                      <SelectItem value="empty" disabled>
+                        Nenhuma opção cadastrada no banco
+                      </SelectItem>
+                    ) : (
+                      currencies.map((c) => (
+                        <SelectItem key={c.code} value={c.code}>
+                          {c.label} ({c.code})
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Taxa / Rentabilidade</Label>
+                <Input
+                  value={formData.rate || ''}
+                  onChange={(e) => setFormData({ ...formData, rate: e.target.value })}
+                  placeholder="Ex: CDI + 2%"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Prazo (Termo)</Label>
+                <Input
+                  value={formData.term || ''}
+                  onChange={(e) => setFormData({ ...formData, term: e.target.value })}
+                  placeholder="Ex: 24 meses"
+                />
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="details" className="space-y-4 pt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Investimento Mínimo (R$)</Label>
+                <Input
+                  type="number"
+                  value={formData.min_investment || ''}
+                  onChange={(e) =>
+                    setFormData({ ...formData, min_investment: parseFloat(e.target.value) })
+                  }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Valor da Cota (R$)</Label>
+                <Input
+                  type="number"
+                  value={formData.quota_value || ''}
+                  onChange={(e) =>
+                    setFormData({ ...formData, quota_value: parseFloat(e.target.value) })
+                  }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Total de Cotas (Global)</Label>
+                <Input
+                  type="number"
+                  value={formData.global_quotas || ''}
+                  onChange={(e) =>
+                    setFormData({ ...formData, global_quotas: parseInt(e.target.value, 10) })
+                  }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Público Alvo</Label>
+                <Input
+                  value={formData.target_audience || ''}
+                  onChange={(e) => setFormData({ ...formData, target_audience: e.target.value })}
+                  placeholder="Ex: Investidor Qualificado"
+                />
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label>Descrição</Label>
+                <Textarea
+                  value={formData.description || ''}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Descrição do produto"
+                  rows={3}
+                />
+              </div>
+
+              <div className="flex items-center space-x-2 pt-4">
+                <Switch
+                  checked={formData.is_active || false}
+                  onCheckedChange={(v) => setFormData({ ...formData, is_active: v })}
+                  id="is-active"
+                />
+                <Label htmlFor="is-active">Produto Ativo (Visível na vitrine)</Label>
+              </div>
+
+              <div className="flex items-center space-x-2 pt-4">
+                <Switch
+                  checked={formData.is_highlighted || false}
+                  onCheckedChange={(v) => setFormData({ ...formData, is_highlighted: v })}
+                  id="is-highlighted"
+                />
+                <Label htmlFor="is-highlighted">Destacar na Vitrine</Label>
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
+
+        <DialogFooter className="mt-6">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={handleSave} disabled={saving} className="min-w-[120px]">
-            {saving ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4 mr-2" />
-            )}
-            {saving ? 'Salvando...' : 'Salvar Produto'}
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Salvar
           </Button>
         </DialogFooter>
       </DialogContent>

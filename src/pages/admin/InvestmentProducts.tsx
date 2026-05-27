@@ -46,7 +46,9 @@ export default function InvestmentProducts() {
   }
 
   useEffect(() => {
-    fetchProducts()
+    fetchProducts().then(() => {
+      console.log('Renderização da página de produtos concluída')
+    })
   }, [])
 
   const handleDuplicate = (prod: any) => {

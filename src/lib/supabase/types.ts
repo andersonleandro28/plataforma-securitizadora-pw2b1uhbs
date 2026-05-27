@@ -1507,6 +1507,66 @@ export type Database = {
           },
         ]
       }
+      product_currencies: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          label: string
+          symbol: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          label: string
+          symbol: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          label?: string
+          symbol?: string
+        }
+        Relationships: []
+      }
+      product_risk_ratings: {
+        Row: {
+          created_at: string
+          id: string
+          label: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          label: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label?: string
+        }
+        Relationships: []
+      }
+      product_statuses: {
+        Row: {
+          created_at: string
+          id: string
+          label: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          label: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           address_city: string | null
@@ -2774,6 +2834,20 @@ export const Constants = {
 //   changes: jsonb (not null)
 //   changed_by: uuid (nullable)
 //   changed_at: timestamp with time zone (nullable, default: now())
+// Table: product_currencies
+//   id: uuid (not null, default: gen_random_uuid())
+//   code: text (not null)
+//   label: text (not null)
+//   symbol: text (not null)
+//   created_at: timestamp with time zone (not null, default: now())
+// Table: product_risk_ratings
+//   id: uuid (not null, default: gen_random_uuid())
+//   label: text (not null)
+//   created_at: timestamp with time zone (not null, default: now())
+// Table: product_statuses
+//   id: uuid (not null, default: gen_random_uuid())
+//   label: text (not null)
+//   created_at: timestamp with time zone (not null, default: now())
 // Table: profiles
 //   id: uuid (not null)
 //   full_name: text (nullable)
@@ -3054,6 +3128,15 @@ export const Constants = {
 //   FOREIGN KEY parameter_history_changed_by_fkey: FOREIGN KEY (changed_by) REFERENCES profiles(id)
 //   FOREIGN KEY parameter_history_parameter_id_fkey: FOREIGN KEY (parameter_id) REFERENCES financial_parameters(id) ON DELETE CASCADE
 //   PRIMARY KEY parameter_history_pkey: PRIMARY KEY (id)
+// Table: product_currencies
+//   UNIQUE product_currencies_code_key: UNIQUE (code)
+//   PRIMARY KEY product_currencies_pkey: PRIMARY KEY (id)
+// Table: product_risk_ratings
+//   UNIQUE product_risk_ratings_label_key: UNIQUE (label)
+//   PRIMARY KEY product_risk_ratings_pkey: PRIMARY KEY (id)
+// Table: product_statuses
+//   UNIQUE product_statuses_label_key: UNIQUE (label)
+//   PRIMARY KEY product_statuses_pkey: PRIMARY KEY (id)
 // Table: profiles
 //   CHECK profiles_entity_type_check: CHECK ((entity_type = ANY (ARRAY['pf'::text, 'pj'::text])))
 //   FOREIGN KEY profiles_id_fkey: FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE
@@ -3230,6 +3313,15 @@ export const Constants = {
 //   Policy "auth_all_parameter_history" (ALL, PERMISSIVE) roles={authenticated}
 //     USING: true
 //     WITH CHECK: true
+// Table: product_currencies
+//   Policy "auth_all_product_currencies" (SELECT, PERMISSIVE) roles={authenticated}
+//     USING: true
+// Table: product_risk_ratings
+//   Policy "auth_all_product_risk_ratings" (SELECT, PERMISSIVE) roles={authenticated}
+//     USING: true
+// Table: product_statuses
+//   Policy "auth_all_product_statuses" (SELECT, PERMISSIVE) roles={authenticated}
+//     USING: true
 // Table: profiles
 //   Policy "admin_select_profiles" (SELECT, PERMISSIVE) roles={authenticated}
 //     USING: is_admin()
@@ -3854,6 +3946,12 @@ export const Constants = {
 //   CREATE UNIQUE INDEX operacoes_antecipacao_ccb_id_key ON public.operacoes_antecipacao USING btree (ccb_id)
 // Table: operation_calculations
 //   CREATE UNIQUE INDEX operation_calculations_operation_id_key ON public.operation_calculations USING btree (operation_id)
+// Table: product_currencies
+//   CREATE UNIQUE INDEX product_currencies_code_key ON public.product_currencies USING btree (code)
+// Table: product_risk_ratings
+//   CREATE UNIQUE INDEX product_risk_ratings_label_key ON public.product_risk_ratings USING btree (label)
+// Table: product_statuses
+//   CREATE UNIQUE INDEX product_statuses_label_key ON public.product_statuses USING btree (label)
 // Table: transaction_categories
 //   CREATE UNIQUE INDEX transaction_categories_name_key ON public.transaction_categories USING btree (name)
 // Table: treasury_transactions
