@@ -10,34 +10,21 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Loader2, Save, Edit2, AlertCircle } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/use-auth'
+import { IndexerSelect } from './Selectors'
 
 interface EditSeriesDialogProps {
   series: any
-  debentures: any[]
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess?: () => void
 }
 
-export function EditSeriesDialog({
-  series,
-  debentures = [],
-  open,
-  onOpenChange,
-  onSuccess,
-}: EditSeriesDialogProps) {
+export function EditSeriesDialog({ series, open, onOpenChange, onSuccess }: EditSeriesDialogProps) {
   const { user } = useAuth()
   const [saving, setSaving] = useState(false)
   const [formData, setFormData] = useState({
@@ -47,48 +34,39 @@ export function EditSeriesDialog({
     rate: '',
     maturity_date: '',
   })
+  const [parentDebenture, setParentDebenture] = useState<any>(null)
 
   useEffect(() => {
     if (open && series) {
       setFormData({
         series_number: series.series_number || '',
         volume: String(series.volume || ''),
-        indexer:
-          series.indexer === 'Pré-fixado' ||
-          series.indexer === null ||
-          series.indexer === 'none' ||
-          !series.indexer
-            ? null
-            : series.indexer,
+        indexer: series.indexer,
         rate: series.rate != null ? String(series.rate) : '',
         maturity_date: series.maturity_date ? series.maturity_date.split('T')[0] : '',
       })
     }
-  }, [open, series?.id])
-
-  const [localDebentures, setLocalDebentures] = useState<any[]>([])
-  const [isLoadingDebentures, setIsLoadingDebentures] = useState(false)
+  }, [open, series])
 
   useEffect(() => {
-    if (open && (!debentures || debentures.length === 0)) {
-      const fetchDebentures = async () => {
-        setIsLoadingDebentures(true)
+    if (open && series?.debenture_id) {
+      let mounted = true
+      const fetchParent = async () => {
         const { data } = await supabase
           .from('debentures')
-          .select(
-            'id, issuer_name, issue_date, total_volume, created_at, series:debenture_series(id, volume)',
-          )
-        if (data) setLocalDebentures(data)
-        setIsLoadingDebentures(false)
+          .select('id, issuer_name, total_volume, series:debenture_series(id, volume)')
+          .eq('id', series.debenture_id)
+          .single()
+        if (mounted && data) setParentDebenture(data)
       }
-      fetchDebentures()
+      fetchParent()
+      return () => {
+        mounted = false
+      }
     } else {
-      setLocalDebentures(debentures || [])
+      setParentDebenture(null)
     }
-  }, [open, debentures])
-
-  const activeDebentures = localDebentures.length > 0 ? localDebentures : debentures
-  const parentDebenture = activeDebentures.find((d) => d.id === series?.debenture_id)
+  }, [open, series?.debenture_id])
 
   const otherSeriesVolume =
     parentDebenture?.series
@@ -136,7 +114,7 @@ export function EditSeriesDialog({
         .update({
           series_number: formData.series_number,
           volume: Number(formData.volume),
-          indexer: formData.indexer === 'none' ? null : formData.indexer,
+          indexer: formData.indexer,
           rate: Number(formData.rate) || 0,
           maturity_date: formData.maturity_date || null,
         })
@@ -231,22 +209,10 @@ export function EditSeriesDialog({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Indexador</Label>
-              <Select
-                value={formData.indexer === null ? 'none' : formData.indexer || 'none'}
-                onValueChange={(val) =>
-                  setFormData({ ...formData, indexer: val === 'none' ? null : val })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o indexador" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Pré-fixado (Sem Indexador)</SelectItem>
-                  <SelectItem value="CDI">CDI</SelectItem>
-                  <SelectItem value="IPCA">IPCA</SelectItem>
-                  <SelectItem value="IGP-M">IGP-M</SelectItem>
-                </SelectContent>
-              </Select>
+              <IndexerSelect
+                value={formData.indexer}
+                onValueChange={(val) => setFormData({ ...formData, indexer: val })}
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Taxa (% a.a.)</Label>

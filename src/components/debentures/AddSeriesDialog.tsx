@@ -10,21 +10,13 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Loader2, Save, PlusCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { formatDate } from '@/lib/utils'
+import { EscrituraSelect, IndexerSelect } from './Selectors'
 
 interface AddSeriesDialogProps {
   debenture?: any
-  debentures?: any[]
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess?: () => void
@@ -32,13 +24,14 @@ interface AddSeriesDialogProps {
 
 export function AddSeriesDialog({
   debenture,
-  debentures = [],
   open,
   onOpenChange,
   onSuccess,
 }: AddSeriesDialogProps) {
   const [saving, setSaving] = useState(false)
   const [selectedDebentureId, setSelectedDebentureId] = useState<string | undefined>()
+  const [selectedDebentureObj, setSelectedDebentureObj] = useState<any>(null)
+
   const [formData, setFormData] = useState({
     series_number: '',
     volume: '',
@@ -55,49 +48,28 @@ export function AddSeriesDialog({
       rate: '',
       maturity_date: '',
     })
-    if (!debenture) setSelectedDebentureId(undefined)
+    if (!debenture) {
+      setSelectedDebentureId(undefined)
+      setSelectedDebentureObj(null)
+    }
   }
 
   useEffect(() => {
     if (open) {
       if (debenture) {
         setSelectedDebentureId(debenture.id)
+        setSelectedDebentureObj(debenture)
       }
     } else {
       resetForm()
     }
-  }, [open, debenture?.id])
+  }, [open, debenture])
 
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) resetForm()
     onOpenChange(isOpen)
   }
 
-  const [localDebentures, setLocalDebentures] = useState<any[]>([])
-  const [isLoadingDebentures, setIsLoadingDebentures] = useState(false)
-
-  useEffect(() => {
-    if (open && !debenture && (!debentures || debentures.length === 0)) {
-      const fetchDebentures = async () => {
-        setIsLoadingDebentures(true)
-        const { data } = await supabase
-          .from('debentures')
-          .select(
-            'id, issuer_name, issue_date, total_volume, created_at, series:debenture_series(volume)',
-          )
-          .order('created_at', { ascending: false })
-        if (data) setLocalDebentures(data)
-        setIsLoadingDebentures(false)
-      }
-      fetchDebentures()
-    } else {
-      setLocalDebentures(debentures || [])
-    }
-  }, [open, debenture, debentures])
-
-  const activeDebentures = localDebentures.length > 0 ? localDebentures : debentures
-  const selectedDebentureObj =
-    debenture || activeDebentures.find((d) => d.id === selectedDebentureId)
   const totalAllocated =
     selectedDebentureObj?.series?.reduce((acc: number, s: any) => acc + Number(s.volume || 0), 0) ||
     0
@@ -133,7 +105,7 @@ export function AddSeriesDialog({
         debenture_id: selectedDebentureId,
         series_number: formData.series_number,
         volume: Number(formData.volume),
-        indexer: formData.indexer === 'none' ? null : formData.indexer,
+        indexer: formData.indexer,
         rate: Number(formData.rate) || 0,
         maturity_date: formData.maturity_date || null,
       })
@@ -173,27 +145,13 @@ export function AddSeriesDialog({
           {!debenture && (
             <div className="space-y-1.5">
               <Label>Escritura / Emissor Base</Label>
-              <Select
-                value={selectedDebentureId || undefined}
-                onValueChange={setSelectedDebentureId}
-                disabled={isLoadingDebentures}
-              >
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={isLoadingDebentures ? 'Carregando...' : 'Selecione a escritura'}
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeDebentures.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.issuer_name}{' '}
-                      {d.issue_date
-                        ? `(${formatDate(d.issue_date)})`
-                        : `(${formatDate(d.created_at)})`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <EscrituraSelect
+                value={selectedDebentureId}
+                onValueChange={(val, obj) => {
+                  setSelectedDebentureId(val)
+                  setSelectedDebentureObj(obj)
+                }}
+              />
             </div>
           )}
 
@@ -238,22 +196,10 @@ export function AddSeriesDialog({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Indexador</Label>
-              <Select
-                value={formData.indexer === null ? 'none' : formData.indexer || 'none'}
-                onValueChange={(val) =>
-                  setFormData({ ...formData, indexer: val === 'none' ? null : val })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o indexador" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Pré-fixado (Sem Indexador)</SelectItem>
-                  <SelectItem value="CDI">CDI</SelectItem>
-                  <SelectItem value="IPCA">IPCA</SelectItem>
-                  <SelectItem value="IGP-M">IGP-M</SelectItem>
-                </SelectContent>
-              </Select>
+              <IndexerSelect
+                value={formData.indexer}
+                onValueChange={(val) => setFormData({ ...formData, indexer: val })}
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Taxa (% a.a.)</Label>

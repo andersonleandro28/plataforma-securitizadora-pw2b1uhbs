@@ -134,11 +134,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setIsLoadingProfile(true)
       setProfileError(null)
       try {
-        const { data, error } = await supabase
+        // Implementa timeout para evitar travamento se o banco demorar a responder
+        const fetchPromise = supabase
           .from('profiles')
           .select('*')
           .eq('id', currentUser.id)
           .maybeSingle()
+
+        const timeoutPromise = new Promise<{ data: null; error: any }>((_, reject) =>
+          setTimeout(() => reject(new Error('Timeout ao carregar perfil')), 8000),
+        )
+
+        const { data, error } = (await Promise.race([fetchPromise, timeoutPromise])) as any
 
         if (error && (error.code === 'PGRST301' || error.code === '401')) {
           supabase.auth.signOut().catch(() => {})

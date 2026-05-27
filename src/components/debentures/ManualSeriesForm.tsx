@@ -2,15 +2,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Trash2, Plus, Users } from 'lucide-react'
 import type { SeriesData, SubscriptionData } from './ManualDeedDialog'
+import { IndexerSelect } from './Selectors'
 
 interface Props {
   series: SeriesData
@@ -83,24 +77,10 @@ export function ManualSeriesForm({ series, index, onChange, onRemove }: Props) {
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Indexador</Label>
-            <Select
-              value={
-                series.indexer === null || series.indexer === 'Pré-fixado' || !series.indexer
-                  ? 'none'
-                  : series.indexer
-              }
-              onValueChange={(v) => updateField('indexer', v === 'none' ? null : v)}
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="Selecione o indexador" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Pré-fixado (Sem Indexador)</SelectItem>
-                <SelectItem value="CDI">CDI</SelectItem>
-                <SelectItem value="IPCA">IPCA</SelectItem>
-                <SelectItem value="IGP-M">IGP-M</SelectItem>
-              </SelectContent>
-            </Select>
+            <IndexerSelect
+              value={series.indexer}
+              onValueChange={(v) => updateField('indexer', v)}
+            />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Taxa (% a.a.)</Label>
