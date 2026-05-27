@@ -5,7 +5,6 @@
     "invite-user": 20,
     "public-signup": 18,
     "delete-user": 18,
-    "extract-debenture-data": 23,
     "batch-import-users": 17,
     "calculate-operation": 16,
     "send-operation-email": 18,
