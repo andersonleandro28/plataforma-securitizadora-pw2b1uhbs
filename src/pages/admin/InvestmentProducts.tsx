@@ -1,16 +1,17 @@
-import { useEffect, useState } from 'react'
-import { Plus, Search, Archive, Copy, Edit2, ShieldCheck, EyeOff, Loader2 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import React, { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+  DialogDescription,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -18,232 +19,424 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Badge } from '@/components/ui/badge'
-import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { ProductDialog } from '@/components/admin/ProductDialog'
-import useSecurityStore from '@/stores/useSecurityStore'
+import { Plus, Loader2 } from 'lucide-react'
 
 export default function InvestmentProducts() {
-  const requestClearance = useSecurityStore((state) => state.requestClearance)
   const [products, setProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [filterStatus, setFilterStatus] = useState('all')
-  const [selectedProduct, setSelectedProduct] = useState<any>(null)
-  const [dialogOpen, setDialogOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+
+  useEffect(() => {
+    fetchProducts()
+  }, [])
 
   const fetchProducts = async () => {
     setLoading(true)
     const { data, error } = await supabase
       .from('investment_products')
-      .select('*')
-      .eq('is_archived', false)
+      .select(
+        `
+        *,
+        debenture_series ( series_number )
+      `,
+      )
       .order('created_at', { ascending: false })
 
-    if (data && !error) setProducts(data)
+    if (error) {
+      toast.error('Erro ao carregar produtos de investimento')
+      console.error(error)
+    } else {
+      setProducts(data || [])
+    }
     setLoading(false)
   }
 
-  useEffect(() => {
-    fetchProducts().then(() => {
-      console.log('Renderização da página de produtos concluída')
-    })
-  }, [])
-
-  const handleDuplicate = (prod: any) => {
-    requestClearance(`duplicação do produto ${prod.id}`, () => {
-      const copy = { ...prod, id: undefined, title: `${prod.title} (Cópia)`, sold_quotas: 0 }
-      setSelectedProduct(copy)
-      setDialogOpen(true)
-    })
-  }
-
-  const handleArchive = async (id: string) => {
-    if (!confirm('Deseja realmente arquivar este produto? Ele sumirá da listagem principal.'))
-      return
-
-    requestClearance(`arquivamento (ocultação) do registro ${id}`, async () => {
-      try {
-        await supabase
-          .from('investment_products')
-          .update({ is_archived: true, is_active: false })
-          .eq('id', id)
-        toast.success('Produto arquivado.')
-        fetchProducts()
-      } catch (e) {
-        toast.error('Erro ao arquivar.')
-      }
-    })
-  }
-
-  const filtered = products.filter((p) => {
-    const mSearch = p.title?.toLowerCase().includes(search.toLowerCase())
-    const mStatus = filterStatus === 'all' || p.status === filterStatus
-    return mSearch && mStatus
-  })
-
   return (
-    <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Gestão de Produtos</h1>
-          <p className="text-muted-foreground">
-            Administre as ofertas, cotas e visibilidade da vitrine do investidor.
-          </p>
+    <div className="flex-1 space-y-4 p-4 pt-6 md:p-8">
+      <div className="flex items-center justify-between space-y-2">
+        <h2 className="text-3xl font-bold tracking-tight">Produtos de Investimento</h2>
+        <div className="flex items-center space-x-2">
+          <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Novo Produto
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Criar Novo Produto</DialogTitle>
+                <DialogDescription>
+                  Preencha os detalhes do produto de investimento.
+                </DialogDescription>
+              </DialogHeader>
+              <ProductForm
+                onSuccess={() => {
+                  setIsModalOpen(false)
+                  fetchProducts()
+                }}
+              />
+            </DialogContent>
+          </Dialog>
         </div>
-        <Button
-          onClick={() => {
-            requestClearance('acesso à criação de novo produto', () => {
-              setSelectedProduct(null)
-              setDialogOpen(true)
-            })
-          }}
-          className="gap-2"
-        >
-          <Plus className="h-4 w-4" /> Novo Produto
-        </Button>
       </div>
 
-      <Card>
-        <CardHeader className="pb-4 border-b">
-          <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5 text-primary" /> Catálogo Ativo
-            </CardTitle>
-            <div className="flex gap-2 w-full sm:w-auto">
-              <div className="relative flex-1 sm:w-64">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar produto..."
-                  className="pl-9"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="Em Captação">Em Captação</SelectItem>
-                  <SelectItem value="Esgotado">Esgotado</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader className="bg-muted/30">
-              <TableRow>
-                <TableHead className="pl-6">Produto / Série</TableHead>
-                <TableHead>Rating</TableHead>
-                <TableHead className="text-center">Cotas Vendidas</TableHead>
-                <TableHead className="text-center">Status / Visibilidade</TableHead>
-                <TableHead className="text-right pr-6">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+      <div className="rounded-md border bg-card">
+        <div className="relative w-full overflow-auto">
+          <table className="w-full caption-bottom text-sm">
+            <thead className="[&_tr]:border-b">
+              <tr className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
+                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                  Título
+                </th>
+                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                  Tipo
+                </th>
+                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                  Série
+                </th>
+                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                  Status
+                </th>
+                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                  Risco
+                </th>
+                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                  Taxa
+                </th>
+              </tr>
+            </thead>
+            <tbody className="[&_tr:last-child]:border-0">
               {loading ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-10">
-                    <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
-                  </TableCell>
-                </TableRow>
-              ) : filtered.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">
-                    Nenhum produto encontrado.
-                  </TableCell>
-                </TableRow>
+                <tr>
+                  <td colSpan={6} className="p-8 text-center">
+                    <div className="flex items-center justify-center">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    </div>
+                  </td>
+                </tr>
+              ) : products.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                    Nenhum produto cadastrado no banco.
+                  </td>
+                </tr>
               ) : (
-                filtered.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="pl-6 font-medium">
-                      {p.title}
-                      <p className="text-xs text-muted-foreground font-normal mt-0.5">
-                        Vol: R${' '}
-                        {((p.global_quotas || 0) * (p.quota_value || 0)).toLocaleString('pt-BR')} •{' '}
-                        {p.currency}
-                      </p>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{p.rating || 'N/A'}</Badge>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <div className="flex flex-col items-center">
-                        <span className="font-mono text-sm">
-                          {p.sold_quotas || 0} / {p.global_quotas || 0}
-                        </span>
-                        <div className="w-24 h-1.5 bg-muted rounded-full mt-1 overflow-hidden">
-                          <div
-                            className="h-full bg-primary"
-                            style={{
-                              width: `${Math.min(100, ((p.sold_quotas || 0) / (p.global_quotas || 1)) * 100)}%`,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-center space-y-1">
-                      <div>
-                        <Badge variant={p.status === 'Esgotado' ? 'destructive' : 'secondary'}>
-                          {p.status}
-                        </Badge>
-                      </div>
-                      {!p.is_active && (
-                        <div className="text-xs text-destructive flex items-center justify-center gap-1">
-                          <EyeOff className="h-3 w-3" /> Oculto
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right pr-6 space-x-1 whitespace-nowrap">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Editar"
-                        onClick={() => {
-                          requestClearance(`edição do produto no registro ${p.id}`, () => {
-                            setSelectedProduct(p)
-                            setDialogOpen(true)
-                          })
-                        }}
-                      >
-                        <Edit2 className="h-4 w-4 text-muted-foreground hover:text-primary" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Duplicar"
-                        onClick={() => handleDuplicate(p)}
-                      >
-                        <Copy className="h-4 w-4 text-muted-foreground" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Arquivar"
-                        onClick={() => handleArchive(p.id)}
-                      >
-                        <Archive className="h-4 w-4 text-muted-foreground hover:text-destructive" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                products.map((p) => (
+                  <tr key={p.id} className="border-b transition-colors hover:bg-muted/50">
+                    <td className="p-4 align-middle font-medium">{p.title}</td>
+                    <td className="p-4 align-middle">{p.type}</td>
+                    <td className="p-4 align-middle">{p.debenture_series?.series_number || '-'}</td>
+                    <td className="p-4 align-middle">{p.status}</td>
+                    <td className="p-4 align-middle">{p.risk}</td>
+                    <td className="p-4 align-middle">{p.rate}</td>
+                  </tr>
                 ))
               )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      <ProductDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        product={selectedProduct}
-        onSuccess={fetchProducts}
-      />
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
+  )
+}
+
+function ProductForm({ onSuccess }: { onSuccess: () => void }) {
+  console.log('[DEBUG] Renderizando formulário de produtos')
+
+  const [series, setSeries] = useState<any[]>([])
+  const [statuses, setStatuses] = useState<any[]>([])
+  const [ratings, setRatings] = useState<any[]>([])
+  const [currencies, setCurrencies] = useState<any[]>([])
+
+  const [seriesError, setSeriesError] = useState('')
+  const [statusError, setStatusError] = useState('')
+  const [ratingError, setRatingError] = useState('')
+  const [currencyError, setCurrencyError] = useState('')
+
+  const [loading, setLoading] = useState(false)
+
+  const [formData, setFormData] = useState({
+    title: '',
+    type: 'Debênture',
+    series_id: '',
+    status: '',
+    risk: '',
+    currency: '',
+    rate: '',
+    term: '',
+    min_investment: 1000,
+  })
+
+  useEffect(() => {
+    let mounted = true
+
+    async function fetchOptions() {
+      // --- SÉRIE ---
+      console.log('[DEBUG] Carregando dados para dropdowns: Série')
+      const resSeries = await supabase.from('debenture_series').select('*')
+      if (!mounted) return
+      if (resSeries.error) {
+        console.log(`[DEBUG] Erro ao carregar Série: ${resSeries.error.message}`)
+        setSeriesError('Erro ao carregar opções')
+      } else {
+        setSeries(resSeries.data || [])
+      }
+
+      // --- STATUS ---
+      console.log('[DEBUG] Carregando dados para dropdowns: Status')
+      const resStatus = await supabase.from('product_statuses').select('*')
+      if (!mounted) return
+      if (resStatus.error) {
+        console.log(`[DEBUG] Erro ao carregar Status: ${resStatus.error.message}`)
+        setStatusError('Erro ao carregar opções')
+      } else {
+        setStatuses(resStatus.data || [])
+      }
+
+      // --- RATING ---
+      console.log('[DEBUG] Carregando dados para dropdowns: Rating de Risco')
+      const resRisk = await supabase.from('product_risk_ratings').select('*')
+      if (!mounted) return
+      if (resRisk.error) {
+        console.log(`[DEBUG] Erro ao carregar Rating de Risco: ${resRisk.error.message}`)
+        setRatingError('Erro ao carregar opções')
+      } else {
+        setRatings(resRisk.data || [])
+      }
+
+      // --- MOEDA ---
+      console.log('[DEBUG] Carregando dados para dropdowns: Moeda')
+      const resCurr = await supabase.from('product_currencies').select('*')
+      if (!mounted) return
+      if (resCurr.error) {
+        console.log(`[DEBUG] Erro ao carregar Moeda: ${resCurr.error.message}`)
+        setCurrencyError('Erro ao carregar opções')
+      } else {
+        setCurrencies(resCurr.data || [])
+      }
+    }
+
+    fetchOptions()
+
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+
+    const { error } = await supabase.from('investment_products').insert({
+      title: formData.title,
+      type: formData.type,
+      series_id: formData.series_id || null,
+      status: formData.status || 'Captação Aberta',
+      risk: formData.risk || 'Médio',
+      currency: formData.currency || 'BRL',
+      rate: formData.rate,
+      term: formData.term,
+      min_investment: formData.min_investment,
+    })
+
+    setLoading(false)
+
+    if (error) {
+      toast.error('Erro ao salvar o produto')
+      console.error('Erro ao salvar produto:', error)
+    } else {
+      toast.success('Produto salvo com sucesso!')
+      onSuccess()
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4 py-2">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="title">Título</Label>
+          <Input
+            id="title"
+            required
+            value={formData.title}
+            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+            placeholder="Ex: Debênture IPCA+"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="type">Tipo</Label>
+          <Input
+            id="type"
+            required
+            value={formData.type}
+            onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+            placeholder="Ex: Debênture"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="series">Série</Label>
+          <Select
+            value={formData.series_id}
+            onValueChange={(v) => setFormData({ ...formData, series_id: v })}
+          >
+            <SelectTrigger id="series">
+              <SelectValue placeholder="Selecione uma série" />
+            </SelectTrigger>
+            <SelectContent>
+              {seriesError ? (
+                <SelectItem value="error" disabled>
+                  {seriesError}
+                </SelectItem>
+              ) : series.length === 0 ? (
+                <SelectItem value="empty" disabled>
+                  Nenhuma opção cadastrada no banco
+                </SelectItem>
+              ) : (
+                series.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.series_number} -{' '}
+                    {s.volume?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="status">Status</Label>
+          <Select
+            value={formData.status}
+            onValueChange={(v) => setFormData({ ...formData, status: v })}
+          >
+            <SelectTrigger id="status">
+              <SelectValue placeholder="Selecione um status" />
+            </SelectTrigger>
+            <SelectContent>
+              {statusError ? (
+                <SelectItem value="error" disabled>
+                  {statusError}
+                </SelectItem>
+              ) : statuses.length === 0 ? (
+                <SelectItem value="empty" disabled>
+                  Nenhuma opção cadastrada no banco
+                </SelectItem>
+              ) : (
+                statuses.map((s) => (
+                  <SelectItem key={s.id} value={s.label}>
+                    {s.label}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="risk">Rating de Risco</Label>
+          <Select
+            value={formData.risk}
+            onValueChange={(v) => setFormData({ ...formData, risk: v })}
+          >
+            <SelectTrigger id="risk">
+              <SelectValue placeholder="Selecione o risco" />
+            </SelectTrigger>
+            <SelectContent>
+              {ratingError ? (
+                <SelectItem value="error" disabled>
+                  {ratingError}
+                </SelectItem>
+              ) : ratings.length === 0 ? (
+                <SelectItem value="empty" disabled>
+                  Nenhuma opção cadastrada no banco
+                </SelectItem>
+              ) : (
+                ratings.map((s) => (
+                  <SelectItem key={s.id} value={s.label}>
+                    {s.label}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="currency">Moeda</Label>
+          <Select
+            value={formData.currency}
+            onValueChange={(v) => setFormData({ ...formData, currency: v })}
+          >
+            <SelectTrigger id="currency">
+              <SelectValue placeholder="Selecione a moeda" />
+            </SelectTrigger>
+            <SelectContent>
+              {currencyError ? (
+                <SelectItem value="error" disabled>
+                  {currencyError}
+                </SelectItem>
+              ) : currencies.length === 0 ? (
+                <SelectItem value="empty" disabled>
+                  Nenhuma opção cadastrada no banco
+                </SelectItem>
+              ) : (
+                currencies.map((s) => (
+                  <SelectItem key={s.id} value={s.code}>
+                    {s.label} ({s.symbol})
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="rate">Taxa</Label>
+          <Input
+            id="rate"
+            required
+            value={formData.rate}
+            onChange={(e) => setFormData({ ...formData, rate: e.target.value })}
+            placeholder="Ex: CDI + 2% a.a."
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="term">Prazo</Label>
+          <Input
+            id="term"
+            required
+            value={formData.term}
+            onChange={(e) => setFormData({ ...formData, term: e.target.value })}
+            placeholder="Ex: 24 meses"
+          />
+        </div>
+
+        <div className="col-span-1 space-y-2 md:col-span-2">
+          <Label htmlFor="min_investment">Investimento Mínimo (R$)</Label>
+          <Input
+            id="min_investment"
+            required
+            type="number"
+            min="0"
+            step="0.01"
+            value={formData.min_investment}
+            onChange={(e) => setFormData({ ...formData, min_investment: Number(e.target.value) })}
+          />
+        </div>
+      </div>
+      <DialogFooter className="pt-4">
+        <Button type="button" variant="outline" onClick={onSuccess}>
+          Cancelar
+        </Button>
+        <Button type="submit" disabled={loading}>
+          {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          Salvar Produto
+        </Button>
+      </DialogFooter>
+    </form>
   )
 }

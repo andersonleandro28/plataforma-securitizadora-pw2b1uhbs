@@ -1,6 +1,6 @@
-import { ReactNode, useEffect } from 'react'
-import { Navigate, useLocation } from 'react-router-dom'
-import { useAuth, AppRole } from '@/hooks/use-auth'
+import React, { ReactNode } from 'react'
+import { Navigate } from 'react-router-dom'
+import { AppRole, useAuth } from '@/hooks/use-auth'
 import { Loader2 } from 'lucide-react'
 
 interface RoleGuardProps {
@@ -9,51 +9,35 @@ interface RoleGuardProps {
 }
 
 export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
-  const { user, profile, loading, isLoadingProfile } = useAuth()
-  const location = useLocation()
+  const { user, profile, activeRole, loading, isLoadingProfile } = useAuth()
 
-  useEffect(() => {
-    if (location.pathname === '/admin/products' && user) {
-      console.log('Iniciando verificação de autenticação para /admin/products', user)
-    }
-  }, [location.pathname, user])
+  console.log('[DEBUG] Iniciando autenticação/verificação de RoleGuard', {
+    user: user?.id,
+    activeRole,
+    allowedRoles,
+    isAdmin: profile?.is_admin || profile?.role === 'admin',
+  })
 
   if (loading || isLoadingProfile) {
     return (
-      <div className="flex h-[50vh] items-center justify-center">
+      <div className="flex h-[50vh] w-full items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     )
   }
 
-  if (!user || !profile) {
+  if (!user) {
     return <Navigate to="/login" replace />
   }
 
-  const isAdmin = profile.role === 'admin' || profile.is_admin === true
-
-  if (location.pathname === '/admin/products' && isAdmin) {
+  // Admin users have immediate and unblocked access to any protected route
+  if (profile?.is_admin || profile?.role === 'admin' || activeRole === 'admin') {
     return <>{children}</>
   }
 
-  const hasAllowedRole = allowedRoles.some((role) => {
-    if (role === 'admin' && isAdmin) return true
-    if (role === 'staff' && (profile.role === 'staff' || profile.is_staff)) return true
-    if (role === 'investor' && (profile.role === 'investor' || profile.is_investor)) return true
-    if (role === 'borrower' && (profile.role === 'borrower' || profile.is_borrower)) return true
-    if (role === 'accountant' && (profile.role === 'accountant' || profile.is_accountant))
-      return true
-    return false
-  })
-
-  // Safe fallback for admins across all admin routes
-  if (isAdmin && location.pathname.startsWith('/admin')) {
+  if (activeRole && allowedRoles.includes(activeRole)) {
     return <>{children}</>
   }
 
-  if (!hasAllowedRole) {
-    return <Navigate to="/" replace />
-  }
-
-  return <>{children}</>
+  return <Navigate to="/" replace />
 }
