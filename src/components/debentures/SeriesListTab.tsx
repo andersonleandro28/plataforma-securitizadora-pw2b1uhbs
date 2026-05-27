@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search, Loader2, Users, Edit2, History } from 'lucide-react'
+import { Search, Loader2, Users, Edit2, History, PlusCircle } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { supabase } from '@/lib/supabase/client'
@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/select'
 import { ManageSubscriptionsDialog } from './ManageSubscriptionsDialog'
 import { EditSeriesDialog } from './EditSeriesDialog'
+import { AddSeriesDialog } from './AddSeriesDialog'
 import { formatDate } from '@/lib/utils'
 
 interface SeriesListTabProps {
@@ -40,6 +41,7 @@ export function SeriesListTab({
 }: SeriesListTabProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [indexerFilter, setIndexerFilter] = useState('all')
+  const [addSeriesOpen, setAddSeriesOpen] = useState(false)
   const [manageSeriesId, setManageSeriesId] = useState<string | null>(null)
   const [editSeriesId, setEditSeriesId] = useState<string | null>(null)
   const [historySeriesId, setHistorySeriesId] = useState<string | null>(null)
@@ -123,6 +125,10 @@ export function SeriesListTab({
               ))}
             </SelectContent>
           </Select>
+          <Button onClick={() => setAddSeriesOpen(true)} className="w-full sm:w-auto gap-2">
+            <PlusCircle className="h-4 w-4" />
+            Adicionar Série
+          </Button>
         </div>
 
         <div className="rounded-md border overflow-auto max-h-[600px] relative">
@@ -202,6 +208,13 @@ export function SeriesListTab({
           </Table>
         </div>
       </CardContent>
+
+      <AddSeriesDialog
+        debentures={debentures}
+        open={addSeriesOpen}
+        onOpenChange={setAddSeriesOpen}
+        onSuccess={onRefresh}
+      />
 
       <ManageSubscriptionsDialog
         series={manageSeries}
