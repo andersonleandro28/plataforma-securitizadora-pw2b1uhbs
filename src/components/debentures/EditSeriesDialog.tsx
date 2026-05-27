@@ -53,14 +53,42 @@ export function EditSeriesDialog({
       setFormData({
         series_number: series.series_number || '',
         volume: String(series.volume || ''),
-        indexer: series.indexer === 'Pré-fixado' ? null : series.indexer || null,
+        indexer:
+          series.indexer === 'Pré-fixado' ||
+          series.indexer === null ||
+          series.indexer === 'none' ||
+          !series.indexer
+            ? null
+            : series.indexer,
         rate: series.rate != null ? String(series.rate) : '',
         maturity_date: series.maturity_date ? series.maturity_date.split('T')[0] : '',
       })
     }
   }, [open, series?.id])
 
-  const parentDebenture = debentures.find((d) => d.id === series?.debenture_id)
+  const [localDebentures, setLocalDebentures] = useState<any[]>([])
+  const [isLoadingDebentures, setIsLoadingDebentures] = useState(false)
+
+  useEffect(() => {
+    if (open && (!debentures || debentures.length === 0)) {
+      const fetchDebentures = async () => {
+        setIsLoadingDebentures(true)
+        const { data } = await supabase
+          .from('debentures')
+          .select(
+            'id, issuer_name, issue_date, total_volume, created_at, series:debenture_series(id, volume)',
+          )
+        if (data) setLocalDebentures(data)
+        setIsLoadingDebentures(false)
+      }
+      fetchDebentures()
+    } else {
+      setLocalDebentures(debentures || [])
+    }
+  }, [open, debentures])
+
+  const activeDebentures = localDebentures.length > 0 ? localDebentures : debentures
+  const parentDebenture = activeDebentures.find((d) => d.id === series?.debenture_id)
 
   const otherSeriesVolume =
     parentDebenture?.series
@@ -204,13 +232,13 @@ export function EditSeriesDialog({
             <div className="space-y-1.5">
               <Label>Indexador</Label>
               <Select
-                value={formData.indexer === null ? 'none' : formData.indexer}
+                value={formData.indexer === null ? 'none' : formData.indexer || 'none'}
                 onValueChange={(val) =>
                   setFormData({ ...formData, indexer: val === 'none' ? null : val })
                 }
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Selecione o indexador" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Pré-fixado (Sem Indexador)</SelectItem>

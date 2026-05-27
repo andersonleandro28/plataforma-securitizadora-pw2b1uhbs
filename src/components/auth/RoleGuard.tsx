@@ -65,13 +65,16 @@ export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
     )
   }
 
-  // 4. O usuário deve ter um papel ativo definido pelo contexto global
-  if (!activeRole) {
-    return <Navigate to="/" replace />
-  }
+  // 4. Validação final: o usuário possui acesso à rota?
+  const isProfileAdmin = profile?.role === 'admin' || profile?.is_admin
+  const isProfileStaff = profile?.role === 'staff' || profile?.is_staff
 
-  // 5. Validação final: o papel ativo atual possui acesso à rota?
-  if (!allowedRoles.includes(activeRole)) {
+  const hasAccess =
+    (activeRole && allowedRoles.includes(activeRole)) ||
+    (allowedRoles.includes('admin') && isProfileAdmin) ||
+    (allowedRoles.includes('staff') && isProfileStaff)
+
+  if (!hasAccess) {
     return (
       <RedirectWithAction
         message="Você não tem permissão para acessar esta área. Redirecionando para seu dashboard..."

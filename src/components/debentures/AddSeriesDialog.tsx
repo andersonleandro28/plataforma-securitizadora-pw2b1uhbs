@@ -73,7 +73,31 @@ export function AddSeriesDialog({
     onOpenChange(isOpen)
   }
 
-  const selectedDebentureObj = debenture || debentures.find((d) => d.id === selectedDebentureId)
+  const [localDebentures, setLocalDebentures] = useState<any[]>([])
+  const [isLoadingDebentures, setIsLoadingDebentures] = useState(false)
+
+  useEffect(() => {
+    if (open && !debenture && (!debentures || debentures.length === 0)) {
+      const fetchDebentures = async () => {
+        setIsLoadingDebentures(true)
+        const { data } = await supabase
+          .from('debentures')
+          .select(
+            'id, issuer_name, issue_date, total_volume, created_at, series:debenture_series(volume)',
+          )
+          .order('created_at', { ascending: false })
+        if (data) setLocalDebentures(data)
+        setIsLoadingDebentures(false)
+      }
+      fetchDebentures()
+    } else {
+      setLocalDebentures(debentures || [])
+    }
+  }, [open, debenture, debentures])
+
+  const activeDebentures = localDebentures.length > 0 ? localDebentures : debentures
+  const selectedDebentureObj =
+    debenture || activeDebentures.find((d) => d.id === selectedDebentureId)
   const totalAllocated =
     selectedDebentureObj?.series?.reduce((acc: number, s: any) => acc + Number(s.volume || 0), 0) ||
     0
@@ -152,14 +176,20 @@ export function AddSeriesDialog({
               <Select
                 value={selectedDebentureId || undefined}
                 onValueChange={setSelectedDebentureId}
+                disabled={isLoadingDebentures}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecione a emissão" />
+                  <SelectValue
+                    placeholder={isLoadingDebentures ? 'Carregando...' : 'Selecione a escritura'}
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  {debentures.map((d) => (
+                  {activeDebentures.map((d) => (
                     <SelectItem key={d.id} value={d.id}>
-                      {d.issuer_name} ({formatDate(d.created_at)})
+                      {d.issuer_name}{' '}
+                      {d.issue_date
+                        ? `(${formatDate(d.issue_date)})`
+                        : `(${formatDate(d.created_at)})`}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -209,13 +239,13 @@ export function AddSeriesDialog({
             <div className="space-y-1.5">
               <Label>Indexador</Label>
               <Select
-                value={formData.indexer === null ? 'none' : formData.indexer}
+                value={formData.indexer === null ? 'none' : formData.indexer || 'none'}
                 onValueChange={(val) =>
                   setFormData({ ...formData, indexer: val === 'none' ? null : val })
                 }
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Selecione o indexador" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Pré-fixado (Sem Indexador)</SelectItem>
