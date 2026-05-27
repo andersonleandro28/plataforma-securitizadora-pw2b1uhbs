@@ -83,15 +83,24 @@ export function ManualSeriesForm({ series, index, onChange, onRemove }: Props) {
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Indexador</Label>
-            <Select value={series.indexer} onValueChange={(v) => updateField('indexer', v)}>
+            <Select
+              value={
+                series.indexer === null
+                  ? 'none'
+                  : series.indexer === 'Pré-fixado'
+                    ? 'none'
+                    : series.indexer
+              }
+              onValueChange={(v) => updateField('indexer', v === 'none' ? null : v)}
+            >
               <SelectTrigger className="h-9">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="none">Sem Indexador</SelectItem>
                 <SelectItem value="CDI">CDI</SelectItem>
                 <SelectItem value="IPCA">IPCA</SelectItem>
                 <SelectItem value="IGP-M">IGP-M</SelectItem>
-                <SelectItem value="Pré-fixado">Pré-fixado</SelectItem>
               </SelectContent>
             </Select>
           </div>

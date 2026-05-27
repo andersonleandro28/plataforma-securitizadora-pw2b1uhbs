@@ -69,12 +69,21 @@ export function SeriesListTab({
     const matchesSearch =
       String(s.series_number).toLowerCase().includes(searchTerm.toLowerCase()) ||
       s.issuer_name.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesIndexer = indexerFilter === 'all' || s.indexer === indexerFilter
+
+    let matchesIndexer = indexerFilter === 'all'
+    if (!matchesIndexer) {
+      if (indexerFilter === 'none') {
+        matchesIndexer = !s.indexer || s.indexer === 'Pré-fixado'
+      } else {
+        matchesIndexer = s.indexer === indexerFilter
+      }
+    }
+
     return matchesSearch && matchesIndexer
   })
 
   const uniqueIndexers = Array.from(new Set(allSeries.map((s) => s.indexer))).filter(
-    Boolean,
+    (val) => val && val !== 'Pré-fixado',
   ) as string[]
 
   const manageSeries = allSeries.find((s) => s.id === manageSeriesId) || null
@@ -106,6 +115,7 @@ export function SeriesListTab({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos os Indexadores</SelectItem>
+              <SelectItem value="none">Pré-fixado (Sem indexador)</SelectItem>
               {uniqueIndexers.map((idx) => (
                 <SelectItem key={idx} value={idx}>
                   {idx}
@@ -141,7 +151,9 @@ export function SeriesListTab({
                     <TableCell>{s.issuer_name}</TableCell>
                     <TableCell>
                       <span className="bg-secondary px-2 py-0.5 rounded text-xs font-medium">
-                        {s.indexer} + {s.rate}%
+                        {!s.indexer || s.indexer === 'Pré-fixado'
+                          ? `${s.rate}% a.a.`
+                          : `${s.indexer} + ${s.rate}% a.a.`}
                       </span>
                     </TableCell>
                     <TableCell>{formatDate(s.maturity_date)}</TableCell>

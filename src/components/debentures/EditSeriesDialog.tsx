@@ -44,7 +44,7 @@ export function EditSeriesDialog({
   const [formData, setFormData] = useState({
     series_number: '',
     volume: '',
-    indexer: 'CDI',
+    indexer: 'CDI' as string | null,
     rate: '',
     maturity_date: '',
   })
@@ -54,7 +54,7 @@ export function EditSeriesDialog({
       setFormData({
         series_number: series.series_number || '',
         volume: String(series.volume || ''),
-        indexer: series.indexer || 'CDI',
+        indexer: series.indexer === 'Pré-fixado' ? null : series.indexer || null,
         rate: String(series.rate || ''),
         maturity_date: toISODate(series.maturity_date),
       })
@@ -86,8 +86,8 @@ export function EditSeriesDialog({
   }
 
   const handleSave = async () => {
-    if (!formData.series_number || !formData.volume) {
-      toast.error('Número da Série e Volume são obrigatórios.')
+    if (!formData.series_number || !formData.volume || formData.rate === '') {
+      toast.error('Número da Série, Volume e Taxa são obrigatórios.')
       return
     }
 
@@ -103,7 +103,7 @@ export function EditSeriesDialog({
         .update({
           series_number: formData.series_number,
           volume: Number(formData.volume),
-          indexer: formData.indexer,
+          indexer: formData.indexer === 'none' ? null : formData.indexer,
           rate: Number(formData.rate) || 0,
           maturity_date: formData.maturity_date || null,
         })
@@ -199,17 +199,19 @@ export function EditSeriesDialog({
             <div className="space-y-1.5">
               <Label>Indexador</Label>
               <Select
-                value={formData.indexer}
-                onValueChange={(val) => setFormData({ ...formData, indexer: val })}
+                value={formData.indexer === null ? 'none' : formData.indexer}
+                onValueChange={(val) =>
+                  setFormData({ ...formData, indexer: val === 'none' ? null : val })
+                }
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">Sem Indexador (Pré-fixado)</SelectItem>
                   <SelectItem value="CDI">CDI</SelectItem>
                   <SelectItem value="IPCA">IPCA</SelectItem>
                   <SelectItem value="IGP-M">IGP-M</SelectItem>
-                  <SelectItem value="Pré-fixado">Pré-fixado</SelectItem>
                 </SelectContent>
               </Select>
             </div>
