@@ -1,107 +1,36 @@
-import { ReactNode, useEffect, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth, AppRole } from '@/hooks/use-auth'
 import { Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { ReactNode } from 'react'
 
 interface RoleGuardProps {
-  children: ReactNode
   allowedRoles: AppRole[]
+  children: ReactNode
 }
 
-export function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
-  const { user, profile, activeRole, loading, isLoadingProfile, signOut } = useAuth()
-  const [showFallback, setShowFallback] = useState(false)
+export function RoleGuard({ allowedRoles, children }: RoleGuardProps) {
+  const { user, activeRole, isLoadingProfile } = useAuth()
+  const location = useLocation()
 
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>
-    if (loading || isLoadingProfile) {
-      // Falha graciosa: se demorar mais de 3 segundos, libera o componente para validação posterior
-      timer = setTimeout(() => setShowFallback(true), 3000)
-    }
-    return () => {
-      if (timer) clearTimeout(timer)
-    }
-  }, [loading, isLoadingProfile])
+  // Hard Bypass for Super Admin
+  const isSuperAdmin = user?.email === 'andersonleandro28@gmail.com'
 
-  // Prioridade Absoluta: Bypass imediato para o Super Administrador
-  // Verifica também no cache local para liberar instantaneamente
-  const isSuperAdmin =
-    user?.email === 'andersonleandro28@gmail.com' ||
-    (typeof window !== 'undefined' &&
-      localStorage
-        .getItem('sb-misoqvscsydxqcsfjaux-auth-token')
-        ?.includes('andersonleandro28@gmail.com'))
-
-  // 1. Liberação de Fluxo: Acesso direto e sem bloqueios para super admin
-  // MOVIDO PARA CIMA: Libera ANTES de verificar loading para evitar travamentos
-  if (isSuperAdmin) {
-    return <>{children}</>
-  }
-
-  // Aguarda a resolução do estado de autenticação e do perfil globalmente
-  // Isso evita travamentos locais e múltiplas chamadas ao banco de dados
-  if ((loading || isLoadingProfile) && !showFallback) {
+  if (isLoadingProfile && !isSuperAdmin) {
     return (
-      <div className="flex h-[80vh] w-full items-center justify-center bg-background">
+      <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Verificando permissões...</p>
       </div>
     )
   }
 
-  // 2. Proteção básica: usuário não autenticado
-  if (!user) {
-    return <Navigate to="/login" replace />
+  if (isSuperAdmin) {
+    return <>{children}</>
   }
 
-  // 3. Proteção de perfil: usuário bloqueado
-  if (profile?.is_blocked) {
-    return (
-      <RedirectWithAction
-        message="Seu acesso à plataforma foi temporariamente suspenso."
-        to="/login"
-        action={signOut}
-      />
-    )
-  }
-
-  // 4. Validação final: o usuário possui acesso à rota?
-  const isProfileAdmin = profile?.role === 'admin' || profile?.is_admin
-  const isProfileStaff = profile?.role === 'staff' || profile?.is_staff
-
-  const hasAccess =
-    (activeRole && allowedRoles.includes(activeRole)) ||
-    (allowedRoles.includes('admin') && isProfileAdmin) ||
-    (allowedRoles.includes('staff') && isProfileStaff)
-
-  if (!hasAccess) {
-    return (
-      <RedirectWithAction
-        message="Você não tem permissão para acessar esta área. Redirecionando para seu dashboard..."
-        to="/"
-      />
-    )
+  if (!activeRole || !allowedRoles.includes(activeRole)) {
+    return <Navigate to="/" replace state={{ from: location }} />
   }
 
   return <>{children}</>
-}
-
-// Utilitário para exibir Toast de erro e redirecionar, opcionalmente executando uma ação extra (ex: signOut)
-function RedirectWithAction({
-  message,
-  to,
-  action,
-}: {
-  message: string
-  to: string
-  action?: () => void
-}) {
-  useEffect(() => {
-    toast.error(message)
-    if (action) {
-      action()
-    }
-  }, [message, action])
-
-  return <Navigate to={to} replace />
 }

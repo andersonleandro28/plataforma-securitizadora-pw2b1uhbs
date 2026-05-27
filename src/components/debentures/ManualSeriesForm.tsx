@@ -78,7 +78,7 @@ export function ManualSeriesForm({ series, index, onChange, onRemove }: Props) {
           <div className="space-y-1.5">
             <Label className="text-xs">Indexador</Label>
             <IndexerSelect
-              value={series.indexer}
+              value={series.indexer || null}
               onValueChange={(v) => updateField('indexer', v)}
             />
           </div>
@@ -88,7 +88,7 @@ export function ManualSeriesForm({ series, index, onChange, onRemove }: Props) {
               type="number"
               className="h-9"
               step="0.01"
-              value={series.rate}
+              value={series.rate ?? ''}
               onChange={(e) => updateField('rate', e.target.value)}
             />
           </div>

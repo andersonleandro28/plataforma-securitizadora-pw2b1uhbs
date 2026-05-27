@@ -197,7 +197,7 @@ export function AddSeriesDialog({
             <div className="space-y-1.5">
               <Label>Indexador</Label>
               <IndexerSelect
-                value={formData.indexer}
+                value={formData.indexer || null}
                 onValueChange={(val) => setFormData({ ...formData, indexer: val })}
               />
             </div>
@@ -207,7 +207,7 @@ export function AddSeriesDialog({
                 type="number"
                 step="0.01"
                 placeholder="Ex: 3.5"
-                value={formData.rate}
+                value={formData.rate ?? ''}
                 onChange={(e) => setFormData({ ...formData, rate: e.target.value })}
               />
             </div>

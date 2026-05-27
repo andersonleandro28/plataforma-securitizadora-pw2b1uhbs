@@ -98,9 +98,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [])
 
   useEffect(() => {
+    let mounted = true
+    let initialSessionReceived = false
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return
+      if (event === 'INITIAL_SESSION') {
+        initialSessionReceived = true
+      }
       if (event === 'SIGNED_OUT') {
         setSession(null)
         setUser(null)
@@ -116,25 +123,39 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setLoadingSession(false)
     })
 
-    supabase.auth
-      .getSession()
-      .then(({ data: { session }, error }) => {
-        if (error) supabase.auth.signOut().catch(() => {})
-        setSession(session ?? null)
-        setUser(session?.user ?? null)
-        setLoadingSession(false)
-      })
-      .catch(() => setLoadingSession(false))
+    // To prevent the "lock:sb-...-auth-token was not released within 5000ms" error,
+    // we only explicitly call getSession if the onAuthStateChange hasn't already fired an INITIAL_SESSION.
+    setTimeout(() => {
+      if (mounted && !initialSessionReceived && loadingSession) {
+        supabase.auth
+          .getSession()
+          .then(({ data: { session }, error }) => {
+            if (!mounted) return
+            if (error) supabase.auth.signOut().catch(() => {})
+            setSession(session ?? null)
+            setUser(session?.user ?? null)
+            setLoadingSession(false)
+          })
+          .catch(() => {
+            if (mounted) setLoadingSession(false)
+          })
+      }
+    }, 100)
 
-    return () => subscription.unsubscribe()
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
   }, [])
 
   const loadProfile = useCallback(
     async (currentUser: User) => {
       setIsLoadingProfile(true)
       setProfileError(null)
+
+      const isSuperAdmin = currentUser.email === 'andersonleandro28@gmail.com'
+
       try {
-        // Implementa timeout para evitar travamento se o banco demorar a responder
         const fetchPromise = supabase
           .from('profiles')
           .select('*')
@@ -155,7 +176,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (error) throw error
 
         const p = data ? (data as Profile) : null
-        const isSuperAdmin = currentUser.email === 'andersonleandro28@gmail.com'
 
         if (p?.is_blocked && !isSuperAdmin) {
           toast.error('Seu acesso à plataforma foi temporariamente suspenso.')
@@ -202,6 +222,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setIsLoadingProfile(false)
       } catch (err: any) {
         setProfileError(err.message || 'Erro ao carregar perfil.')
+
+        // As a fallback for Super Admin, grant admin role even if profile fetch fails
+        if (isSuperAdmin) {
+          setAvailableRoles(['admin', 'staff', 'investor', 'borrower', 'accountant'])
+          if (!sessionStorage.getItem('activeRole')) {
+            setActiveRole('admin')
+          }
+          setProfileLoadedFor(currentUser.id)
+        }
+
         setIsLoadingProfile(false)
       }
     },
