@@ -2,11 +2,10 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import {
   Wallet,
   TrendingUp,
-  PieChart,
-  AlertCircle,
-  AlertTriangle,
-  RefreshCcw,
+  LineChart as LineChartIcon,
   FolderOpen,
+  RefreshCcw,
+  AlertTriangle,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/hooks/use-auth'
@@ -23,96 +22,47 @@ import { Button } from '@/components/ui/button'
 import { formatDate } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell, AreaChart, Area } from 'recharts'
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  ReferenceLine,
+  ResponsiveContainer,
+} from 'recharts'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0)
 
-const calculateGain = (inv: any) => {
-  if (inv.transfer_value == null) return 0
-  const total = Number(inv.total_value) || 0
-  const transfer = Number(inv.transfer_value) || 0
-  return transfer - total
-}
-
-const TabContent = ({ data, statusLabel, chartConfig, onViewOtherStatus, onRefresh }: any) => {
-  if (!data) return null
-
-  if (data.length === 0) {
+const TabContent = ({ data, statusLabel, onRefresh }: any) => {
+  if (!data || data.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center border rounded-lg bg-muted/10 border-dashed mt-4 animate-in fade-in duration-500 opacity-100 visible block">
+      <div className="flex flex-col items-center justify-center py-16 text-center border rounded-lg bg-muted/10 border-dashed mt-4 animate-in fade-in duration-500">
         <FolderOpen className="h-12 w-12 text-muted-foreground/30 mb-4" />
-        <h3 className="text-lg font-medium">Nenhum investimento neste status</h3>
-        <div className="flex gap-4 mt-4">
-          <Button variant="outline" onClick={onRefresh}>
-            <RefreshCcw className="mr-2 h-4 w-4" />
-            Recarregar
-          </Button>
-          <Button variant="secondary" onClick={onViewOtherStatus}>
-            Ver outros status
-          </Button>
-        </div>
+        <h3 className="text-lg font-medium">Nenhum investimento encontrado</h3>
+        <Button variant="outline" onClick={onRefresh} className="mt-4">
+          <RefreshCcw className="mr-2 h-4 w-4" />
+          Recarregar
+        </Button>
       </div>
     )
   }
 
-  const individualChartData = data.map((inv: any) => ({
-    produto: inv.investment_products?.title || 'Desconhecido',
-    ganho: calculateGain(inv),
-  }))
-
   return (
-    <div className="space-y-6 mt-4 animate-in fade-in duration-500 opacity-100 visible block">
-      {data.length > 0 && (
-        <Card className="opacity-100 visible block">
-          <CardHeader>
-            <CardTitle>Ganhos por Investimento</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ChartContainer config={chartConfig} className="h-[250px] w-full">
-              <BarChart
-                data={individualChartData}
-                margin={{ top: 20, right: 0, left: 0, bottom: 20 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis
-                  dataKey="produto"
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fontSize: 12 }}
-                />
-                <YAxis
-                  tickFormatter={(value) => `R$ ${value}`}
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fontSize: 12 }}
-                />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="ganho" radius={[4, 4, 0, 0]}>
-                  {individualChartData.map((entry: any, index: number) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={
-                        entry.ganho > 0
-                          ? 'hsl(var(--success, 142.1 76.2% 36.3%))'
-                          : entry.ganho < 0
-                            ? 'hsl(var(--destructive, 0 84.2% 60.2%))'
-                            : 'hsl(var(--muted-foreground, 215.4 16.3% 46.9%))'
-                      }
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ChartContainer>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card className="border border-border shadow-sm opacity-100 visible block overflow-hidden">
-        <CardHeader className="pb-0 pt-6 px-6">
-          <CardTitle className="text-lg font-semibold">{statusLabel}</CardTitle>
-        </CardHeader>
+    <Card className="border border-border shadow-sm mt-4 overflow-hidden animate-in fade-in duration-500">
+      <CardHeader className="pb-0 pt-6 px-6">
+        <CardTitle className="text-lg font-semibold">{statusLabel}</CardTitle>
+      </CardHeader>
+      <div className="overflow-x-auto p-4">
         <Table>
           <TableHeader>
             <TableRow>
@@ -120,8 +70,6 @@ const TabContent = ({ data, statusLabel, chartConfig, onViewOtherStatus, onRefre
               <TableHead className="whitespace-nowrap">Quotas</TableHead>
               <TableHead className="whitespace-nowrap">Valor Unitário</TableHead>
               <TableHead className="whitespace-nowrap">Valor Total</TableHead>
-              <TableHead className="whitespace-nowrap">Valor Resgatado</TableHead>
-              <TableHead className="whitespace-nowrap">Ganho</TableHead>
               <TableHead className="whitespace-nowrap">Data</TableHead>
             </TableRow>
           </TableHeader>
@@ -129,38 +77,16 @@ const TabContent = ({ data, statusLabel, chartConfig, onViewOtherStatus, onRefre
             {data.map((inv: any, index: number) => {
               const unitPrice = inv.unit_price != null ? Number(inv.unit_price) : null
               const totalValue = inv.total_value != null ? Number(inv.total_value) : null
-              const redeemedQuotas = inv.redeemed_quotas != null ? Number(inv.redeemed_quotas) : 0
-              const redeemedValue = redeemedQuotas * (unitPrice || 0)
-              const gain = calculateGain(inv)
 
               return (
                 <TableRow key={inv.id || index}>
-                  <TableCell className="font-medium whitespace-nowrap text-foreground">
+                  <TableCell className="font-medium whitespace-nowrap">
                     {inv.investment_products?.title || '-'}
                   </TableCell>
-                  <TableCell className="text-foreground">{inv.quotas ?? '-'}</TableCell>
-                  <TableCell className="text-foreground">
-                    {unitPrice != null ? formatCurrency(unitPrice) : '-'}
-                  </TableCell>
-                  <TableCell className="text-foreground">
-                    {totalValue != null ? formatCurrency(totalValue) : '-'}
-                  </TableCell>
-                  <TableCell className="text-foreground">
-                    {redeemedValue > 0 ? formatCurrency(redeemedValue) : '-'}
-                  </TableCell>
-                  <TableCell
-                    className={
-                      'font-medium whitespace-nowrap ' +
-                      (gain > 0
-                        ? 'text-emerald-600'
-                        : gain < 0
-                          ? 'text-red-500'
-                          : 'text-foreground')
-                    }
-                  >
-                    {formatCurrency(gain)}
-                  </TableCell>
-                  <TableCell className="text-foreground whitespace-nowrap">
+                  <TableCell>{inv.quotas ?? '-'}</TableCell>
+                  <TableCell>{unitPrice != null ? formatCurrency(unitPrice) : '-'}</TableCell>
+                  <TableCell>{totalValue != null ? formatCurrency(totalValue) : '-'}</TableCell>
+                  <TableCell className="whitespace-nowrap">
                     {inv.created_at ? formatDate(inv.created_at) : '-'}
                   </TableCell>
                 </TableRow>
@@ -168,41 +94,55 @@ const TabContent = ({ data, statusLabel, chartConfig, onViewOtherStatus, onRefre
             })}
           </TableBody>
         </Table>
-      </Card>
-    </div>
+      </div>
+    </Card>
   )
 }
 
 export function InvestorDashboard() {
-  const { profile, user, loading: authLoading } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<any>(null)
   const [myInvestments, setMyInvestments] = useState<any[]>([])
-  const [activeTab, setActiveTab] = useState('approved')
+  const [walletBalance, setWalletBalance] = useState(0)
+  const [yieldAmount, setYieldAmount] = useState(0)
+  const [activeTab, setActiveTab] = useState('ativos')
+  const [chartSelection, setChartSelection] = useState('geral')
 
   const fetchDashboardData = useCallback(async () => {
     if (!user) return
     setLoading(true)
-    setError(false)
-
-    console.log('Auth UID (Dashboard):', user.id)
+    setError(null)
 
     try {
-      const { data, error: fetchErr } = await supabase
-        .from('investments_view')
-        .select('*, investment_products(*)')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
+      const [invRes, redRes, profRes] = await Promise.all([
+        supabase
+          .from('investments_view')
+          .select('*, investment_products(*)')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('investment_redemptions')
+          .select('yield_amount')
+          .eq('user_id', user.id)
+          .eq('status', 'paid'),
+        supabase.from('profiles').select('wallet_balance, kyc_status').eq('id', user.id).single(),
+      ])
 
-      if (fetchErr) {
-        console.log('Erro:', fetchErr.message)
-        throw fetchErr
-      }
+      if (invRes.error) throw invRes.error
+      if (redRes.error) throw redRes.error
+      if (profRes.error) throw profRes.error
 
-      console.log('Dados retornados (Dashboard):', data?.length || 0, 'registros')
-      setMyInvestments(data || [])
+      setMyInvestments(invRes.data || [])
+
+      const totalYield = (redRes.data || []).reduce(
+        (acc, curr) => acc + (Number(curr.yield_amount) || 0),
+        0,
+      )
+      setYieldAmount(totalYield)
+
+      setWalletBalance(Number(profRes.data?.wallet_balance) || 0)
     } catch (err: any) {
-      console.log('Erro:', err.message || err)
       setError(err)
     } finally {
       setLoading(false)
@@ -215,134 +155,112 @@ export function InvestorDashboard() {
     }
   }, [authLoading, user, fetchDashboardData])
 
-  const sumGains = (invs: any[]) => invs.reduce((acc, curr) => acc + calculateGain(curr), 0)
-
-  const { ativos, resgatados, cancelados, excluidos } = useMemo(() => {
+  const { ativos, resgatados, cancelados } = useMemo(() => {
     const ativosArr: any[] = []
     const resgatadosArr: any[] = []
     const canceladosArr: any[] = []
-    const excluidosArr: any[] = []
 
     myInvestments.forEach((i) => {
       const st = (i.status || '').toLowerCase().trim()
-      if (st === 'resgatado') {
-        resgatadosArr.push(i)
-      } else if (['cancelled', 'cancelado'].includes(st)) {
-        canceladosArr.push(i)
-      } else if (['excluído', 'excluido', 'deleted'].includes(st)) {
-        excluidosArr.push(i)
-      } else {
-        // Fallback: active, approved, ativo, pending_transfer, etc.
+      if (st === 'excluído' || st === 'excluido' || st === 'deleted') return
+
+      if (st === 'approved') {
         ativosArr.push(i)
+      } else if (st === 'resgatado' || st === 'paid') {
+        resgatadosArr.push(i)
+      } else if (st === 'cancelled' || st === 'cancelado') {
+        canceladosArr.push(i)
       }
     })
 
-    return {
-      ativos: ativosArr,
-      resgatados: resgatadosArr,
-      cancelados: canceladosArr,
-      excluidos: excluidosArr,
-    }
+    return { ativos: ativosArr, resgatados: resgatadosArr, cancelados: canceladosArr }
   }, [myInvestments])
 
-  const summaryChartData = useMemo(
-    () => [
-      { status: 'Ativos', ganho: sumGains(ativos), fill: 'hsl(var(--success, 142.1 76.2% 36.3%))' },
-      {
-        status: 'Resgatados',
-        ganho: sumGains(resgatados),
-        fill: 'hsl(var(--primary, 221.2 83.2% 53.3%))',
-      },
-      {
-        status: 'Cancelados',
-        ganho: sumGains(cancelados),
-        fill: 'hsl(var(--destructive, 0 84.2% 60.2%))',
-      },
-      {
-        status: 'Excluídos',
-        ganho: sumGains(excluidos),
-        fill: 'hsl(var(--muted-foreground, 215.4 16.3% 46.9%))',
-      },
-    ],
-    [ativos, resgatados, cancelados, excluidos],
-  )
+  const totalAtivosValue = ativos.reduce((acc, curr) => acc + (Number(curr.total_value) || 0), 0)
+  const totalBalance = walletBalance + totalAtivosValue
+  const activeCount = ativos.length
+
+  const { chartData, todayMonthStr } = useMemo(() => {
+    const today = new Date()
+    const tStr = today.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' })
+    const invsToChart =
+      chartSelection === 'geral' ? ativos : ativos.filter((i) => i.id === chartSelection)
+    if (invsToChart.length === 0) return { chartData: [], todayMonthStr: tStr }
+
+    let minDate = new Date()
+    invsToChart.forEach((inv) => {
+      const d = new Date(inv.transfer_date || inv.created_at)
+      if (d < minDate) minDate = d
+    })
+
+    const data = []
+    const endDate = new Date(today.getFullYear() + 1, today.getMonth(), 1)
+
+    let current = new Date(minDate.getFullYear(), minDate.getMonth(), 1)
+    const thisMonthTime = new Date(today.getFullYear(), today.getMonth(), 1).getTime()
+
+    while (current <= endDate) {
+      let monthValue = 0
+
+      invsToChart.forEach((inv) => {
+        const startD = new Date(inv.transfer_date || inv.created_at)
+        if (current >= new Date(startD.getFullYear(), startD.getMonth(), 1)) {
+          const diffTime = Math.abs(current.getTime() - startD.getTime())
+          const diffMonths = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 30))
+
+          const rateStr = inv.investment_products?.rate || ''
+          let monthlyRate = 0.01
+          const match = rateStr.match(/(\d+[.,]\d+|\d+)/)
+          if (match) {
+            const val = parseFloat(match[1].replace(',', '.')) / 100
+            if (rateStr.toLowerCase().includes('a.a')) {
+              monthlyRate = Math.pow(1 + val, 1 / 12) - 1
+            } else {
+              monthlyRate = val
+            }
+          }
+
+          const initialValue = Number(inv.total_value) || 0
+          monthValue += initialValue * Math.pow(1 + monthlyRate, diffMonths)
+        }
+      })
+
+      data.push({
+        date: current.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
+        valor: parseFloat(monthValue.toFixed(2)),
+        isProjection: current.getTime() > thisMonthTime,
+      })
+
+      current.setMonth(current.getMonth() + 1)
+    }
+    return { chartData: data, todayMonthStr: tStr }
+  }, [ativos, chartSelection])
 
   const chartConfig = {
-    ganho: { label: 'Ganho', color: 'hsl(var(--primary))' },
-  }
-
-  const totalBalance = ativos.reduce((acc, curr) => acc + (Number(curr.total_value) || 0), 0)
-  const totalYield = ativos.reduce((acc, curr) => {
-    const amount = Number(curr.total_value) || 0
-    const rateStr = curr.investment_products?.rate || '0'
-    const rateMatch = rateStr.match(/(\d+[.,]\d+|\d+)/)
-    const rate = rateMatch ? parseFloat(rateMatch[1].replace(',', '.')) / 100 : 0.01
-    return acc + amount * rate
-  }, 0)
-
-  const evolutionData = useMemo(() => {
-    const sorted = [...ativos].sort((a, b) => {
-      const d1 = new Date(a.transfer_date || a.created_at || 0).getTime()
-      const d2 = new Date(b.transfer_date || b.created_at || 0).getTime()
-      return d1 - d2
-    })
-
-    let cumulative = 0
-    const dataByDate = new Map<string, number>()
-
-    sorted.forEach((inv) => {
-      const dateStr = formatDate(inv.transfer_date || inv.created_at)
-      const val = Number(inv.total_value) || 0
-      if (dataByDate.has(dateStr)) {
-        dataByDate.set(dateStr, dataByDate.get(dateStr)! + val)
-      } else {
-        dataByDate.set(dateStr, val)
-      }
-    })
-
-    const result = []
-    for (const [date, val] of dataByDate.entries()) {
-      cumulative += val
-      result.push({ date, valor: cumulative })
-    }
-    return result
-  }, [ativos])
-
-  const chartEvolutionConfig = {
-    valor: { label: 'Valor Acumulado', color: 'hsl(var(--primary))' },
+    valor: { label: 'Valor Projetado', color: 'hsl(var(--primary))' },
   }
 
   if (authLoading || loading) {
     return (
-      <div className="space-y-6 max-w-7xl mx-auto p-6 animate-in fade-in duration-500 opacity-100 visible block">
+      <div className="space-y-6 max-w-7xl mx-auto p-6 animate-in fade-in duration-500">
         <Skeleton className="h-10 w-1/3" />
         <div className="grid gap-4 md:grid-cols-3">
           <Skeleton className="h-32 w-full" />
           <Skeleton className="h-32 w-full" />
           <Skeleton className="h-32 w-full" />
         </div>
-        <Skeleton className="h-[250px] w-full" />
         <Skeleton className="h-[400px] w-full" />
+        <Skeleton className="h-[300px] w-full" />
       </div>
     )
   }
 
   if (error) {
-    const isAuthError =
-      error.code === 'PGRST301' ||
-      error.code === '401' ||
-      error.code === '403' ||
-      error.status === 401 ||
-      error.status === 403
     return (
-      <div className="flex flex-col h-[70vh] items-center justify-center space-y-4 animate-in fade-in duration-500 opacity-100 visible block">
+      <div className="flex flex-col h-[70vh] items-center justify-center space-y-4 animate-in fade-in duration-500">
         <AlertTriangle className="h-16 w-16 text-destructive" />
-        <h2 className="text-3xl font-bold">Erro ao carregar</h2>
-        <p className="text-muted-foreground">
-          {isAuthError
-            ? 'Acesso negado. Verifique suas permissoes.'
-            : 'Erro ao carregar dados. Tente novamente.'}
-        </p>
+        <h2 className="text-3xl font-bold">Erro ao carregar dados</h2>
+        <p className="text-muted-foreground">Ocorreu um erro inesperado. Tente novamente.</p>
         <Button onClick={fetchDashboardData} size="lg" className="mt-4">
           <RefreshCcw className="mr-2 h-4 w-4" />
           Recarregar
@@ -352,10 +270,12 @@ export function InvestorDashboard() {
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto p-6 animate-in slide-in-from-bottom-4 fade-in duration-500 opacity-100 visible block pb-10">
+    <div className="space-y-6 max-w-7xl mx-auto p-6 animate-in slide-in-from-bottom-4 fade-in duration-500 pb-10">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard do Investidor</h1>
-        <p className="text-muted-foreground">Acompanhe seus investimentos e rendimentos.</p>
+        <h1 className="text-3xl font-bold tracking-tight">Dashboard Financeiro</h1>
+        <p className="text-muted-foreground">
+          Acompanhe a performance do seu portfólio de investimentos.
+        </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -372,132 +292,121 @@ export function InvestorDashboard() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Investimentos Ativos</CardTitle>
-            <PieChart className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Número de Investimentos Ativos</CardTitle>
+            <LineChartIcon className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{ativos.length}</div>
+            <div className="text-3xl font-bold">{activeCount}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Rendimentos Acumulados</CardTitle>
+            <CardTitle className="text-sm font-medium">Rendimento Acumulado</CardTitle>
             <TrendingUp className="h-4 w-4 text-emerald-600" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-emerald-600 font-mono">
-              +{formatCurrency(totalYield)}
+              {formatCurrency(yieldAmount)}
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {evolutionData.length > 0 && (
-        <Card className="opacity-100 visible block">
-          <CardHeader>
-            <CardTitle>Evolução da Carteira</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ChartContainer config={chartEvolutionConfig} className="h-[300px] w-full">
-              <AreaChart data={evolutionData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorValor" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--color-valor)" stopOpacity={0.8} />
-                    <stop offset="95%" stopColor="var(--color-valor)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
-                <YAxis
-                  tickFormatter={(val) => `R$ ${val}`}
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fontSize: 12 }}
-                />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Area
-                  type="monotone"
-                  dataKey="valor"
-                  stroke="var(--color-valor)"
-                  fillOpacity={1}
-                  fill="url(#colorValor)"
-                />
-              </AreaChart>
+      <Card className="overflow-hidden">
+        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <CardTitle>Evolução dos Investimentos</CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Crescimento projetado com base nas taxas dos ativos.
+            </p>
+          </div>
+          <Select value={chartSelection} onValueChange={setChartSelection}>
+            <SelectTrigger className="w-full sm:w-[250px]">
+              <SelectValue placeholder="Selecione..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="geral">Geral (Todos Ativos)</SelectItem>
+              {ativos.map((inv) => (
+                <SelectItem key={inv.id} value={inv.id}>
+                  {inv.investment_products?.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </CardHeader>
+        <CardContent>
+          {chartData.length > 0 ? (
+            <ChartContainer config={chartConfig} className="h-[350px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData} margin={{ top: 20, right: 20, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
+                  <YAxis
+                    tickFormatter={(val) =>
+                      `R$ ${val >= 1000 ? (val / 1000).toFixed(0) + 'k' : val}`
+                    }
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 12 }}
+                  />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <ReferenceLine
+                    x={todayMonthStr}
+                    stroke="hsl(var(--muted-foreground))"
+                    strokeDasharray="3 3"
+                    label={{
+                      position: 'insideTopLeft',
+                      value: 'Hoje',
+                      fill: 'hsl(var(--muted-foreground))',
+                      fontSize: 12,
+                    }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="valor"
+                    stroke="var(--color-valor)"
+                    strokeWidth={3}
+                    dot={false}
+                    activeDot={{ r: 6, fill: 'var(--color-valor)' }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
             </ChartContainer>
-          </CardContent>
-        </Card>
-      )}
-
-      {myInvestments.length > 0 && (
-        <Card className="opacity-100 visible block">
-          <CardHeader>
-            <CardTitle>Ganhos por Status</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ChartContainer config={chartConfig} className="h-[250px] w-full">
-              <BarChart
-                layout="vertical"
-                data={summaryChartData}
-                margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" tickFormatter={(value) => `R$ ${value}`} />
-                <YAxis type="category" dataKey="status" width={100} />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="ganho" radius={[0, 4, 4, 0]}>
-                  {summaryChartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.fill} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ChartContainer>
-          </CardContent>
-        </Card>
-      )}
+          ) : (
+            <div className="flex h-[350px] items-center justify-center text-muted-foreground">
+              Nenhum dado disponível para o gráfico.
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div>
         <h2 className="text-2xl font-bold tracking-tight mb-4">Meus Investimentos</h2>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="approved">Ativos</TabsTrigger>
-            <TabsTrigger value="resgatado">Resgatados</TabsTrigger>
-            <TabsTrigger value="cancelled">Cancelados</TabsTrigger>
-            <TabsTrigger value="Excluído">Excluídos</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-3 md:w-[400px]">
+            <TabsTrigger value="ativos">Ativos</TabsTrigger>
+            <TabsTrigger value="resgatados">Resgatados</TabsTrigger>
+            <TabsTrigger value="cancelados">Cancelados</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="approved">
+          <TabsContent value="ativos">
             <TabContent
               data={ativos}
-              statusLabel="Ativos"
-              chartConfig={chartConfig}
-              onViewOtherStatus={() => setActiveTab('resgatado')}
+              statusLabel="Investimentos Ativos"
               onRefresh={fetchDashboardData}
             />
           </TabsContent>
-          <TabsContent value="resgatado">
+          <TabsContent value="resgatados">
             <TabContent
               data={resgatados}
-              statusLabel="Resgatados"
-              chartConfig={chartConfig}
-              onViewOtherStatus={() => setActiveTab('approved')}
+              statusLabel="Investimentos Resgatados"
               onRefresh={fetchDashboardData}
             />
           </TabsContent>
-          <TabsContent value="cancelled">
+          <TabsContent value="cancelados">
             <TabContent
               data={cancelados}
-              statusLabel="Cancelados"
-              chartConfig={chartConfig}
-              onViewOtherStatus={() => setActiveTab('approved')}
-              onRefresh={fetchDashboardData}
-            />
-          </TabsContent>
-          <TabsContent value="Excluído">
-            <TabContent
-              data={excluidos}
-              statusLabel="Excluídos"
-              chartConfig={chartConfig}
-              onViewOtherStatus={() => setActiveTab('approved')}
+              statusLabel="Investimentos Cancelados"
               onRefresh={fetchDashboardData}
             />
           </TabsContent>
