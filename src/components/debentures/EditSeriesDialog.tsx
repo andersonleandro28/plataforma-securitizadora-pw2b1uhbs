@@ -44,7 +44,7 @@ export function EditSeriesDialog({
   const [formData, setFormData] = useState({
     series_number: '',
     volume: '',
-    indexer: 'CDI' as string | null,
+    indexer: null as string | null,
     rate: '',
     maturity_date: '',
   })
@@ -208,7 +208,7 @@ export function EditSeriesDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Sem Indexador (Pré-fixado)</SelectItem>
+                  <SelectItem value="none">Pré-fixado (Sem Indexador)</SelectItem>
                   <SelectItem value="CDI">CDI</SelectItem>
                   <SelectItem value="IPCA">IPCA</SelectItem>
                   <SelectItem value="IGP-M">IGP-M</SelectItem>

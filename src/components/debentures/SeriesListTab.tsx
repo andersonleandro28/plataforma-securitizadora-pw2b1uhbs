@@ -115,7 +115,7 @@ export function SeriesListTab({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos os Indexadores</SelectItem>
-              <SelectItem value="none">Pré-fixado (Sem indexador)</SelectItem>
+              <SelectItem value="none">Pré-fixado (Sem Indexador)</SelectItem>
               {uniqueIndexers.map((idx) => (
                 <SelectItem key={idx} value={idx}>
                   {idx}
@@ -152,7 +152,7 @@ export function SeriesListTab({
                     <TableCell>
                       <span className="bg-secondary px-2 py-0.5 rounded text-xs font-medium">
                         {!s.indexer || s.indexer === 'Pré-fixado'
-                          ? `${s.rate}% a.a.`
+                          ? `Pré-fixado (${s.rate}% a.a.)`
                           : `${s.indexer} + ${s.rate}% a.a.`}
                       </span>
                     </TableCell>

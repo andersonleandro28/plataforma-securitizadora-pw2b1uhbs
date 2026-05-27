@@ -97,7 +97,7 @@ export function ManualSeriesForm({ series, index, onChange, onRemove }: Props) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">Sem Indexador</SelectItem>
+                <SelectItem value="none">Pré-fixado (Sem Indexador)</SelectItem>
                 <SelectItem value="CDI">CDI</SelectItem>
                 <SelectItem value="IPCA">IPCA</SelectItem>
                 <SelectItem value="IGP-M">IGP-M</SelectItem>
