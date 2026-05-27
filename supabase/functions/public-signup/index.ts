@@ -37,7 +37,14 @@ Deno.serve(async (req: Request) => {
     })
 
     if (error) {
-      return new Response(JSON.stringify({ error: error.message }), {
+      let errorMsg = error.message
+      if (
+        errorMsg.toLowerCase().includes('already registered') ||
+        errorMsg.toLowerCase().includes('already been registered')
+      ) {
+        errorMsg = 'A user with this email address has already been registered'
+      }
+      return new Response(JSON.stringify({ error: errorMsg }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -69,44 +76,62 @@ Deno.serve(async (req: Request) => {
         lgpd_accepted_at: new Date().toISOString(),
       }
 
-      await adminClient.from('profiles').update(updatePayload).eq('id', data.user.id)
+      const { error: profileError } = await adminClient
+        .from('profiles')
+        .update(updatePayload)
+        .eq('id', data.user.id)
+
+      if (profileError) {
+        console.error('Error updating main profile fields:', profileError)
+      }
 
       // Try safely to update new migration fields if they exist
-      await adminClient
-        .from('profiles')
-        .update({
-          pf_birth_date: profileData.pf_birth_date || null,
-          pj_state_registration: profileData.pj_state_registration || null,
-        })
-        .eq('id', data.user.id)
-        .catch(() => {})
+      try {
+        const { error: migrationError } = await adminClient
+          .from('profiles')
+          .update({
+            pf_birth_date: profileData.pf_birth_date || null,
+            pj_state_registration: profileData.pj_state_registration || null,
+          })
+          .eq('id', data.user.id)
+
+        if (migrationError) {
+          console.error('Error updating migration fields:', migrationError)
+        }
+      } catch (err) {
+        console.error('Exception updating migration fields:', err)
+      }
 
       // Send customized welcome email
       const resendApiKey = Deno.env.get('RESEND_API_KEY')
       if (resendApiKey) {
-        const nomeExibicao =
-          entity_type === 'pj' ? profileData.pj_company_name : profileData.full_name
-        await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${resendApiKey}`,
-          },
-          body: JSON.stringify({
-            from: 'Plataforma Securitizadora <contato@seaconnection.api.br>',
-            to: [email],
-            subject: 'Bem-vindo(a) à Plataforma Securitizadora',
-            html: `
-              <div style="font-family: sans-serif; color: #333;">
-                <h2>Bem-vindo(a), ${nomeExibicao}!</h2>
-                <p>Sua conta na Plataforma Securitizadora foi criada com sucesso.</p>
-                <p>Acesse seu painel para completar as informações de conformidade (KYC) e aproveitar nossos recursos.</p>
-                <br/>
-                <p>Atenciosamente,<br/>Equipe Plataforma Securitizadora</p>
-              </div>
-            `,
-          }),
-        })
+        try {
+          const nomeExibicao =
+            entity_type === 'pj' ? profileData.pj_company_name : profileData.full_name
+          await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${resendApiKey}`,
+            },
+            body: JSON.stringify({
+              from: 'Plataforma Securitizadora <contato@seaconnection.api.br>',
+              to: [email],
+              subject: 'Bem-vindo(a) à Plataforma Securitizadora',
+              html: `
+                <div style="font-family: sans-serif; color: #333;">
+                  <h2>Bem-vindo(a), ${nomeExibicao}!</h2>
+                  <p>Sua conta na Plataforma Securitizadora foi criada com sucesso.</p>
+                  <p>Acesse seu painel para completar as informações de conformidade (KYC) e aproveitar nossos recursos.</p>
+                  <br/>
+                  <p>Atenciosamente,<br/>Equipe Plataforma Securitizadora</p>
+                </div>
+              `,
+            }),
+          })
+        } catch (err) {
+          console.error('Error sending welcome email:', err)
+        }
       }
     }
 

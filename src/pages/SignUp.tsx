@@ -117,23 +117,37 @@ export default function SignUp() {
     setAuthLoading(true)
     try {
       const res = await supabase.functions.invoke('public-signup', { body: formData })
-      if (res.error || res.data?.error) throw new Error(res.error?.message || res.data?.error)
+
+      let errorMessage = res.data?.error
+      if (res.error) {
+        if (res.error.context && res.error.context.error) {
+          errorMessage = res.error.context.error
+        } else {
+          errorMessage = res.error.message || 'Erro ao processar cadastro'
+        }
+      }
+
+      if (errorMessage) {
+        if (
+          errorMessage === 'A user with this email address has already been registered' ||
+          errorMessage.includes('already registered') ||
+          errorMessage.includes('already been registered')
+        ) {
+          toast.error(
+            'Este e-mail já está cadastrado. Por favor, tente fazer login ou utilize outro e-mail.',
+          )
+        } else {
+          toast.error(errorMessage || 'Erro ao criar conta. Verifique os dados e tente novamente.')
+        }
+        setAuthLoading(false)
+        return
+      }
 
       await signIn(formData.email, formData.password)
       toast.success('Conta criada com sucesso! Bem-vindo.')
       navigate('/')
     } catch (err: any) {
-      const msg = err.message || ''
-      if (
-        msg.includes('A user with this email address has already been registered') ||
-        msg.includes('User already registered')
-      ) {
-        toast.error(
-          'Este e-mail já está cadastrado. Por favor, tente fazer login ou utilize outro e-mail.',
-        )
-      } else {
-        toast.error(msg || 'Erro ao criar conta. Verifique os dados e tente novamente.')
-      }
+      toast.error('Erro de conexão ao criar conta. Tente novamente.')
     } finally {
       setAuthLoading(false)
     }
