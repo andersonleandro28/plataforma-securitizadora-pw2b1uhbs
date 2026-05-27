@@ -123,7 +123,17 @@ export default function SignUp() {
       toast.success('Conta criada com sucesso! Bem-vindo.')
       navigate('/')
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao criar conta. Verifique os dados e tente novamente.')
+      const msg = err.message || ''
+      if (
+        msg.includes('A user with this email address has already been registered') ||
+        msg.includes('User already registered')
+      ) {
+        toast.error(
+          'Este e-mail já está cadastrado. Por favor, tente fazer login ou utilize outro e-mail.',
+        )
+      } else {
+        toast.error(msg || 'Erro ao criar conta. Verifique os dados e tente novamente.')
+      }
     } finally {
       setAuthLoading(false)
     }
