@@ -287,7 +287,14 @@ const App = () => (
                 </RoleGuard>
               }
             />
-            <Route path="/debentures" element={<Debentures />} />
+            <Route
+              path="/debentures"
+              element={
+                <RoleGuard allowedRoles={['admin', 'staff']}>
+                  <Debentures />
+                </RoleGuard>
+              }
+            />
             <Route
               path="/investments"
               element={
