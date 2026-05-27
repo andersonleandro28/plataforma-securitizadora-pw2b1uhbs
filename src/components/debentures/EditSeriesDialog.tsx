@@ -22,7 +22,6 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/use-auth'
-import { toISODate } from '@/lib/utils'
 
 interface EditSeriesDialogProps {
   series: any
@@ -50,16 +49,16 @@ export function EditSeriesDialog({
   })
 
   useEffect(() => {
-    if (series && open) {
+    if (open && series) {
       setFormData({
         series_number: series.series_number || '',
         volume: String(series.volume || ''),
         indexer: series.indexer === 'Pré-fixado' ? null : series.indexer || null,
-        rate: String(series.rate || ''),
-        maturity_date: toISODate(series.maturity_date),
+        rate: series.rate != null ? String(series.rate) : '',
+        maturity_date: series.maturity_date ? series.maturity_date.split('T')[0] : '',
       })
     }
-  }, [series, open])
+  }, [open, series?.id])
 
   const parentDebenture = debentures.find((d) => d.id === series?.debenture_id)
 
@@ -76,7 +75,8 @@ export function EditSeriesDialog({
 
   const hasYieldImpact =
     Number(formData.rate) !== Number(series?.rate) ||
-    (formData.maturity_date || '') !== toISODate(series?.maturity_date)
+    (formData.maturity_date || '') !==
+      (series?.maturity_date ? series.maturity_date.split('T')[0] : '')
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
@@ -88,6 +88,11 @@ export function EditSeriesDialog({
   const handleSave = async () => {
     if (!formData.series_number || !formData.volume || formData.rate === '') {
       toast.error('Número da Série, Volume e Taxa são obrigatórios.')
+      return
+    }
+
+    if (isNaN(Number(formData.volume)) || isNaN(Number(formData.rate))) {
+      toast.error('Volume e Taxa devem ser números válidos.')
       return
     }
 

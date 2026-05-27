@@ -38,7 +38,7 @@ export function AddSeriesDialog({
   onSuccess,
 }: AddSeriesDialogProps) {
   const [saving, setSaving] = useState(false)
-  const [selectedDebentureId, setSelectedDebentureId] = useState<string>('')
+  const [selectedDebentureId, setSelectedDebentureId] = useState<string | undefined>()
   const [formData, setFormData] = useState({
     series_number: '',
     volume: '',
@@ -46,14 +46,6 @@ export function AddSeriesDialog({
     rate: '',
     maturity_date: '',
   })
-
-  useEffect(() => {
-    if (debenture) {
-      setSelectedDebentureId(debenture.id)
-    } else if (!open) {
-      setSelectedDebentureId('')
-    }
-  }, [debenture, open])
 
   const resetForm = () => {
     setFormData({
@@ -63,8 +55,18 @@ export function AddSeriesDialog({
       rate: '',
       maturity_date: '',
     })
-    if (!debenture) setSelectedDebentureId('')
+    if (!debenture) setSelectedDebentureId(undefined)
   }
+
+  useEffect(() => {
+    if (open) {
+      if (debenture) {
+        setSelectedDebentureId(debenture.id)
+      }
+    } else {
+      resetForm()
+    }
+  }, [open, debenture?.id])
 
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) resetForm()
@@ -90,6 +92,10 @@ export function AddSeriesDialog({
     }
     if (!formData.series_number || !formData.volume || formData.rate === '') {
       toast.error('Número da Série, Volume e Taxa são obrigatórios.')
+      return
+    }
+    if (isNaN(Number(formData.volume)) || isNaN(Number(formData.rate))) {
+      toast.error('Volume e Taxa devem ser números válidos.')
       return
     }
     if (isVolumeExceeded) {
@@ -143,7 +149,10 @@ export function AddSeriesDialog({
           {!debenture && (
             <div className="space-y-1.5">
               <Label>Escritura / Emissor Base</Label>
-              <Select value={selectedDebentureId} onValueChange={setSelectedDebentureId}>
+              <Select
+                value={selectedDebentureId || undefined}
+                onValueChange={setSelectedDebentureId}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione a emissão" />
                 </SelectTrigger>
