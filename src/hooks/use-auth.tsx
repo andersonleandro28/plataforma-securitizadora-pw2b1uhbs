@@ -311,11 +311,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signUp = async (email: string, password: string, fullName?: string) => {
     try {
-      const { data, error: invokeError } = await supabase.functions.invoke('public-signup', {
-        body: { email, password, fullName },
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/public-signup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${supabaseKey}`,
+        },
+        body: JSON.stringify({ email, password, fullName }),
       })
-      if (invokeError) return { error: invokeError }
-      if (data?.error) return { error: { message: data.error } }
+
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok || data?.error) {
+        return { error: { message: data?.error || 'Erro ao criar conta' } }
+      }
+
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
       return { error: signInError }
     } catch (error: any) {

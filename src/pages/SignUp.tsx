@@ -116,22 +116,26 @@ export default function SignUp() {
 
     setAuthLoading(true)
     try {
-      const res = await supabase.functions.invoke('public-signup', { body: formData })
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
 
-      let errorMessage = res.data?.error
-      if (res.error) {
-        if (res.error.context && res.error.context.error) {
-          errorMessage = res.error.context.error
-        } else {
-          errorMessage = res.error.message || 'Erro ao processar cadastro'
-        }
-      }
+      const response = await fetch(`${supabaseUrl}/functions/v1/public-signup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${supabaseKey}`,
+        },
+        body: JSON.stringify(formData),
+      })
 
-      if (errorMessage) {
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok || data?.error) {
+        let errorMessage = data?.error || 'Erro ao processar cadastro'
         if (
           errorMessage === 'A user with this email address has already been registered' ||
-          errorMessage.includes('already registered') ||
-          errorMessage.includes('already been registered')
+          String(errorMessage).includes('already registered') ||
+          String(errorMessage).includes('already been registered')
         ) {
           toast.error(
             'Este e-mail já está cadastrado. Por favor, tente fazer login ou utilize outro e-mail.',
