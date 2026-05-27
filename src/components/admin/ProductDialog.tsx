@@ -211,7 +211,7 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o tipo" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[1100]">
                     <SelectItem value="Debênture">Debênture</SelectItem>
                     <SelectItem value="CRI">CRI</SelectItem>
                     <SelectItem value="CRA">CRA</SelectItem>
@@ -233,7 +233,7 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
                       placeholder={loadingStatuses ? 'Carregando...' : 'Selecione o status'}
                     />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[1100]">
                     {statuses.map((s) => (
                       <SelectItem key={s.label} value={s.label}>
                         {s.label}
@@ -255,7 +255,7 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
                       placeholder={loadingSeries ? 'Carregando...' : 'Selecione uma série'}
                     />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[1100]">
                     <SelectItem value="empty">Nenhuma série</SelectItem>
                     {series.map((s) => (
                       <SelectItem key={s.id} value={s.id}>
@@ -465,7 +465,7 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
                       placeholder={loadingCurrencies ? 'Carregando...' : 'Selecione a moeda'}
                     />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[1100]">
                     {currencies.map((c) => (
                       <SelectItem key={c.code} value={c.code}>
                         {c.label} ({c.code})
@@ -502,7 +502,7 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
                       placeholder={loadingRatings ? 'Carregando...' : 'Selecione o rating'}
                     />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[1100]">
                     {ratings.map((r) => (
                       <SelectItem key={r.label} value={r.label}>
                         {r.label}
