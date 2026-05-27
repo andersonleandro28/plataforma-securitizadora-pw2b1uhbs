@@ -11,7 +11,14 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-export function ProductForm({ data, onChange, seriesList }: any) {
+export function ProductForm({
+  data,
+  onChange,
+  seriesList,
+  statusOptions = [],
+  riskOptions = [],
+  currencyOptions = [],
+}: any) {
   const tSold = (data.sold_quotas || 0) * (data.quota_value || 0)
   const tGlobal = (data.global_quotas || 0) * (data.quota_value || 0)
 
@@ -33,28 +40,48 @@ export function ProductForm({ data, onChange, seriesList }: any) {
           </div>
           <div className="space-y-1.5">
             <Label>Rating de Risco</Label>
-            <Select value={data.rating} onValueChange={(v) => onChange('rating', v)}>
+            <Select value={data.rating || ''} onValueChange={(v) => onChange('rating', v)}>
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue placeholder="Selecione o Rating" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Risco Baixo">Risco Baixo</SelectItem>
-                <SelectItem value="Risco Médio">Risco Médio</SelectItem>
-                <SelectItem value="Risco Alto">Risco Alto</SelectItem>
+                {riskOptions.length > 0 ? (
+                  riskOptions.map((opt: any) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <>
+                    <SelectItem value="Risco Baixo">Risco Baixo</SelectItem>
+                    <SelectItem value="Risco Médio">Risco Médio</SelectItem>
+                    <SelectItem value="Risco Alto">Risco Alto</SelectItem>
+                  </>
+                )}
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1.5">
             <Label>Status</Label>
-            <Select value={data.status} onValueChange={(v) => onChange('status', v)}>
+            <Select value={data.status || ''} onValueChange={(v) => onChange('status', v)}>
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Em Captação">Em Captação</SelectItem>
-                <SelectItem value="Últimas Cotas">Últimas Cotas</SelectItem>
-                <SelectItem value="Esgotado">Esgotado</SelectItem>
-                <SelectItem value="Encerrado">Encerrado</SelectItem>
+                {statusOptions.length > 0 ? (
+                  statusOptions.map((opt: any) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <>
+                    <SelectItem value="Ativo">Ativo</SelectItem>
+                    <SelectItem value="Inativo">Inativo</SelectItem>
+                    <SelectItem value="Arquivado">Arquivado</SelectItem>
+                    <SelectItem value="Pendente">Pendente</SelectItem>
+                  </>
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -67,7 +94,11 @@ export function ProductForm({ data, onChange, seriesList }: any) {
               <SelectContent>
                 {seriesList.map((s: any) => (
                   <SelectItem key={s.id} value={s.id}>
-                    Série {s.series_number} ({s.indexer})
+                    Série {s.series_number} (
+                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                      s.volume || 0,
+                    )}
+                    )
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -87,13 +118,23 @@ export function ProductForm({ data, onChange, seriesList }: any) {
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <Label>Moeda</Label>
-            <Select value={data.currency} onValueChange={(v) => onChange('currency', v)}>
+            <Select value={data.currency || ''} onValueChange={(v) => onChange('currency', v)}>
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue placeholder="Moeda" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="BRL">Real (BRL)</SelectItem>
-                <SelectItem value="USD">Dólar (USD)</SelectItem>
+                {currencyOptions.length > 0 ? (
+                  currencyOptions.map((opt: any) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <>
+                    <SelectItem value="BRL">Real (BRL)</SelectItem>
+                    <SelectItem value="USD">Dólar (USD)</SelectItem>
+                  </>
+                )}
               </SelectContent>
             </Select>
           </div>

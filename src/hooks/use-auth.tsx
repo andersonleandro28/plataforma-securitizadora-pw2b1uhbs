@@ -127,11 +127,46 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // we only explicitly call getSession if the onAuthStateChange hasn't already fired an INITIAL_SESSION.
     setTimeout(() => {
       if (mounted && !initialSessionReceived && loadingSession) {
-        supabase.auth
-          .getSession()
+        const sessionPromise = supabase.auth.getSession()
+        const timeoutPromise = new Promise<{ data: { session: Session | null }; error: any }>(
+          (resolve) =>
+            setTimeout(
+              () => resolve({ data: { session: null }, error: new Error('Auth Lock Timeout') }),
+              3000,
+            ),
+        )
+
+        Promise.race([sessionPromise, timeoutPromise])
           .then(({ data: { session }, error }) => {
             if (!mounted) return
-            if (error) supabase.auth.signOut().catch(() => {})
+
+            if (error) {
+              // Lock bypass fallback: if it's the timeout error, try to fetch from local storage manually
+              if (error.message === 'Auth Lock Timeout') {
+                try {
+                  const projectId = import.meta.env.VITE_SUPABASE_URL?.match(
+                    /\/\/(.*?)\.supabase/,
+                  )?.[1]
+                  const key = `sb-${projectId}-auth-token`
+                  const localToken = localStorage.getItem(key)
+                  if (localToken) {
+                    const parsed = JSON.parse(localToken)
+                    if (parsed.session) {
+                      setSession(parsed.session)
+                      setUser(parsed.session.user)
+                      setLoadingSession(false)
+                      return
+                    }
+                  }
+                } catch (e) {
+                  console.error('Failed to parse local session fallback', e)
+                }
+                setLoadingSession(false)
+                return
+              }
+              supabase.auth.signOut().catch(() => {})
+            }
+
             setSession(session ?? null)
             setUser(session?.user ?? null)
             setLoadingSession(false)

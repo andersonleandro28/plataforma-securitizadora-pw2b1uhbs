@@ -16,11 +16,14 @@ import { ProductForm } from './ProductForm'
 export function ProductDialog({ open, onOpenChange, product, onSuccess }: any) {
   const [saving, setSaving] = useState(false)
   const [seriesList, setSeriesList] = useState<any[]>([])
+  const [statusOptions, setStatusOptions] = useState<any[]>([])
+  const [riskOptions, setRiskOptions] = useState<any[]>([])
+  const [currencyOptions, setCurrencyOptions] = useState<any[]>([])
   const [data, setData] = useState<any>({})
 
   useEffect(() => {
     if (open) {
-      fetchSeries()
+      fetchLookups()
       if (product) {
         setData({ ...product })
       } else {
@@ -28,7 +31,7 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: any) {
           title: '',
           rating: 'Risco Médio',
           currency: 'BRL',
-          status: 'Em Captação',
+          status: 'Ativo',
           type: 'Debênture',
           global_quotas: 1000,
           quota_value: 1000,
@@ -47,9 +50,23 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: any) {
     }
   }, [open, product])
 
-  const fetchSeries = async () => {
-    const { data: s } = await supabase.from('debenture_series').select('id, series_number, indexer')
-    if (s) setSeriesList(s)
+  const fetchLookups = async () => {
+    try {
+      const [{ data: s }, { data: st }, { data: ri }, { data: cu }] = await Promise.all([
+        supabase.from('debenture_series').select('id, series_number, volume'),
+        supabase.from('product_statuses' as any).select('label'),
+        supabase.from('product_risk_ratings' as any).select('label'),
+        supabase.from('product_currencies' as any).select('code, label'),
+      ])
+
+      if (s) setSeriesList(s)
+      if (st) setStatusOptions(st.map((i: any) => ({ label: i.label, value: i.label })))
+      if (ri) setRiskOptions(ri.map((i: any) => ({ label: i.label, value: i.label })))
+      if (cu)
+        setCurrencyOptions(cu.map((i: any) => ({ label: `${i.code} - ${i.label}`, value: i.code })))
+    } catch (e) {
+      console.error('Failed to load lookups', e)
+    }
   }
 
   const handleSave = async () => {
@@ -99,7 +116,14 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: any) {
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto px-6 py-2">
-          <ProductForm data={data} onChange={handleChange} seriesList={seriesList} />
+          <ProductForm
+            data={data}
+            onChange={handleChange}
+            seriesList={seriesList}
+            statusOptions={statusOptions}
+            riskOptions={riskOptions}
+            currencyOptions={currencyOptions}
+          />
         </div>
 
         <DialogFooter className="p-6 shrink-0 border-t bg-muted/10">
