@@ -45,8 +45,9 @@ interface ProductDialogProps {
 }
 
 export function ProductDialog({ open, onOpenChange, product, onSuccess }: ProductDialogProps) {
-  const { user } = useAuth()
-  const [isAdminOrStaff, setIsAdminOrStaff] = useState(false)
+  const { profile, loading: authLoading, isLoadingProfile } = useAuth()
+  const isAdminOrStaff =
+    !!profile && (profile.role === 'admin' || profile.role === 'staff' || !!profile.is_admin)
 
   const [series, setSeries] = useState<any[]>([])
   const [statuses, setStatuses] = useState<any[]>([])
@@ -64,21 +65,6 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
   const [deleting, setDeleting] = useState(false)
   const [togglingActive, setTogglingActive] = useState(false)
   const [togglingArchive, setTogglingArchive] = useState(false)
-
-  useEffect(() => {
-    const checkRole = async () => {
-      if (!user) return
-      const { data } = await supabase
-        .from('profiles')
-        .select('role, is_admin')
-        .eq('id', user.id)
-        .single()
-      if (data && (data.role === 'admin' || data.role === 'staff' || data.is_admin)) {
-        setIsAdminOrStaff(true)
-      }
-    }
-    checkRole()
-  }, [user])
 
   useEffect(() => {
     if (open) {
@@ -193,15 +179,30 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
     if (!product?.id) return
     setDeleting(true)
     try {
-      const { count } = await supabase
+      const { count: invCount } = await supabase
         .from('investments')
         .select('id', { count: 'exact', head: true })
         .eq('product_id', product.id)
 
-      if (count && count > 0) {
+      if (invCount && invCount > 0) {
         toast.error('Não é possível excluir: existem investimentos vinculados a este produto.')
         setDeleteConfirmOpen(false)
         return
+      }
+
+      if (product.series_id) {
+        const { count: subCount } = await supabase
+          .from('debenture_subscriptions')
+          .select('id', { count: 'exact', head: true })
+          .eq('series_id', product.series_id)
+
+        if (subCount && subCount > 0) {
+          toast.error(
+            'Não é possível excluir: existem assinaturas de debêntures vinculadas a este produto.',
+          )
+          setDeleteConfirmOpen(false)
+          return
+        }
       }
 
       const { error } = await supabase.from('investment_products').delete().eq('id', product.id)
@@ -630,7 +631,14 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
               </div>
             </div>
 
-            {isAdminOrStaff && product?.id && (
+            {(authLoading || isLoadingProfile) && product?.id ? (
+              <div className="space-y-4 border-t pt-6 mt-4">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Verificando permissões...
+                </div>
+              </div>
+            ) : isAdminOrStaff && product?.id ? (
               <div className="space-y-4 border-t pt-6 mt-4">
                 <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                   Ações do Produto
@@ -741,7 +749,7 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
                   </AlertDialog>
                 </div>
               </div>
-            )}
+            ) : null}
           </TabsContent>
         </Tabs>
 
