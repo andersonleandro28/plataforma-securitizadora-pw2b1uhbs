@@ -21,7 +21,19 @@ import {
 } from '@/components/ui/select'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Trash2, Archive, ArchiveRestore, Eye, EyeOff } from 'lucide-react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
+import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/hooks/use-auth'
 
@@ -48,6 +60,10 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
 
   const [formData, setFormData] = useState<any>({})
   const [saving, setSaving] = useState(false)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [togglingActive, setTogglingActive] = useState(false)
+  const [togglingArchive, setTogglingArchive] = useState(false)
 
   useEffect(() => {
     const checkRole = async () => {
@@ -94,6 +110,7 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
           early_redemption_penalty_pct: 0,
           early_redemption_discount_pct: 0,
           min_grace_period_months: 0,
+          is_archived: false,
         })
       }
       fetchDropdownData()
@@ -169,6 +186,75 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
       toast.error('Erro ao atualizar produto')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!product?.id) return
+    setDeleting(true)
+    try {
+      const { count } = await supabase
+        .from('investments')
+        .select('id', { count: 'exact', head: true })
+        .eq('product_id', product.id)
+
+      if (count && count > 0) {
+        toast.error('Não é possível excluir: existem investimentos vinculados a este produto.')
+        setDeleteConfirmOpen(false)
+        return
+      }
+
+      const { error } = await supabase.from('investment_products').delete().eq('id', product.id)
+
+      if (error) throw error
+      toast.success('Produto excluído com sucesso')
+      setDeleteConfirmOpen(false)
+      onSuccess()
+      onOpenChange(false)
+    } catch (error: any) {
+      toast.error('Erro ao excluir produto')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const handleToggleActive = async () => {
+    if (!product?.id) return
+    setTogglingActive(true)
+    try {
+      const newValue = !formData.is_active
+      const { error } = await supabase
+        .from('investment_products')
+        .update({ is_active: newValue })
+        .eq('id', product.id)
+      if (error) throw error
+      setFormData({ ...formData, is_active: newValue })
+      toast.success(newValue ? 'Produto visível na vitrine' : 'Produto ocultado com sucesso')
+      onSuccess()
+    } catch (error: any) {
+      toast.error('Erro ao atualizar visibilidade')
+    } finally {
+      setTogglingActive(false)
+    }
+  }
+
+  const handleToggleArchive = async () => {
+    if (!product?.id) return
+    setTogglingArchive(true)
+    try {
+      const newValue = !formData.is_archived
+      const { error } = await supabase
+        .from('investment_products')
+        .update({ is_archived: newValue })
+        .eq('id', product.id)
+      if (error) throw error
+      setFormData({ ...formData, is_archived: newValue })
+      toast.success(newValue ? 'Produto arquivado com sucesso' : 'Produto restaurado com sucesso')
+      onSuccess()
+    } catch (error: any) {
+      toast.error('Erro ao arquivar produto')
+    } finally {
+      setTogglingArchive(false)
     }
   }
 
@@ -543,6 +629,119 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
                 />
               </div>
             </div>
+
+            {isAdminOrStaff && product?.id && (
+              <div className="space-y-4 border-t pt-6 mt-4">
+                <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                  Ações do Produto
+                </h4>
+
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Visibilidade</span>
+                      {formData.is_active ? (
+                        <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
+                          Produto Ativo
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">
+                          Produto Oculto
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Controla se o produto aparece na vitrine pública para investidores.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleToggleActive}
+                    disabled={togglingActive}
+                  >
+                    {togglingActive ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : formData.is_active ? (
+                      <EyeOff className="mr-2 h-4 w-4" />
+                    ) : (
+                      <Eye className="mr-2 h-4 w-4" />
+                    )}
+                    {formData.is_active ? 'Ocultar' : 'Exibir'}
+                  </Button>
+                </div>
+
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Arquivo</span>
+                      {formData.is_archived ? (
+                        <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">
+                          Arquivado
+                        </Badge>
+                      ) : null}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Produtos arquivados não aceitam novos investimentos mas permanecem visíveis no
+                      admin.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleToggleArchive}
+                    disabled={togglingArchive}
+                  >
+                    {togglingArchive ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : formData.is_archived ? (
+                      <ArchiveRestore className="mr-2 h-4 w-4" />
+                    ) : (
+                      <Archive className="mr-2 h-4 w-4" />
+                    )}
+                    {formData.is_archived ? 'Restaurar Produto' : 'Arquivar Produto'}
+                  </Button>
+                </div>
+
+                <div className="flex items-center justify-between rounded-lg border border-destructive/30 p-4 bg-destructive/5">
+                  <div className="space-y-1">
+                    <span className="text-sm font-medium text-destructive">Excluir Produto</span>
+                    <p className="text-xs text-muted-foreground">
+                      Exclui permanentemente o produto do banco de dados. Esta ação não pode ser
+                      desfeita.
+                    </p>
+                  </div>
+                  <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" size="sm">
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Excluir Produto
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Tem certeza que deseja excluir permanentemente este produto? Esta ação não
+                          pode ser desfeita.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={handleDelete}
+                          disabled={deleting}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          Confirmar Exclusão
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </div>
+            )}
           </TabsContent>
         </Tabs>
 

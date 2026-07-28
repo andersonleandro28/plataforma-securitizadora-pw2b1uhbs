@@ -20,12 +20,15 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { toast } from 'sonner'
-import { Plus, Loader2 } from 'lucide-react'
+import { Plus, Loader2, Pencil } from 'lucide-react'
+import { ProductDialog } from '@/components/admin/ProductDialog'
 
 export default function InvestmentProducts() {
   const [products, setProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editProduct, setEditProduct] = useState<any>(null)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
 
   useEffect(() => {
     fetchProducts()
@@ -105,12 +108,15 @@ export default function InvestmentProducts() {
                 <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
                   Taxa
                 </th>
+                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                  Ações
+                </th>
               </tr>
             </thead>
             <tbody className="[&_tr:last-child]:border-0">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center">
+                  <td colSpan={7} className="p-8 text-center">
                     <div className="flex items-center justify-center">
                       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                     </div>
@@ -118,7 +124,7 @@ export default function InvestmentProducts() {
                 </tr>
               ) : products.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                  <td colSpan={7} className="p-8 text-center text-muted-foreground">
                     Nenhum produto cadastrado no banco.
                   </td>
                 </tr>
@@ -131,6 +137,18 @@ export default function InvestmentProducts() {
                     <td className="p-4 align-middle">{p.status}</td>
                     <td className="p-4 align-middle">{p.risk}</td>
                     <td className="p-4 align-middle">{p.rate}</td>
+                    <td className="p-4 align-middle">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setEditProduct(p)
+                          setEditDialogOpen(true)
+                        }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -138,6 +156,13 @@ export default function InvestmentProducts() {
           </table>
         </div>
       </div>
+
+      <ProductDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        product={editProduct}
+        onSuccess={fetchProducts}
+      />
     </div>
   )
 }
