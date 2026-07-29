@@ -96,6 +96,8 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
           early_redemption_penalty_pct: 0,
           early_redemption_discount_pct: 0,
           min_grace_period_months: 0,
+          min_quotas_per_investor: 1,
+          max_quotas_per_investor: 100,
           is_archived: false,
         })
       }
@@ -406,6 +408,38 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
                   value={formData.global_quotas || ''}
                   onChange={(e) =>
                     setFormData({ ...formData, global_quotas: parseInt(e.target.value, 10) })
+                  }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Cotas Mín. por Investidor</Label>
+                <Input
+                  disabled={isReadOnly}
+                  type="number"
+                  value={formData.min_quotas_per_investor ?? ''}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      min_quotas_per_investor:
+                        e.target.value === '' ? null : parseInt(e.target.value, 10),
+                    })
+                  }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Cotas Máx. por Investidor</Label>
+                <Input
+                  disabled={isReadOnly}
+                  type="number"
+                  value={formData.max_quotas_per_investor ?? ''}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      max_quotas_per_investor:
+                        e.target.value === '' ? null : parseInt(e.target.value, 10),
+                    })
                   }
                 />
               </div>
