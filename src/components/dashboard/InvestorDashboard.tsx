@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { Wallet, TrendingUp, Activity, ArrowRight, FileText } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -15,9 +16,14 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts'
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase/client'
+import {
+  calculateTotalAccruedYield,
+  generateYieldChartData,
+  type InvestmentWithProduct,
+} from '@/lib/yield-calculator'
 
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0)
@@ -27,10 +33,102 @@ const formatDate = (dateString: string | null) => {
   return new Date(dateString).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
 }
 
+function getStatusBadge(status: string) {
+  switch (status) {
+    case 'approved':
+      return <Badge className="bg-emerald-500 hover:bg-emerald-600">Aprovado</Badge>
+    case 'pending_transfer':
+      return <Badge variant="secondary">Pendente de Transferência</Badge>
+    case 'resgatado':
+      return (
+        <Badge variant="outline" className="text-blue-600 border-blue-600">
+          Resgatado
+        </Badge>
+      )
+    case 'Excluído':
+    case 'cancelled':
+      return <Badge variant="destructive">Cancelado</Badge>
+    default:
+      return <Badge variant="outline">{status}</Badge>
+  }
+}
+
+function InvestmentList({ data }: { data: any[] }) {
+  if (data.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center p-12 text-center bg-muted/30 border border-dashed rounded-lg">
+        <FileText className="h-12 w-12 text-muted-foreground/50 mb-4" />
+        <p className="text-lg font-medium text-foreground">Nenhum investimento encontrado</p>
+        <p className="text-sm text-muted-foreground">Não há registros para esta categoria.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {data.map((inv) => (
+        <Card key={inv.id} className="transition-all hover:border-primary/50">
+          <CardHeader className="pb-2">
+            <div className="flex items-start justify-between">
+              <div>
+                <CardTitle className="text-base text-primary">
+                  {inv.investment_products?.title || 'Produto Desconhecido'}
+                </CardTitle>
+                <CardDescription className="mt-1">
+                  Operação registrada em: {formatDate(inv.created_at)}
+                </CardDescription>
+              </div>
+              {getStatusBadge(inv.status)}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm bg-muted/10 p-3 rounded-md">
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
+                  Valor Total
+                </p>
+                <p className="font-semibold text-foreground">{formatCurrency(inv.total_value)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Cotas</p>
+                <p className="font-semibold text-foreground">{inv.quotas} cota(s)</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
+                  Taxa / Alvo
+                </p>
+                <p className="font-semibold text-emerald-600">
+                  {inv.investment_products?.rate || '-'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
+                  Contrato
+                </p>
+                {inv.contract_url ? (
+                  <a
+                    href={inv.contract_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline flex items-center gap-1 font-medium"
+                  >
+                    <FileText className="h-3.5 w-3.5" /> Ver PDF
+                  </a>
+                ) : (
+                  <span className="text-muted-foreground">-</span>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  )
+}
+
 export function InvestorDashboard() {
   const { user, profile, loading: authLoading } = useAuth()
   const [investments, setInvestments] = useState<any[]>([])
-  const [redemptions, setRedemptions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedProduct, setSelectedProduct] = useState<string>('all')
 
@@ -39,26 +137,18 @@ export function InvestorDashboard() {
       if (!user) return
 
       try {
-        const [invRes, redRes] = await Promise.all([
-          supabase
-            .from('investments_view')
-            .select('*, investment_products(id, title, type, rate)')
-            .eq('user_id', user.id)
-            .order('created_at', { ascending: false }),
-          supabase
-            .from('investment_redemptions')
-            .select('*')
-            .eq('user_id', user.id)
-            .eq('status', 'paid'),
-        ])
+        const { data, error } = await supabase
+          .from('investments_view')
+          .select('*, investment_products(id, title, type, rate, term, quota_value)')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
 
-        if (invRes.error) throw invRes.error
-        if (redRes.error) throw redRes.error
+        if (error) throw error
 
-        setInvestments(invRes.data || [])
-        setRedemptions(redRes.data || [])
+        setInvestments(data || [])
       } catch (err) {
         console.error('Error fetching investor data:', err)
+        toast.error('Erro ao carregar dados de investimento.')
       } finally {
         setLoading(false)
       }
@@ -85,7 +175,10 @@ export function InvestorDashboard() {
 
   const totalBalance = walletBalance + totalInvestedValue
 
-  const accumulatedYield = redemptions.reduce((acc, red) => acc + (red.yield_amount || 0), 0)
+  const accumulatedYield = useMemo(
+    () => calculateTotalAccruedYield(activeInvestments as InvestmentWithProduct[]),
+    [activeInvestments],
+  )
 
   const uniqueProducts = useMemo(() => {
     const productsMap = new Map()
@@ -102,129 +195,13 @@ export function InvestorDashboard() {
     if (selectedProduct !== 'all') {
       filteredInvs = filteredInvs.filter((inv) => inv.product_id === selectedProduct)
     }
-
-    const sorted = [...filteredInvs].sort((a, b) => {
-      const dateA = new Date(a.transfer_date || a.created_at).getTime()
-      const dateB = new Date(b.transfer_date || b.created_at).getTime()
-      return dateA - dateB
-    })
-
-    const dataPoints: Record<string, number> = {}
-    let cumulative = 0
-
-    sorted.forEach((inv) => {
-      const dateStr = new Date(inv.transfer_date || inv.created_at).toLocaleDateString('pt-BR', {
-        month: 'short',
-        year: '2-digit',
-        timeZone: 'UTC',
-      })
-
-      cumulative += inv.total_value || 0
-      dataPoints[dateStr] = cumulative
-    })
-
-    return Object.entries(dataPoints).map(([date, value]) => ({ date, value }))
+    return generateYieldChartData(filteredInvs as InvestmentWithProduct[])
   }, [activeInvestments, selectedProduct])
 
   if (authLoading || loading) {
     return (
       <div className="flex h-[80vh] items-center justify-center">
         <Skeleton className="h-12 w-12 rounded-full" />
-      </div>
-    )
-  }
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'approved':
-        return <Badge className="bg-emerald-500 hover:bg-emerald-600">Aprovado</Badge>
-      case 'pending_transfer':
-        return <Badge variant="secondary">Pendente de Transferência</Badge>
-      case 'resgatado':
-        return (
-          <Badge variant="outline" className="text-blue-600 border-blue-600">
-            Resgatado
-          </Badge>
-        )
-      case 'Excluído':
-      case 'cancelled':
-        return <Badge variant="destructive">Cancelado</Badge>
-      default:
-        return <Badge variant="outline">{status}</Badge>
-    }
-  }
-
-  const InvestmentList = ({ data }: { data: any[] }) => {
-    if (data.length === 0) {
-      return (
-        <div className="flex flex-col items-center justify-center p-12 text-center bg-muted/30 border border-dashed rounded-lg">
-          <FileText className="h-12 w-12 text-muted-foreground/50 mb-4" />
-          <p className="text-lg font-medium text-foreground">Nenhum investimento encontrado</p>
-          <p className="text-sm text-muted-foreground">Não há registros para esta categoria.</p>
-        </div>
-      )
-    }
-
-    return (
-      <div className="space-y-4">
-        {data.map((inv) => (
-          <Card key={inv.id} className="transition-all hover:border-primary/50">
-            <CardHeader className="pb-2">
-              <div className="flex items-start justify-between">
-                <div>
-                  <CardTitle className="text-base text-primary">
-                    {inv.investment_products?.title || 'Produto Desconhecido'}
-                  </CardTitle>
-                  <CardDescription className="mt-1">
-                    Operação registrada em: {formatDate(inv.created_at)}
-                  </CardDescription>
-                </div>
-                {getStatusBadge(inv.status)}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm bg-muted/10 p-3 rounded-md">
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
-                    Valor Total
-                  </p>
-                  <p className="font-semibold text-foreground">{formatCurrency(inv.total_value)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
-                    Cotas
-                  </p>
-                  <p className="font-semibold text-foreground">{inv.quotas} cota(s)</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
-                    Taxa / Alvo
-                  </p>
-                  <p className="font-semibold text-emerald-600">
-                    {inv.investment_products?.rate || '-'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
-                    Contrato
-                  </p>
-                  {inv.contract_url ? (
-                    <a
-                      href={inv.contract_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline flex items-center gap-1 font-medium"
-                    >
-                      <FileText className="h-3.5 w-3.5" /> Ver PDF
-                    </a>
-                  ) : (
-                    <span className="text-muted-foreground">-</span>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
       </div>
     )
   }
@@ -286,7 +263,7 @@ export function InvestorDashboard() {
               {formatCurrency(accumulatedYield)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Lucro consolidado em resgates pagos
+              Rendimento projetado sobre investimentos ativos
             </p>
           </CardContent>
         </Card>
@@ -296,7 +273,7 @@ export function InvestorDashboard() {
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>Evolução do Portfólio</CardTitle>
-            <CardDescription>Crescimento do valor investido ao longo do tempo</CardDescription>
+            <CardDescription>Rendimento acumulado projetado mês a mês</CardDescription>
           </div>
           <Select value={selectedProduct} onValueChange={setSelectedProduct}>
             <SelectTrigger className="w-[200px]">
@@ -314,47 +291,52 @@ export function InvestorDashboard() {
         </CardHeader>
         <CardContent>
           {chartData.length > 0 ? (
-            <div className="h-[300px] w-full mt-4">
+            <div className="w-full mt-4">
               <ChartContainer
-                config={{ value: { label: 'Valor Acumulado', color: 'hsl(var(--primary))' } }}
-                className="h-full w-full"
+                config={{ value: { label: 'Rendimento Acumulado', color: 'hsl(var(--primary))' } }}
+                className="h-[300px] w-full"
               >
-                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} />
-                  <YAxis
-                    tickFormatter={(value) => `R$ ${(value / 1000).toFixed(0)}k`}
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={8}
-                    width={80}
-                  />
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" opacity={0.5} />
-                  <ChartTooltip
-                    content={
-                      <ChartTooltipContent formatter={(val) => formatCurrency(Number(val))} />
-                    }
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="value"
-                    stroke="hsl(var(--primary))"
-                    strokeWidth={2}
-                    fillOpacity={1}
-                    fill="url(#colorValue)"
-                  />
-                </AreaChart>
+                <ResponsiveContainer width="100%" height={300}>
+                  <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorYield" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} />
+                    <YAxis
+                      tickFormatter={(value) => `R$ ${(value / 1000).toFixed(0)}k`}
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={8}
+                      width={80}
+                    />
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" opacity={0.5} />
+                    <ChartTooltip
+                      content={
+                        <ChartTooltipContent
+                          formatter={(val) => formatCurrency(Number(val))}
+                          labelKey="value"
+                        />
+                      }
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="value"
+                      stroke="hsl(var(--primary))"
+                      strokeWidth={2}
+                      fillOpacity={1}
+                      fill="url(#colorYield)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
               </ChartContainer>
             </div>
           ) : (
             <div className="h-[300px] w-full flex flex-col items-center justify-center text-muted-foreground bg-muted/10 border border-dashed rounded-lg mt-4">
               <Activity className="h-10 w-10 text-muted-foreground/30 mb-3" />
-              <p>Nenhum dado de investimento no período selecionado.</p>
+              <p>Nenhum dado disponível para exibir o gráfico.</p>
             </div>
           )}
         </CardContent>
