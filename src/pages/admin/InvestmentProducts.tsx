@@ -3,9 +3,10 @@ import { supabase } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
-import { Plus, Loader2, Pencil } from 'lucide-react'
+import { Plus, Loader2, Pencil, TrendingUp } from 'lucide-react'
 import { ProductDialog } from '@/components/admin/ProductDialog'
 import { cn } from '@/lib/utils'
+import { Link } from 'react-router-dom'
 
 export default function InvestmentProducts() {
   const [products, setProducts] = useState<any[]>([])
@@ -125,9 +126,18 @@ export default function InvestmentProducts() {
                       </span>
                     </td>
                     <td className="p-4 align-middle">
-                      <Button variant="ghost" size="sm" onClick={() => handleOpenEdit(p)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => handleOpenEdit(p)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        {p.type === 'Rendimento Variável (Forex Manual)' && (
+                          <Button variant="ghost" size="sm" asChild title="Rendimentos Manuais">
+                            <Link to={`/admin/products/${p.id}/yields`}>
+                              <TrendingUp className="h-4 w-4" />
+                            </Link>
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))

@@ -99,6 +99,7 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
           min_quotas_per_investor: 1,
           max_quotas_per_investor: 100,
           is_archived: false,
+          yield_split_pct: 50,
         })
       }
       fetchDropdownData()
@@ -306,6 +307,9 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
                     <SelectItem value="CRI">CRI</SelectItem>
                     <SelectItem value="CRA">CRA</SelectItem>
                     <SelectItem value="FIDC">FIDC</SelectItem>
+                    <SelectItem value="Rendimento Variável (Forex Manual)">
+                      Rendimento Variável (Forex Manual)
+                    </SelectItem>
                     <SelectItem value="Outros">Outros</SelectItem>
                   </SelectContent>
                 </Select>
@@ -365,6 +369,31 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
                   placeholder="Ex: CDI + 2%"
                 />
               </div>
+
+              {formData.type === 'Rendimento Variável (Forex Manual)' && (
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Percentual de Divisão (%)</Label>
+                  <Input
+                    disabled={isReadOnly}
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={formData.yield_split_pct ?? 50}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        yield_split_pct: Math.min(100, Math.max(0, Number(e.target.value))),
+                      })
+                    }
+                    placeholder="Ex: 50 (50% cliente / 50% securitizadora)"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Define a divisão do rendimento bruto entre cliente e securitizadora. Ex: 50
+                    significa 50% para o cliente e 50% para a securitizadora.
+                  </p>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label>Prazo (Termo)</Label>

@@ -11,7 +11,12 @@ export interface InvestmentWithProduct {
     term: string | null
     quota_value: number | null
     unit_price?: number | null
+    type?: string | null
   } | null
+}
+
+export function isManualYieldProduct(inv: InvestmentWithProduct): boolean {
+  return inv.investment_products?.type === 'Rendimento Variável (Forex Manual)'
 }
 
 const MONTH_LABELS = [

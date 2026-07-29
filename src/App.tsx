@@ -20,6 +20,7 @@ import Profile from './pages/Profile'
 import Users from './pages/admin/Users'
 import FinancialParameters from './pages/admin/FinancialParameters'
 import InvestmentProducts from './pages/admin/InvestmentProducts'
+import ManualYieldEntries from './pages/admin/ManualYieldEntries'
 import BankAccounts from './pages/admin/BankAccounts'
 import InvestmentsReview from './pages/admin/InvestmentsReview'
 import AdminCcbRequests from './pages/admin/AdminCcbRequests'
@@ -340,6 +341,14 @@ const App = () => (
               element={
                 <RoleGuard allowedRoles={['admin', 'staff']}>
                   <InvestmentProducts />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/admin/products/:productId/yields"
+              element={
+                <RoleGuard allowedRoles={['admin', 'staff']}>
+                  <ManualYieldEntries />
                 </RoleGuard>
               }
             />

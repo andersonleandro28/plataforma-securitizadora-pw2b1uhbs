@@ -22,8 +22,14 @@ import { supabase } from '@/lib/supabase/client'
 import {
   calculateTotalAccruedYield,
   generateYieldChartData,
+  isManualYieldProduct,
   type InvestmentWithProduct,
 } from '@/lib/yield-calculator'
+import { fetchManualYieldsForInvestment, type ManualYieldEntry } from '@/services/manual-yield'
+import {
+  calculateManualYieldAmount,
+  generateManualYieldChartData,
+} from '@/lib/manual-yield-calculator'
 
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0)
@@ -129,6 +135,7 @@ function InvestmentList({ data }: { data: any[] }) {
 export function InvestorDashboard() {
   const { user, profile, loading: authLoading } = useAuth()
   const [investments, setInvestments] = useState<any[]>([])
+  const [manualYieldMap, setManualYieldMap] = useState<Record<string, ManualYieldEntry[]>>({})
   const [loading, setLoading] = useState(true)
   const [selectedProduct, setSelectedProduct] = useState<string>('all')
 
@@ -146,6 +153,25 @@ export function InvestorDashboard() {
         if (error) throw error
 
         setInvestments(data || [])
+
+        const manualProducts = (data || []).filter(
+          (inv: any) =>
+            inv.investment_products?.type === 'Rendimento Variável (Forex Manual)' &&
+            inv.investment_products?.id,
+        )
+
+        const yieldMap: Record<string, ManualYieldEntry[]> = {}
+        await Promise.all(
+          manualProducts.map(async (inv: any) => {
+            try {
+              const entries = await fetchManualYieldsForInvestment(inv.investment_products.id)
+              yieldMap[inv.investment_products.id] = entries
+            } catch {
+              yieldMap[inv.investment_products.id] = []
+            }
+          }),
+        )
+        setManualYieldMap(yieldMap)
       } catch (err) {
         console.error('Error fetching investor data:', err)
         toast.error('Erro ao carregar dados de investimento.')
@@ -175,10 +201,27 @@ export function InvestorDashboard() {
 
   const totalBalance = walletBalance + totalInvestedValue
 
-  const accumulatedYield = useMemo(
-    () => calculateTotalAccruedYield(activeInvestments as InvestmentWithProduct[]),
-    [activeInvestments],
-  )
+  const accumulatedYield = useMemo(() => {
+    const fixedYield = calculateTotalAccruedYield(
+      activeInvestments.filter(
+        (inv) => !isManualYieldProduct(inv as InvestmentWithProduct),
+      ) as InvestmentWithProduct[],
+    )
+
+    const manualYield = activeInvestments
+      .filter((inv) => isManualYieldProduct(inv as InvestmentWithProduct))
+      .reduce((sum, inv) => {
+        const entries = manualYieldMap[inv.investment_products?.id] || []
+        const startDate = inv.transfer_date
+          ? new Date(inv.transfer_date)
+          : inv.created_at
+            ? new Date(inv.created_at)
+            : null
+        return sum + calculateManualYieldAmount(inv.total_value || 0, entries, startDate)
+      }, 0)
+
+    return fixedYield + manualYield
+  }, [activeInvestments, manualYieldMap])
 
   const uniqueProducts = useMemo(() => {
     const productsMap = new Map()
@@ -195,8 +238,63 @@ export function InvestorDashboard() {
     if (selectedProduct !== 'all') {
       filteredInvs = filteredInvs.filter((inv) => inv.product_id === selectedProduct)
     }
-    return generateYieldChartData(filteredInvs as InvestmentWithProduct[])
-  }, [activeInvestments, selectedProduct])
+
+    const fixedInvs = filteredInvs.filter(
+      (inv) => !isManualYieldProduct(inv as InvestmentWithProduct),
+    )
+    const manualInvs = filteredInvs.filter((inv) =>
+      isManualYieldProduct(inv as InvestmentWithProduct),
+    )
+
+    const fixedChartData = generateYieldChartData(fixedInvs as InvestmentWithProduct[])
+
+    const manualChartData = manualInvs.flatMap((inv) => {
+      const entries = manualYieldMap[inv.investment_products?.id] || []
+      const startDate = inv.transfer_date
+        ? new Date(inv.transfer_date)
+        : inv.created_at
+          ? new Date(inv.created_at)
+          : null
+      return generateManualYieldChartData(inv.total_value || 0, entries, startDate)
+    })
+
+    if (fixedChartData.length === 0 && manualChartData.length === 0) return []
+
+    if (fixedChartData.length > 0 && manualChartData.length === 0) return fixedChartData
+    if (fixedChartData.length === 0 && manualChartData.length > 0) return manualChartData
+
+    const merged = new Map<string, number>()
+    for (const point of fixedChartData) {
+      merged.set(point.date, (merged.get(point.date) || 0) + point.value)
+    }
+    for (const point of manualChartData) {
+      merged.set(point.date, (merged.get(point.date) || 0) + point.value)
+    }
+
+    const sortedDates = Array.from(merged.keys()).sort((a, b) => {
+      const parseDate = (s: string) => {
+        const [month, year] = s.split(' ')
+        const months = [
+          'Jan',
+          'Fev',
+          'Mar',
+          'Abr',
+          'Mai',
+          'Jun',
+          'Jul',
+          'Ago',
+          'Set',
+          'Out',
+          'Nov',
+          'Dez',
+        ]
+        return new Date(Number(year), months.indexOf(month), 1).getTime()
+      }
+      return parseDate(a) - parseDate(b)
+    })
+
+    return sortedDates.map((date) => ({ date, value: merged.get(date) || 0 }))
+  }, [activeInvestments, selectedProduct, manualYieldMap])
 
   if (authLoading || loading) {
     return (
