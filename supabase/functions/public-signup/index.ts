@@ -38,7 +38,10 @@ Deno.serve(async (req: Request) => {
 
     if (error) {
       let errorMsg = error.message
-      if (errorMsg.toLowerCase().includes('already registered') || errorMsg.toLowerCase().includes('already been registered')) {
+      if (
+        errorMsg.toLowerCase().includes('already registered') ||
+        errorMsg.toLowerCase().includes('already been registered')
+      ) {
         errorMsg = 'A user with this email address has already been registered'
       }
       return new Response(JSON.stringify({ error: errorMsg }), {

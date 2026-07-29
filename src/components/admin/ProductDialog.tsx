@@ -80,7 +80,7 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
           risk: 'Médio',
           rating: '',
           status: '',
-          series_id: '',
+          series_id: null,
           currency: 'BRL',
           global_quotas: 1000,
           quota_value: 1000,
@@ -156,7 +156,13 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
     try {
       const payload = { ...formData }
       delete payload.debenture_series
-      if (payload.series_id === '') payload.series_id = null
+      if (
+        payload.series_id === '' ||
+        payload.series_id === 'empty' ||
+        payload.type === 'Rendimento Variável (Forex Manual)'
+      ) {
+        payload.series_id = null
+      }
 
       if (product?.id) {
         const { error } = await supabase
@@ -340,9 +346,15 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
               <div className="space-y-2">
                 <Label>Série</Label>
                 <Select
-                  value={formData.series_id || ''}
-                  onValueChange={(v) => setFormData({ ...formData, series_id: v })}
-                  disabled={loadingSeries || isReadOnly}
+                  value={formData.series_id === null ? 'empty' : formData.series_id || ''}
+                  onValueChange={(v) =>
+                    setFormData({ ...formData, series_id: v === 'empty' ? null : v })
+                  }
+                  disabled={
+                    loadingSeries ||
+                    isReadOnly ||
+                    formData.type === 'Rendimento Variável (Forex Manual)'
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue
