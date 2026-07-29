@@ -152,6 +152,7 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
     setSaving(true)
     try {
       const payload = { ...formData }
+      delete payload.debenture_series
       if (payload.series_id === '') payload.series_id = null
 
       if (product?.id) {
