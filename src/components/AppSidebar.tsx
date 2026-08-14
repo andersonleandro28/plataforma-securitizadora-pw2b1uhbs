@@ -16,6 +16,7 @@ import {
   CheckSquare,
   FileBadge,
   ShieldAlert,
+  Wallet,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -89,6 +90,12 @@ const allNavItems = [
     title: 'Aprovações de Aportes',
     path: '/admin/investments',
     icon: CheckSquare,
+    roles: ['admin', 'staff'],
+  },
+  {
+    title: 'Carteira de Investidores',
+    path: '/admin/investors-portfolio',
+    icon: Wallet,
     roles: ['admin', 'staff'],
   },
   {
