@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import {
   Card,
   CardHeader,
@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Progress } from '@/components/ui/progress'
 import {
   Select,
   SelectContent,
@@ -23,9 +24,12 @@ import {
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { Loader2, Lock, User, Mail, Camera, Shield, Save } from 'lucide-react'
+import { Loader2, Lock, User, Mail, Camera, Shield, Save, CheckCircle2 } from 'lucide-react'
 import { AccessLogs } from '@/components/profile/AccessLogs'
 import { UserBankAccounts } from '@/components/profile/UserBankAccounts'
+import { KycDocuments } from '@/components/profile/KycDocuments'
+import { maskDocument, validateDocument, onlyDigits } from '@/lib/cpf-cnpj'
+import { getProfileCompleteness } from '@/lib/profile-completeness'
 
 type EntityType = 'pf' | 'pj' | null | undefined
 
@@ -110,6 +114,9 @@ export default function Profile() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [loadingPassword, setLoadingPassword] = useState(false)
 
+  // Documentos KYC (contagem para a barra de progresso)
+  const [docCount, setDocCount] = useState(0)
+
   useEffect(() => {
     if (profile) {
       setFullName(profile.full_name || '')
@@ -118,7 +125,10 @@ export default function Profile() {
       setFormData({
         full_name: profile.full_name || '',
         phone: profile.phone || '',
-        document_number: profile.document_number || '',
+        document_number: maskDocument(
+          profile.document_number || '',
+          profile.entity_type as EntityType,
+        ),
         entity_type: (profile.entity_type as EntityType) || 'pf',
         pf_rg: profile.pf_rg || '',
         pf_birth_date: toDateInput((profile as any).pf_birth_date),
@@ -145,6 +155,21 @@ export default function Profile() {
     }
   }, [profile])
 
+  // Carrega a contagem de documentos KYC do usuário
+  useEffect(() => {
+    const loadDocCount = async () => {
+      const { count } = await supabase
+        .from('kyc_documents')
+        .select('*', { count: 'exact', head: true })
+      setDocCount(count || 0)
+    }
+    loadDocCount()
+    // Atualiza a contagem quando houver alterações de perfil
+    const handler = () => loadDocCount()
+    window.addEventListener('profile-updated', handler)
+    return () => window.removeEventListener('profile-updated', handler)
+  }, [])
+
   const updateField = (key: keyof ProfileFormData, value: any) =>
     setFormData((prev) => ({ ...prev, [key]: value }))
 
@@ -157,6 +182,37 @@ export default function Profile() {
   const showPjTab =
     formData.entity_type === 'pj' ||
     !!(profile?.pj_company_name || profile?.pj_trade_name || profile?.pj_cnae)
+
+  // ---- Máscara e validação de CPF/CNPJ ----
+  const documentError = useMemo(() => {
+    const raw = onlyDigits(formData.document_number)
+    if (!raw) return ''
+    const expectedLen = formData.entity_type === 'pj' ? 14 : 11
+    if (raw.length < expectedLen) return '' // ainda digitando
+    if (!validateDocument(formData.document_number, formData.entity_type)) {
+      return formData.entity_type === 'pj'
+        ? 'CNPJ inválido. Verifique os dígitos verificadores.'
+        : 'CPF inválido. Verifique os dígitos verificadores.'
+    }
+    return ''
+  }, [formData.document_number, formData.entity_type])
+
+  const handleDocumentChange = (value: string) => {
+    const masked = maskDocument(value, formData.entity_type)
+    updateField('document_number', masked)
+  }
+
+  const handleEntityTypeChange = (v: string) => {
+    // Reaplica a máscara adequada ao mudar o tipo
+    const masked = maskDocument(formData.document_number, v as EntityType)
+    setFormData((prev) => ({ ...prev, entity_type: v as EntityType, document_number: masked }))
+  }
+
+  // ---- Completude do perfil ----
+  const completeness = useMemo(
+    () => getProfileCompleteness(profile, docCount > 0),
+    [profile, docCount],
+  )
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -200,11 +256,20 @@ export default function Profile() {
   const handleUpdateData = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user) return
+
+    // Bloqueia o salvamento se o documento informado for inválido
+    const rawDoc = onlyDigits(formData.document_number)
+    if (rawDoc && !validateDocument(formData.document_number, formData.entity_type)) {
+      const label = formData.entity_type === 'pj' ? 'CNPJ' : 'CPF'
+      return toast.error(`${label} inválido. Corrija antes de salvar.`)
+    }
+
     setLoadingDataUpdate(true)
     const payload: Record<string, any> = {
       full_name: formData.full_name,
       phone: formData.phone || null,
-      document_number: formData.document_number || null,
+      // Armazena apenas os dígitos no banco
+      document_number: rawDoc || null,
       entity_type: formData.entity_type || null,
       pf_rg: formData.pf_rg || null,
       pf_birth_date: formData.pf_birth_date || null,
@@ -331,6 +396,30 @@ export default function Profile() {
         <div className="flex flex-wrap gap-2">{renderRoles()}</div>
       </div>
 
+      {/* Barra de progresso "Perfil Completo" */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex items-center gap-2">
+              {completeness.percentage === 100 ? (
+                <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+              ) : (
+                <User className="h-5 w-5 text-primary" />
+              )}
+              <span className="font-medium">Perfil {completeness.percentage}% completo</span>
+            </div>
+            <Progress value={completeness.percentage} className="flex-1 h-3" />
+            {completeness.percentage < 100 && (
+              <p className="text-xs text-muted-foreground sm:max-w-xs">
+                {completeness.missing.length > 0
+                  ? `Pendências: ${completeness.missing.join(', ')}`
+                  : 'Envie ao menos 1 documento KYC para concluir.'}
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Avatar + Nome + Email (acima das abas) */}
       <Card>
         <CardHeader>
@@ -442,17 +531,22 @@ export default function Profile() {
                     <Label>CPF / CNPJ</Label>
                     <Input
                       value={formData.document_number}
-                      onChange={(e) => updateField('document_number', e.target.value)}
+                      onChange={(e) => handleDocumentChange(e.target.value)}
                       placeholder={
                         formData.entity_type === 'pj' ? '00.000.000/0001-00' : '000.000.000-00'
                       }
+                      inputMode="numeric"
+                      className={
+                        documentError ? 'border-destructive focus-visible:ring-destructive' : ''
+                      }
                     />
+                    {documentError && <p className="text-xs text-destructive">{documentError}</p>}
                   </div>
                   <div className="space-y-2">
                     <Label>Tipo de Entidade</Label>
                     <Select
                       value={formData.entity_type || 'pf'}
-                      onValueChange={(v) => updateField('entity_type', v)}
+                      onValueChange={handleEntityTypeChange}
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -659,6 +753,9 @@ export default function Profile() {
           </CardFooter>
         </form>
       </Card>
+
+      {/* Documentos KYC */}
+      <KycDocuments />
 
       <div className="grid lg:grid-cols-2 gap-6">
         <Card>
