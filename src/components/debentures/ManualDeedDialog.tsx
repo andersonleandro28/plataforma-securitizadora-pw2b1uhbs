@@ -129,15 +129,23 @@ export function ManualDeedDialog({ open, onOpenChange, onSuccess }: ManualDeedDi
         if (seriesErr) throw new Error(`Erro ao salvar série: ${seriesErr.message}`)
 
         if (s.subscriptions.length > 0) {
-          const subsToInsert = s.subscriptions.map((sub) => ({
-            series_id: seriesData.id,
-            investor_name: sub.investor_name || 'Investidor Não Identificado',
-            document_number: sub.document_number,
-            quantity: sub.quantity,
-            unit_price: sub.unit_price,
-            total_amount: sub.quantity * sub.unit_price,
-            subscription_date: sub.subscription_date || null,
-          }))
+          const subsToInsert = s.subscriptions.map((sub) => {
+            if (!sub.subscription_date) {
+              console.warn(
+                '[ManualDeedDialog] subscription_date vazia no payload de INSERT — o Livro Caixa usará created_at como data contábil.',
+                { investor_name: sub.investor_name, series_number: s.series_number },
+              )
+            }
+            return {
+              series_id: seriesData.id,
+              investor_name: sub.investor_name || 'Investidor Não Identificado',
+              document_number: sub.document_number,
+              quantity: sub.quantity,
+              unit_price: sub.unit_price,
+              total_amount: sub.quantity * sub.unit_price,
+              subscription_date: sub.subscription_date || null,
+            }
+          })
 
           const { error: subErr } = await supabase
             .from('debenture_subscriptions')

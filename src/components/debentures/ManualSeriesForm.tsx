@@ -24,7 +24,10 @@ export function ManualSeriesForm({ series, index, onChange, onRemove }: Props) {
       document_number: '',
       quantity: 1,
       unit_price: 1000,
-      subscription_date: new Date().toISOString().split('T')[0],
+      subscription_date: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(
+        2,
+        '0',
+      )}-${String(new Date().getDate()).padStart(2, '0')}`,
     }
     onChange(index, { ...series, subscriptions: [...series.subscriptions, newSub] })
   }

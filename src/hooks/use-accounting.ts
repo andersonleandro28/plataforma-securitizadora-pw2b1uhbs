@@ -11,6 +11,32 @@ export type Transaction = {
   accumulated_balance: number
 }
 
+/**
+ * Normaliza uma data para o formato YYYY-MM-DD evitando o deslocamento de fuso
+ * horário (especialmente em UTC-3, Brasil). Caso o valor já seja uma data no
+ * formato ISO (YYYY-MM-DD), apenas extrai a parte da data. Para timestamps, é
+ * construído um Date com horário de meio-dia no horário local e então
+ * convertido para ISO, garantindo que o dia informado pelo usuário seja o
+ * mesmo que aparecerá no Livro Caixa.
+ */
+function normalizeAccountingDate(value: string | null | undefined): string {
+  if (!value) return new Date().toISOString().split('T')[0]
+
+  const str = String(value)
+
+  // Já está no formato "YYYY-MM-DD" — apenas devolve.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str
+
+  // Contém informação de horário (timestamp ISO). Constrói um Date e força o
+  // meio-dia no horário local para evitar que o arredondamento de fuso empurre
+  // a data para o dia anterior.
+  const d = new Date(str)
+  if (isNaN(d.getTime())) return str.split('T')[0]
+
+  const local = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0)
+  return local.toISOString().split('T')[0]
+}
+
 export function useAccounting() {
   const [data, setData] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
@@ -65,7 +91,7 @@ export function useAccounting() {
         if (sub.status !== 'Excluído' && sub.status !== 'Cancelado') {
           transactions.push({
             id: `sub-${sub.id}`,
-            date: sub.subscription_date || sub.created_at,
+            date: normalizeAccountingDate(sub.subscription_date || sub.created_at),
             type: 'in',
             category: 'Subscrição de Debênture',
             description: `Subscrição — ${sub.investor_name}`,

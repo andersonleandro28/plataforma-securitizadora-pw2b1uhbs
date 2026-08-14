@@ -85,6 +85,15 @@ export function ManageSubscriptionsDialog({
         subscription_date: editForm.subscription_date || null,
       }
 
+      // Avisa no console quando a data de depósito não for informada —
+      // nesse caso a data contábil cairá no fallback de created_at.
+      if (!payload.subscription_date) {
+        console.warn(
+          '[ManageSubscriptionsDialog] subscription_date vazia no payload — o Livro Caixa usará created_at como data contábil.',
+          { investor_name: payload.investor_name, addingNew, editingId },
+        )
+      }
+
       if (addingNew) {
         const { data: newSub, error } = await supabase
           .from('debenture_subscriptions')
