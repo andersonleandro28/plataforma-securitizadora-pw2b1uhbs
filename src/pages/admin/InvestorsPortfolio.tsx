@@ -264,12 +264,12 @@ export default function InvestorsPortfolio() {
         return sub.totalAmount * (sumGrossPct / 100) * split
       }
 
-      // Renda fixa / Debênture: valor × (taxa anual / 12) × meses decorridos
+      // Renda fixa / Debênture: cálculo diário proporcional (idêntico à área do investidor)
       const annualRate = parseProductRate(product.rate)
       if (annualRate === null) return 0
-      const months = monthsBetween(sub.startDate, now)
-      if (months <= 0) return 0
-      return sub.totalAmount * (annualRate / 12 / 100) * months
+      const daysDiff = Math.floor((now.getTime() - sub.startDate.getTime()) / (1000 * 60 * 60 * 24))
+      if (daysDiff <= 0) return 0
+      return (sub.totalAmount * (annualRate / 100) * daysDiff) / 365
     }
 
     const groupMap = new Map<string, InvestorGroup>()
