@@ -211,15 +211,17 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
         } else {
           const netValue = calc?.net_value || op.requested_value || 0
           const interestValue = (op.face_value || 0) - netValue
+          // Valor de face = valor que efetivamente entra na conta bancária
+          const faceValue = op.face_value || netValue + interestValue
 
-          if (netValue > 0) {
-            const { data: movPrinc, error: movErr1 } = await supabase
+          if (faceValue > 0) {
+            const { data: mov, error: movErr } = await supabase
               .from('movimentacoes_caixa')
               .insert({
                 tipo: 'entrada',
                 categoria: 'liquidação_recebível',
                 descricao: `Liquidação de recebível — ${op.sacado}`,
-                valor: netValue,
+                valor: faceValue,
                 saldo_anterior: 0,
                 saldo_novo: 0,
                 referencia_id: op.id,
@@ -230,44 +232,15 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
               .select()
               .single()
 
-            if (movErr1) throw movErr1
+            if (movErr) throw movErr
             await supabase.from('mapeamento_movimentacoes').insert({
-              movimentacao_caixa_id: movPrinc.id,
+              movimentacao_caixa_id: mov.id,
               origem_tabela: 'recebíveis',
               origem_id: op.id,
               sincronizado: true,
               user_id: user.id,
             })
             toast.success('Recebível liquidado e registrado no caixa')
-          }
-
-          if (interestValue > 0) {
-            const { data: movJur, error: movErr2 } = await supabase
-              .from('movimentacoes_caixa')
-              .insert({
-                tipo: 'entrada',
-                categoria: 'juros_entrada',
-                descricao: `Juros recebidos — Operação #${op.id.split('-')[0].toUpperCase()}`,
-                valor: interestValue,
-                saldo_anterior: 0,
-                saldo_novo: 0,
-                referencia_id: op.id,
-                referencia_tipo: 'recebível',
-                referencia_numero: op.document_number,
-                user_id: user.id,
-              })
-              .select()
-              .single()
-
-            if (movErr2) throw movErr2
-            await supabase.from('mapeamento_movimentacoes').insert({
-              movimentacao_caixa_id: movJur.id,
-              origem_tabela: 'juros',
-              origem_id: op.id,
-              sincronizado: true,
-              user_id: user.id,
-            })
-            toast.success('Juros registrados no caixa')
           }
         }
       } catch (err: any) {
