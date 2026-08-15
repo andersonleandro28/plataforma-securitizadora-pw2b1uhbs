@@ -35,6 +35,12 @@ import { ReconcileModal } from '@/components/Treasury/ReconcileModal'
 import { useAccounting } from '@/hooks/use-accounting'
 import { TransactionDetailsModal } from '@/components/Treasury/TransactionDetailsModal'
 
+function formatDisplayDate(dateStr: string): string {
+  if (!dateStr || dateStr.length < 10) return dateStr
+  const [y, m, d] = dateStr.slice(0, 10).split('-')
+  return `${d}/${m}/${y}`
+}
+
 export default function Accounting() {
   const { data, loading, error, refetch } = useAccounting()
 
@@ -62,7 +68,10 @@ export default function Accounting() {
   const itemsPerPage = 20
 
   useEffect(() => {
-    refetch().then(() => toast.success('Dados consolidados carregados com sucesso.'))
+    refetch(startOfMonth, endOfMonth).then(() =>
+      toast.success('Dados consolidados carregados com sucesso.'),
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refetch])
 
   const handleApplyFilters = () => {
@@ -74,6 +83,7 @@ export default function Accounting() {
       busca,
     })
     setPage(1)
+    refetch(periodoInicio, periodoFim)
   }
 
   const { filteredData, totalEntradas, totalSaidas, globalBalance } = useMemo(() => {
@@ -81,11 +91,11 @@ export default function Accounting() {
     let saidas = 0
 
     const filtered = data.filter((t) => {
-      const d = new Date(t.date)
       let match = true
 
-      if (activeFiltros.inicio && d < new Date(activeFiltros.inicio + 'T00:00:00')) match = false
-      if (activeFiltros.fim && d > new Date(activeFiltros.fim + 'T23:59:59')) match = false
+      const dateStr = t.date?.slice(0, 10) || ''
+      if (activeFiltros.inicio && dateStr < activeFiltros.inicio) match = false
+      if (activeFiltros.fim && dateStr > activeFiltros.fim) match = false
       if (activeFiltros.tipo !== 'todas' && t.type !== activeFiltros.tipo) match = false
       if (activeFiltros.categoria !== 'todas' && t.category !== activeFiltros.categoria)
         match = false
@@ -125,7 +135,7 @@ export default function Accounting() {
 
   const handleExportCSV = () => {
     const exportData = filteredData.map((t) => ({
-      Data: new Date(t.date).toLocaleDateString('pt-BR'),
+      Data: formatDisplayDate(t.date),
       Tipo: t.type === 'in' ? 'Entrada' : 'Saída',
       Categoria: t.category,
       Descrição: t.description,
@@ -360,7 +370,7 @@ export default function Accounting() {
                       onClick={() => setSelectedTx(t)}
                     >
                       <TableCell className="whitespace-nowrap font-medium text-sm">
-                        {new Date(t.date).toLocaleDateString('pt-BR')}
+                        {formatDisplayDate(t.date)}
                       </TableCell>
                       <TableCell>
                         <span

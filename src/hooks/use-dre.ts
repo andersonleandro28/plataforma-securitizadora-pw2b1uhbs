@@ -61,9 +61,10 @@ function labelCategoria(categoria: string | null | undefined): string {
 /**
  * Hook que consolida os dados da DRE (Demonstração do Resultado do Exercício).
  * Busca receitas e despesas do Livro Caixa (movimentacoes_caixa), aportes de
- * investidores (debenture_subscriptions), despesas operacionais (expenses) e
+ * investidores (debenture_subscriptions), despesas operacionais (expenses),
  * transações de tesouraria (treasury_transactions — ex.: recebimento de
- * parcelas de CCB), com sua própria lógica de agrupamento e totais.
+ * parcelas de CCB) e desembolsos de crédito (credit_operations), com sua
+ * própria lógica de agrupamento e totais.
  */
 export function useDre() {
   const [dados, setDados] = useState<DreDados | null>(null)
@@ -78,10 +79,12 @@ export function useDre() {
       const inicioTs = `${inicio}T00:00:00`
       const fimTs = `${fim}T23:59:59`
 
-      const [movsRes, subsRes, expsRes, tresRes] = await Promise.all([
+      const [movsRes, subsRes, expsRes, tresRes, credRes] = await Promise.all([
         supabase
           .from('movimentacoes_caixa')
-          .select('id, tipo, categoria, descricao, valor, created_at')
+          .select(
+            'id, tipo, categoria, descricao, valor, created_at, referencia_tipo, referencia_id',
+          )
           .gte('created_at', inicioTs)
           .lte('created_at', fimTs),
         supabase
@@ -105,15 +108,37 @@ export function useDre() {
           .eq('status', 'Confirmado')
           .gte('date', inicio)
           .lte('date', fim),
+        supabase
+          .from('credit_operations')
+          .select(
+            'id, status, issue_date, sacado, requested_value, operation_calculations(net_value)',
+          )
+          .gte('issue_date', inicio)
+          .lte('issue_date', fim),
       ])
 
       const lancamentos: DreLancamento[] = []
 
       // 1. Movimentações de Caixa (Livro Caixa)
+      // Coleta, para deduplicação posterior, as operações de crédito cujo
+      // desembolso (saída) já foi lançado manualmente no caixa — ou seja,
+      // movimentações do tipo "saída" com referencia_tipo = 'recebível'
+      // vinculadas à operação de crédito via referencia_id. Entradas de
+      // liquidação de recebível (inflow) NÃO são consideradas equivalentes,
+      // pois representam o recebível entrando, não o desembolso saindo.
+      const creditOpIdsNoCaixa = new Set<string>()
       ;(movsRes.data || []).forEach((mov) => {
         const tipoLower = (mov.tipo || '').toLowerCase()
         const tipo: DreTipo = tipoLower === 'saida' ? 'despesa' : 'receita'
         const catOriginal = mov.categoria || 'Outros'
+        const refTipo = (mov.referencia_tipo || '').toLowerCase()
+        if (
+          tipo === 'despesa' &&
+          (refTipo === 'recebível' || refTipo === 'recebivel') &&
+          mov.referencia_id
+        ) {
+          creditOpIdsNoCaixa.add(mov.referencia_id)
+        }
         lancamentos.push({
           id: `mov-${mov.id}`,
           date: normalizeDate(mov.created_at),
@@ -166,6 +191,36 @@ export function useDre() {
             exp.description || (fornecedor ? `Fornecedor — ${fornecedor}` : 'Despesa operacional'),
           valor: Number(exp.amount || 0),
           origem: 'expenses',
+        })
+      })
+
+      // 5. Operações de Crédito (credit_operations).
+      // Operações liquidadas geram um desembolso (saída do dinheiro emprestado
+      // ao cliente). Considera os status 'liquidado' (minúsculo) e 'Liquidado'
+      // (maiúsculo). Usa issue_date como data e net_value (via
+      // operation_calculations) como valor. Deduplica contra lançamentos já
+      // existentes no caixa vinculados via referencia_tipo = 'recebível'.
+      ;(credRes.data || []).forEach((op) => {
+        const st = (op.status || '').toLowerCase()
+        if (st !== 'liquidado') return
+        // Deduplicação: desembolso já refletido no Livro Caixa.
+        if (creditOpIdsNoCaixa.has(op.id)) return
+
+        const calc = Array.isArray(op.operation_calculations)
+          ? op.operation_calculations[0]
+          : op.operation_calculations
+        const valor = Number(calc?.net_value ?? op.requested_value ?? 0)
+        if (!valor) return
+
+        lancamentos.push({
+          id: `cre-${op.id}`,
+          date: normalizeDate(op.issue_date),
+          tipo: 'despesa',
+          categoriaOriginal: 'desembolso_credito',
+          categoria: 'Desembolso de Crédito',
+          descricao: `Desembolso de Crédito — ${op.sacado || 'Sacado'}`,
+          valor,
+          origem: 'credit_operations',
         })
       })
 

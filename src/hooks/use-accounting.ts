@@ -42,7 +42,7 @@ export function useAccounting() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (inicio?: string, fim?: string) => {
     try {
       setLoading(true)
       setError(null)
@@ -56,6 +56,7 @@ export function useAccounting() {
         { data: ops },
         { data: reds },
         { data: movs },
+        { data: tt },
       ] = await Promise.all([
         supabase
           .from('debenture_subscriptions')
@@ -90,6 +91,17 @@ export function useAccounting() {
         supabase
           .from('movimentacoes_caixa')
           .select('id, tipo, categoria, descricao, valor, user_id, created_at'),
+        // 8. Transações do Tesourário — Recebimento de Parcelas - CCB.
+        // Fonte de segurança: CCBs com muitos boletos têm o JSONB truncado pelo
+        // PostgREST na resposta REST, então boletos pagos podem não chegar via
+        // `recebiveis_ccb`. O `treasury_transactions` é populado por trigger do
+        // banco e contém esses registros. A deduplicação por `external_ref`
+        // evita somar duas vezes o mesmo boleto que apareceu por ambas as fontes.
+        supabase
+          .from('treasury_transactions')
+          .select('id, type, category, amount, description, date, external_ref')
+          .eq('type', 'in')
+          .eq('category', 'Recebimento de Parcelas - CCB'),
       ])
 
       // 1. Subscrições
@@ -107,6 +119,9 @@ export function useAccounting() {
       })
 
       // 2. Recebíveis CCB
+      // Coleta os `external_ref` dos boletos que chegaram via JSONB para evitar
+      // duplicidade com os registros vindos do `treasury_transactions`.
+      const boletoExternalRefs = new Set<string>()
       ;(recs || []).forEach((rec) => {
         const prof = Array.isArray(rec.profiles) ? rec.profiles[0] : rec.profiles
         const tomador = prof?.pj_company_name || prof?.full_name || 'Desconhecido'
@@ -114,7 +129,7 @@ export function useAccounting() {
         const valAcq = Number(rec.acquisition_value || 0)
         transactions.push({
           id: `acq-${rec.id}`,
-          date: rec.created_at,
+          date: normalizeAccountingDate(rec.created_at),
           type: 'out',
           category: 'Aquisição de CCB',
           description: `Aquisição de CCB — ${tomador} — R$ ${valAcq.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
@@ -137,15 +152,36 @@ export function useAccounting() {
               Number(bol.valor || bol.unit_value || 0) +
               Number(bol.interest_applied || 0) +
               Number(bol.penalty_applied || 0)
+            // Registra o `external_ref` deste boleto (mesmo formato usado pelo
+            // trigger que popula `treasury_transactions`) para deduplicação.
+            if (bol.external_ref) boletoExternalRefs.add(String(bol.external_ref))
+            else if (rec.id) boletoExternalRefs.add(`ccb-bol-${rec.id}-${i + 1}`)
             transactions.push({
               id: `bol-${rec.id}-${i}`,
-              date: pDate,
+              date: normalizeAccountingDate(pDate),
               type: 'in',
               category: 'Liquidação de Recebível',
               description: `Recebível liquidado — Boleto ${bol.numero || bol.number || i + 1} - Tomador: ${tomador}`,
               value: val,
             })
           }
+        })
+      })
+
+      // 8. Transações do Tesourário — Recebimento de Parcelas - CCB
+      // Adiciona os recebimentos que não chegaram via JSONB (CCBs com boletos
+      // truncados pelo PostgREST). Pula os que já foram capturados em `recs`.
+      ;(tt || []).forEach((tx: any) => {
+        const ref = tx.external_ref ? String(tx.external_ref) : null
+        if (ref && boletoExternalRefs.has(ref)) return
+        if (ref) boletoExternalRefs.add(ref)
+        transactions.push({
+          id: `tt-${tx.id}`,
+          type: 'in' as const,
+          category: 'Recebimento de Parcelas - CCB',
+          description: tx.description,
+          value: Number(tx.amount || 0),
+          date: normalizeAccountingDate(tx.date),
         })
       })
 
@@ -171,7 +207,7 @@ export function useAccounting() {
           ) {
             transactions.push({
               id: `inst-${ant.id}-${i}`,
-              date: pDate,
+              date: normalizeAccountingDate(pDate),
               type: 'in',
               category: 'Pagamento de Parcela CCB',
               description: `Parcela ${inst.numero || inst.number || i + 1} — ${tomador} — CCB ${ant.ccb_id ? ant.ccb_id.substring(0, 8) : ant.id.substring(0, 8)}`,
@@ -188,7 +224,7 @@ export function useAccounting() {
           const fornecedor = sup?.company_name
           transactions.push({
             id: `exp-${exp.id}`,
-            date: exp.payment_date || exp.due_date || new Date().toISOString(),
+            date: normalizeAccountingDate(exp.payment_date || exp.due_date),
             type: 'out',
             category: fornecedor ? 'Pagamento Fornecedor' : 'Despesa',
             description: fornecedor ? `Fornecedor — ${fornecedor}` : `Despesa — ${exp.description}`,
@@ -206,7 +242,7 @@ export function useAccounting() {
           const val = calc?.net_value || op.requested_value
           transactions.push({
             id: `op-out-${op.id}`,
-            date: op.issue_date || op.created_at,
+            date: normalizeAccountingDate(op.issue_date || op.created_at),
             type: 'out',
             category: 'Desembolso de Crédito',
             description: `Operação de Crédito — Sacado: ${op.sacado}`,
@@ -222,7 +258,7 @@ export function useAccounting() {
           const investor = prof?.pj_company_name || prof?.full_name || 'Desconhecido'
           transactions.push({
             id: `red-${red.id}`,
-            date: red.updated_at || new Date().toISOString(),
+            date: normalizeAccountingDate(red.updated_at),
             type: 'out',
             category: 'Resgate de Investimento',
             description: `Resgate — Investidor: ${investor}`,
@@ -263,7 +299,23 @@ export function useAccounting() {
         return { ...t, accumulated_balance: bal }
       })
 
-      setData(finalData.reverse())
+      // O saldo acumulado é calculado sobre TODOS os registros (saldo global
+      // corrido), e só então o período [inicio, fim] é aplicado em memória —
+      // preservando o saldo acumulado correto por linha e o saldo global no
+      // primeiro registro. A filtragem em memória (em vez de `.gte/.lte` no
+      // Supabase) é necessária porque várias fontes (boletos em JSONB de
+      // `recebiveis_ccb`, parcelas em JSONB de `operacoes_antecipacao`) não
+      // podem ser filtradas pela data de pagamento no nível da API.
+      let result = finalData
+      if (inicio || fim) {
+        result = finalData.filter((t) => {
+          if (inicio && t.date < inicio) return false
+          if (fim && t.date > fim) return false
+          return true
+        })
+      }
+
+      setData(result.reverse())
     } catch (err: any) {
       console.error(err)
       setError(err.message || 'Erro ao consolidar dados da contabilidade.')
