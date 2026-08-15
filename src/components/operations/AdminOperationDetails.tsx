@@ -277,6 +277,32 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
       }
     }
 
+    // Reversão de liquidação: ao sair do status "liquidado" para qualquer outro,
+    // remove os registros de caixa criados anteriormente (evita duplicação/fantasmas).
+    if (newStatus !== 'liquidado' && op.status === 'liquidado') {
+      try {
+        // 1. Deleta primeiro os mapeamentos (FK que referencia movimentacoes_caixa)
+        await supabase
+          .from('mapeamento_movimentacoes')
+          .delete()
+          .eq('origem_id', op.id)
+          .in('origem_tabela', ['recebíveis', 'juros'])
+
+        // 2. Depois deleta as movimentações de caixa vinculadas à operação
+        await supabase
+          .from('movimentacoes_caixa')
+          .delete()
+          .eq('referencia_id', op.id)
+          .eq('referencia_tipo', 'recebível')
+
+        toast.info('Registros de liquidação removidos do caixa.')
+      } catch (err: any) {
+        toast.error('Erro ao remover registros de liquidação: ' + err.message)
+        setActionLoading(false)
+        return
+      }
+    }
+
     const { error } = await supabase
       .from('credit_operations')
       .update({ status: newStatus })
