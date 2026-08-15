@@ -1317,6 +1317,89 @@ export type Database = {
           },
         ]
       }
+      mapeamento_movimentacoes: {
+        Row: {
+          created_at: string
+          id: string
+          movimentacao_caixa_id: string
+          origem_id: string | null
+          origem_tabela: string | null
+          sincronizado: boolean
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          movimentacao_caixa_id: string
+          origem_id?: string | null
+          origem_tabela?: string | null
+          sincronizado?: boolean
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          movimentacao_caixa_id?: string
+          origem_id?: string | null
+          origem_tabela?: string | null
+          sincronizado?: boolean
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'mapeamento_movimentacoes_movimentacao_caixa_id_fkey'
+            columns: ['movimentacao_caixa_id']
+            isOneToOne: false
+            referencedRelation: 'movimentacoes_caixa'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      movimentacoes_caixa: {
+        Row: {
+          categoria: string | null
+          created_at: string | null
+          descricao: string | null
+          id: string
+          referencia_id: string | null
+          referencia_numero: string | null
+          referencia_tipo: string | null
+          saldo_anterior: number | null
+          saldo_novo: number | null
+          tipo: string | null
+          user_id: string | null
+          valor: number | null
+        }
+        Insert: {
+          categoria?: string | null
+          created_at?: string | null
+          descricao?: string | null
+          id?: string
+          referencia_id?: string | null
+          referencia_numero?: string | null
+          referencia_tipo?: string | null
+          saldo_anterior?: number | null
+          saldo_novo?: number | null
+          tipo?: string | null
+          user_id?: string | null
+          valor?: number | null
+        }
+        Update: {
+          categoria?: string | null
+          created_at?: string | null
+          descricao?: string | null
+          id?: string
+          referencia_id?: string | null
+          referencia_numero?: string | null
+          referencia_tipo?: string | null
+          saldo_anterior?: number | null
+          saldo_novo?: number | null
+          tipo?: string | null
+          user_id?: string | null
+          valor?: number | null
+        }
+        Relationships: []
+      }
       operacoes_antecipacao: {
         Row: {
           ccb_id: string | null

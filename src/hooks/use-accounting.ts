@@ -55,6 +55,7 @@ export function useAccounting() {
         { data: exps },
         { data: ops },
         { data: reds },
+        { data: movs },
       ] = await Promise.all([
         supabase
           .from('debenture_subscriptions')
@@ -84,6 +85,11 @@ export function useAccounting() {
           .select(
             'id, net_value, updated_at, status, profiles!investment_redemptions_user_id_fkey(full_name, pj_company_name)',
           ),
+        // 7. Movimentações de Caixa (liquidações, juros, etc.)
+        // RLS já garante que admins veem tudo e usuários comuns só os próprios registros.
+        supabase
+          .from('movimentacoes_caixa')
+          .select('id, tipo, categoria, descricao, valor, user_id, created_at'),
       ])
 
       // 1. Subscrições
@@ -234,6 +240,29 @@ export function useAccounting() {
             value: Number(red.net_value || 0),
           })
         }
+      })
+
+      // 7. Movimentações de Caixa
+      // Tradução das categorias para rótulos legíveis no Livro Caixa.
+      const categoriaLabel: Record<string, string> = {
+        liquidação_recebível: 'Liquidação de Recebível',
+        liquidacao_recebivel: 'Liquidação de Recebível',
+        juros_entrada: 'Juros Recebidos',
+      }
+      ;(movs || []).forEach((mov) => {
+        const tipo = (mov.tipo || '').toLowerCase()
+        const category =
+          categoriaLabel[(mov.categoria || '').toLowerCase()] ||
+          mov.categoria ||
+          'Movimentação de Caixa'
+        transactions.push({
+          id: `mov-${mov.id}`,
+          date: normalizeAccountingDate(mov.created_at),
+          type: tipo === 'saida' ? 'out' : 'in',
+          category,
+          description: mov.descricao || category,
+          value: Number(mov.valor || 0),
+        })
       })
 
       // Sort and accumulate
