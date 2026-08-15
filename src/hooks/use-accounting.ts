@@ -213,17 +213,6 @@ export function useAccounting() {
             value: Number(val || 0),
           })
         }
-
-        if (op.status === 'liquidado') {
-          transactions.push({
-            id: `op-in-${op.id}`,
-            date: op.liquidation_date || op.updated_at || op.created_at,
-            type: 'in',
-            category: 'Liquidação de Recebível',
-            description: `Recebível liquidado — Operação de Crédito — Sacado: ${op.sacado}`,
-            value: Number(op.liquidation_value || op.face_value || 0),
-          })
-        }
       })
 
       // 6. Resgates
