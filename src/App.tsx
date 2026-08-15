@@ -29,6 +29,7 @@ import Accounting from './pages/admin/Accounting'
 import DataMigration from './pages/admin/DataMigration'
 import RiskExposure from './pages/admin/RiskExposure'
 import Reports from './pages/admin/Reports'
+import Dre from './pages/admin/Dre'
 import InvestorsPortfolio from './pages/admin/InvestorsPortfolio'
 import KycOnboarding from './pages/KycOnboarding'
 import CcbDigital from './pages/borrower/CcbDigital'
@@ -438,6 +439,14 @@ const App = () => (
               element={
                 <RoleGuard allowedRoles={['admin', 'staff', 'accountant', 'investor', 'borrower']}>
                   <Reports />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/admin/dre"
+              element={
+                <RoleGuard allowedRoles={['admin', 'staff']}>
+                  <Dre />
                 </RoleGuard>
               }
             />

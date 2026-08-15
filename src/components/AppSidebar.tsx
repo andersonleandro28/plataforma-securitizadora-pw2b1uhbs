@@ -17,6 +17,7 @@ import {
   FileBadge,
   ShieldAlert,
   Wallet,
+  BarChart3,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -139,6 +140,12 @@ const allNavItems = [
     path: '/admin/accounting',
     icon: PieChart,
     roles: ['admin', 'accountant'],
+  },
+  {
+    title: 'DRE',
+    path: '/admin/dre',
+    icon: BarChart3,
+    roles: ['admin', 'staff'],
   },
   {
     title: 'Migração de Dados',
