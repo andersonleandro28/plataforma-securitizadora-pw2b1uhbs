@@ -79,7 +79,7 @@ export function useDre() {
       const inicioTs = `${inicio}T00:00:00`
       const fimTs = `${fim}T23:59:59`
 
-      const [movsRes, subsRes, expsRes, tresRes, credRes] = await Promise.all([
+      const [movsRes, subsRes, expsRes, tresRes, credRes, ccbRes] = await Promise.all([
         supabase
           .from('movimentacoes_caixa')
           .select(
@@ -115,6 +115,20 @@ export function useDre() {
           )
           .gte('issue_date', inicio)
           .lte('issue_date', fim),
+        // 6. Recebíveis CCB (boletos pagos via JSONB).
+        // Fonte de segurança: alguns boletos pagos no JSONB `recebiveis_ccb.boletos`
+        // não foram sincronizados para `treasury_transactions` (falha do trigger),
+        // mas precisam ser refletidos no DRE. A deduplicação por `external_ref`
+        // (formato `ccb-bol-{recebivel_id}-{parcela}`) evita somar duas vezes os
+        // boletos que já chegaram via treasury_transactions. Trazer todas as CCBs
+        // ativas (não é possível filtrar por data de pagamento no nível da API,
+        // pois ela vive dentro do JSONB) e filtrar em memória.
+        supabase
+          .from('recebiveis_ccb')
+          .select(
+            'id, ccb_id, boletos, status, tomador_id, profiles!recebiveis_ccb_tomador_id_fkey(full_name, pj_company_name)',
+          )
+          .or(`status.eq.Ativo,boletos.neq.[]`),
       ])
 
       const lancamentos: DreLancamento[] = []
@@ -229,10 +243,16 @@ export function useDre() {
       // de CCB). Saídas (type='out') entram como despesa, mas são deduplicadas
       // contra o expenses quando vinculadas via expense_id, para evitar dupla
       // contagem.
+      // Coleta os `external_ref` já processados para deduplicar contra os
+      // boletos pagos do `recebiveis_ccb` (fonte 6) — o trigger que popula a
+      // tesouraria usa o formato `ccb-bol-{recebivel_id}-{parcela}`.
+      const treasuryExternalRefs = new Set<string>()
       ;(tresRes.data || []).forEach((t) => {
         const tipo: DreTipo = t.type === 'out' ? 'despesa' : 'receita'
         // Deduplicação: se a saída já está refletida em expenses, ignora.
         if (tipo === 'despesa' && t.expense_id && expenseIdsInDre.has(t.expense_id)) return
+
+        if (t.external_ref) treasuryExternalRefs.add(String(t.external_ref))
 
         const catOriginal =
           t.category || (tipo === 'receita' ? 'Recebimento de Parcelas - CCB' : 'Tesouraria')
@@ -245,6 +265,58 @@ export function useDre() {
           descricao: t.description || catOriginal,
           valor: Number(t.amount || 0),
           origem: 'treasury_transactions',
+        })
+      })
+
+      // 6. Recebíveis CCB (boletos pagos via JSONB).
+      // Alguns boletos pagos no JSONB `recebiveis_ccb.boletos` não foram
+      // sincronizados para `treasury_transactions` (o trigger falhou para eles),
+      // mas precisam constar no DRE. Itera sobre os boletos de cada CCB, filtra
+      // os pagos cuja data de pagamento cai no período e os converte em
+      // entradas `type: 'in'`. Pula qualquer boleto já processado pela
+      // tesouraria (mesmo `external_ref`).
+      ;(ccbRes.data || []).forEach((rec: any) => {
+        const prof = Array.isArray(rec.profiles) ? rec.profiles[0] : rec.profiles
+        const tomador = prof?.pj_company_name || prof?.full_name || 'Desconhecido'
+
+        const boletos = Array.isArray(rec.boletos) ? rec.boletos : []
+        boletos.forEach((bol: any, i: number) => {
+          const bolStatus = (bol.status || '').toLowerCase()
+          if (bolStatus !== 'pago' && bolStatus !== 'liquidado') return
+
+          const dataPgto =
+            bol.data_pagamento || bol.payment_date || bol.data_liquidacao || bol.data_vencimento
+          if (!dataPgto) return
+
+          const dataLanc = normalizeDate(dataPgto)
+          // Filtra o período em memória (a data vive dentro do JSONB).
+          if (dataLanc < inicio || dataLanc > fim) return
+
+          // Deduplicação: external_ref no mesmo formato do trigger da tesouraria
+          // (`ccb-bol-{recebivel_id}-{parcela}`, parcela = índice 1-based).
+          const parcela = i + 1
+          const extRef = bol.external_ref
+            ? String(bol.external_ref)
+            : `ccb-bol-${rec.id}-${parcela}`
+          if (treasuryExternalRefs.has(extRef)) return
+          treasuryExternalRefs.add(extRef)
+
+          const valor =
+            Number(bol.valor || bol.unit_value || 0) +
+            Number(bol.interest_applied || 0) +
+            Number(bol.penalty_applied || 0)
+          if (!valor) return
+
+          lancamentos.push({
+            id: `ccb-${rec.id}-${parcela}`,
+            date: dataLanc,
+            tipo: 'receita',
+            categoriaOriginal: 'Recebimento de Parcelas - CCB',
+            categoria: 'Recebimento de Parcelas - CCB',
+            descricao: `Recebível liquidado — Boleto ${bol.numero || bol.number || parcela} - Tomador: ${tomador}`,
+            valor,
+            origem: 'recebiveis_ccb',
+          })
         })
       })
 
