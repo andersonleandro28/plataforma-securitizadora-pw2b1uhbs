@@ -29,11 +29,12 @@ import {
   ChevronRight,
   ChevronDown,
   CalendarDays,
-  Download,
+  Plus,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { exportToCSV } from '@/lib/export-utils'
 import { useDre, type DreCategoria } from '@/hooks/use-dre'
+import { AdminExpenseDialog } from '@/components/admin/AdminExpenseDialog'
 import { cn } from '@/lib/utils'
 
 const MESES = [
@@ -58,6 +59,7 @@ export default function Dre() {
   const [modoPeriodo, setModoPeriodo] = useState<'mes' | 'intervalo'>('mes')
   const [inicio, setInicio] = useState('')
   const [fim, setFim] = useState('')
+  const [expenseOpen, setExpenseOpen] = useState(false)
 
   const { dados, loading, error, refetch } = useDre()
 
@@ -131,10 +133,21 @@ export default function Dre() {
             Consolidação de receitas e despesas do Livro Caixa por período.
           </p>
         </div>
-        <Button onClick={handleExportCSV} variant="outline" className="gap-2">
-          <FileSpreadsheet className="w-4 h-4" /> Exportar CSV
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => setExpenseOpen(true)} className="gap-2">
+            <Plus className="w-4 h-4" /> Lançar Despesa
+          </Button>
+          <Button onClick={handleExportCSV} variant="outline" className="gap-2">
+            <FileSpreadsheet className="w-4 h-4" /> Exportar CSV
+          </Button>
+        </div>
       </div>
+
+      <AdminExpenseDialog
+        open={expenseOpen}
+        onOpenChange={setExpenseOpen}
+        onSuccess={() => refetch(periodoInicio, periodoFim)}
+      />
 
       {/* Filtro de período */}
       <Card>
