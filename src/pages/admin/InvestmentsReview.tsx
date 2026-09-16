@@ -46,7 +46,12 @@ export default function InvestmentsReview() {
   // Aportes States
   const [editOpen, setEditOpen] = useState(false)
   const [selectedInv, setSelectedInv] = useState<any>(null)
-  const [datesForm, setDatesForm] = useState({ transfer_date: '' })
+  const [editInvForm, setEditInvForm] = useState({
+    transfer_date: '',
+    quotas: 1,
+    unit_price: 1000,
+    total_value: 1000,
+  })
 
   // Resgates States
   const [rejectOpen, setRejectOpen] = useState(false)
@@ -183,8 +188,15 @@ export default function InvestmentsReview() {
 
   const handleEditDates = (inv: any) => {
     setSelectedInv(inv)
-    setDatesForm({
+    const quotas = Number(inv.quotas) || 1
+    const unitPrice = Number(inv.unit_price) || 1000
+    const totalValue = Number(inv.total_value) || quotas * unitPrice
+
+    setEditInvForm({
       transfer_date: inv.transfer_date || '',
+      quotas,
+      unit_price: unitPrice,
+      total_value: totalValue,
     })
     setEditOpen(true)
   }
@@ -192,19 +204,42 @@ export default function InvestmentsReview() {
   const handleSaveDates = async () => {
     if (!selectedInv) return
 
-    const selectedDate = new Date(datesForm.transfer_date + 'T12:00:00Z')
-    const today = new Date()
-    today.setUTCHours(23, 59, 59, 999)
-    if (selectedDate > today) {
-      return toast.error('A data do aporte não pode ser posterior à data atual.')
+    if (editInvForm.transfer_date) {
+      const selectedDate = new Date(editInvForm.transfer_date + 'T12:00:00Z')
+      const today = new Date()
+      today.setUTCHours(23, 59, 59, 999)
+      if (selectedDate > today) {
+        return toast.error('A data do aporte não pode ser posterior à data atual.')
+      }
     }
 
+    const quotas = Math.max(1, parseInt(String(editInvForm.quotas), 10) || 1)
+    const unitPrice = Math.max(0, parseFloat(String(editInvForm.unit_price)) || 0)
+    const totalValue = quotas * unitPrice
+
     try {
+      // 1. Atualiza na tabela investments
       const { error } = await supabase
         .from('investments')
-        .update({ transfer_date: datesForm.transfer_date || null })
+        .update({
+          transfer_date: editInvForm.transfer_date || null,
+          quotas,
+          unit_price: unitPrice,
+          total_value: totalValue,
+        })
         .eq('id', selectedInv.id)
       if (error) throw error
+
+      // 2. Sincronização direta e explícita em debenture_subscriptions (garantia além dos triggers)
+      await supabase
+        .from('debenture_subscriptions')
+        .update({
+          subscription_date: editInvForm.transfer_date || null,
+          quantity: quotas,
+          unit_price: unitPrice,
+          total_amount: totalValue,
+        })
+        .eq('investment_id', selectedInv.id)
 
       await supabase.from('audit_logs').insert({
         entity_type: 'investments',
@@ -212,17 +247,23 @@ export default function InvestmentsReview() {
         action: 'admin_updated_dates',
         details: {
           admin_id: user?.id,
-          message: `Data do Aporte ID ${selectedInv.id} alterada de ${selectedInv.transfer_date || 'N/A'} para ${datesForm.transfer_date} por ${user?.email}`,
+          message: `Aporte ID ${selectedInv.id} atualizado por ${user?.email}: data ${selectedInv.transfer_date || 'N/A'} -> ${editInvForm.transfer_date}, valor R$ ${selectedInv.total_value} -> R$ ${totalValue}`,
           old_transfer_date: selectedInv.transfer_date,
-          new_transfer_date: datesForm.transfer_date,
+          new_transfer_date: editInvForm.transfer_date,
+          old_total_value: selectedInv.total_value,
+          new_total_value: totalValue,
+          quotas,
+          unit_price: unitPrice,
         },
       })
 
-      toast.success('Data atualizada com sucesso. Sincronização em cascata concluída.')
+      toast.success(
+        'Aporte atualizado com sucesso. Sincronização em cascata concluída com a Carteira de Investidores.',
+      )
       setEditOpen(false)
       fetchData()
     } catch (err: any) {
-      toast.error('Erro ao atualizar datas: ' + err.message)
+      toast.error('Erro ao atualizar aporte: ' + err.message)
     }
   }
 
@@ -673,42 +714,101 @@ export default function InvestmentsReview() {
       </Dialog>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Editar Data do Aporte</DialogTitle>
+            <DialogTitle>Editar Dados do Aporte</DialogTitle>
             <DialogDescription>
-              Altere a data de transferência para recálculo retroativo. Esta ação atualizará as
-              subscrições, a tesouraria e o dashboard do investidor em cascata.
+              Altere a data de transferência, cotas ou valor. Esta ação atualizará imediatamente a
+              Carteira de Investidores, o Dashboard do Investidor e a Tesouraria.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4">
+            {selectedInv && (
+              <div className="text-xs bg-muted/40 p-3 rounded-md space-y-1">
+                <div>
+                  <span className="text-muted-foreground">Investidor: </span>
+                  <span className="font-semibold">{selectedInv.profiles?.full_name}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Produto: </span>
+                  <span className="font-medium">{selectedInv.investment_products?.title}</span>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
-              <Label>Data de Transferência (Competência)</Label>
+              <Label>Data de Transferência (Competência / Início do Rendimento)</Label>
               <Input
                 type="date"
                 max={new Date().toLocaleDateString('en-CA')}
-                value={datesForm.transfer_date}
-                onChange={(e) => setDatesForm({ transfer_date: e.target.value })}
+                value={editInvForm.transfer_date}
+                onChange={(e) => setEditInvForm({ ...editInvForm, transfer_date: e.target.value })}
               />
             </div>
-            {datesForm.transfer_date && datesForm.transfer_date !== selectedInv?.transfer_date && (
-              <Alert className="bg-amber-50 border-amber-200 mt-4">
-                <AlertTriangle className="h-4 w-4 text-amber-600" />
-                <AlertTitle className="text-amber-800">Sincronização em Cascata</AlertTitle>
-                <AlertDescription className="text-amber-700 text-xs mt-1">
-                  O recálculo pro rata die será aplicado automaticamente desde a nova data até a
-                  presente. A alteração refletirá na Tesouraria e no Dashboard do Investidor de
-                  forma idêntica.
-                </AlertDescription>
-              </Alert>
-            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Quantidade de Cotas</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={editInvForm.quotas}
+                  onChange={(e) => {
+                    const q = parseInt(e.target.value, 10) || 0
+                    setEditInvForm({
+                      ...editInvForm,
+                      quotas: q,
+                      total_value: q * editInvForm.unit_price,
+                    })
+                  }}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Preço Unitário (R$)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={editInvForm.unit_price}
+                  onChange={(e) => {
+                    const up = parseFloat(e.target.value) || 0
+                    setEditInvForm({
+                      ...editInvForm,
+                      unit_price: up,
+                      total_value: editInvForm.quotas * up,
+                    })
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="p-3 bg-muted rounded-md flex justify-between items-center text-sm">
+              <span className="text-muted-foreground">Valor Total do Aporte</span>
+              <span className="font-mono font-bold text-base text-primary">
+                {formatC(editInvForm.quotas * editInvForm.unit_price)}
+              </span>
+            </div>
+
+            {editInvForm.transfer_date &&
+              editInvForm.transfer_date !== selectedInv?.transfer_date && (
+                <Alert className="bg-amber-50 border-amber-200 mt-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-600" />
+                  <AlertTitle className="text-amber-800">Sincronização em Cascata</AlertTitle>
+                  <AlertDescription className="text-amber-700 text-xs mt-1">
+                    A nova data corrigida ({editInvForm.transfer_date}) será refletida na Carteira
+                    de Investidores, recalculando o rendimento acumulado pro rata die imediatamente.
+                  </AlertDescription>
+                </Alert>
+              )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleSaveDates} disabled={!datesForm.transfer_date}>
-              <CheckCircle className="w-4 h-4 mr-2" /> Salvar Sincronização
+            <Button onClick={handleSaveDates} disabled={!editInvForm.transfer_date}>
+              <CheckCircle className="w-4 h-4 mr-2" /> Salvar e Sincronizar
             </Button>
           </DialogFooter>
         </DialogContent>

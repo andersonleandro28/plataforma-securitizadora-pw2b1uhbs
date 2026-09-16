@@ -31,7 +31,19 @@ import {
   Users,
   RefreshCw,
   AlertCircle,
+  Pencil,
+  CheckCircle,
 } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { toast } from 'sonner'
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -153,6 +165,14 @@ export default function InvestorsPortfolio() {
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState<'name' | 'invested' | 'yield'>('name')
   const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({})
+
+  // Modal de edição direta a partir da carteira
+  const [editingSub, setEditingSub] = useState<EnrichedSubscription | null>(null)
+  const [editForm, setEditForm] = useState({
+    subscription_date: '',
+    total_amount: 0,
+  })
+  const [savingEdit, setSavingEdit] = useState(false)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -290,17 +310,21 @@ export default function InvestorsPortfolio() {
         continue
       }
 
-      const startDateStr = raw.subscription_date || raw.created_at
-      const startDate = startDateStr ? new Date(startDateStr + 'T12:00:00Z') : null
+      // Se a subscrição tiver uma data específica, usa ela; se for vazia mas o investimento vinculado tiver transfer_date, usa este
+      const effectiveDateStr =
+        raw.subscription_date || (inv as any)?.transfer_date || raw.created_at
+      const startDate = effectiveDateStr ? new Date(effectiveDateStr + 'T12:00:00Z') : null
       const termMonths = product ? parseProductTerm(product.term) : null
       const maturityDate = startDate && termMonths ? addMonths(startDate, termMonths) : null
+
+      const totalAmountVal = Number(raw.total_amount || (inv as any)?.total_value || 0)
 
       const enriched: EnrichedSubscription = {
         id: raw.id,
         investorName: profile?.full_name || raw.investor_name || 'Desconhecido',
         documentNumber: profile?.document_number || raw.document_number,
-        totalAmount: Number(raw.total_amount || 0),
-        subscriptionDate: raw.subscription_date,
+        totalAmount: totalAmountVal,
+        subscriptionDate: raw.subscription_date || (inv as any)?.transfer_date || null,
         createdAt: raw.created_at,
         status: inv?.status || raw.status,
         investmentId: raw.investment_id,
@@ -387,6 +411,55 @@ export default function InvestorsPortfolio() {
       { invested: 0, yield: 0 },
     )
   }, [filtered])
+
+  /* ----------------------- direct edit handler ----------------------- */
+  const handleOpenEditSub = (s: EnrichedSubscription) => {
+    setEditingSub(s)
+    setEditForm({
+      subscription_date:
+        s.subscriptionDate || (s.startDate ? s.startDate.toISOString().split('T')[0] : ''),
+      total_amount: s.totalAmount,
+    })
+  }
+
+  const handleSaveSubEdit = async () => {
+    if (!editingSub) return
+    setSavingEdit(true)
+    try {
+      const newDate = editForm.subscription_date || null
+      const newAmount = Number(editForm.total_amount) || 0
+
+      // 1. Atualiza debenture_subscriptions
+      const { error: subErr } = await supabase
+        .from('debenture_subscriptions')
+        .update({
+          subscription_date: newDate,
+          total_amount: newAmount,
+        })
+        .eq('id', editingSub.id)
+
+      if (subErr) throw subErr
+
+      // 2. Se houver investment_id vinculado, atualiza também a tabela investments
+      if (editingSub.investmentId) {
+        await supabase
+          .from('investments')
+          .update({
+            transfer_date: newDate,
+            total_value: newAmount,
+          })
+          .eq('id', editingSub.investmentId)
+      }
+
+      toast.success('Aporte atualizado e sincronizado em todo o sistema.')
+      setEditingSub(null)
+      await loadData()
+    } catch (err: any) {
+      toast.error('Erro ao atualizar: ' + (err.message || 'Falha ao salvar'))
+    } finally {
+      setSavingEdit(false)
+    }
+  }
 
   /* ----------------------- ui helpers ----------------------- */
   const toggle = (key: string) => setExpandedKeys((prev) => ({ ...prev, [key]: !prev[key] }))
@@ -596,6 +669,7 @@ export default function InvestorsPortfolio() {
                                 <TableHead>Data de Vencimento</TableHead>
                                 <TableHead className="text-right">Rendimento Acumulado</TableHead>
                                 <TableHead>Status</TableHead>
+                                <TableHead className="text-right w-16">Ações</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -623,6 +697,17 @@ export default function InvestorsPortfolio() {
                                     {formatCurrency(s.yieldAmount)}
                                   </TableCell>
                                   <TableCell>{statusBadge(s.status)}</TableCell>
+                                  <TableCell className="text-right">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 w-8 p-0"
+                                      title="Editar data ou valor"
+                                      onClick={() => handleOpenEditSub(s)}
+                                    >
+                                      <Pencil className="h-4 w-4 text-muted-foreground hover:text-primary" />
+                                    </Button>
+                                  </TableCell>
                                 </TableRow>
                               ))}
                             </TableBody>
@@ -637,6 +722,67 @@ export default function InvestorsPortfolio() {
           )}
         </CardContent>
       </Card>
+
+      {/* Dialog de Edição de Aporte / Subscrição */}
+      <Dialog open={!!editingSub} onOpenChange={(open) => !open && setEditingSub(null)}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>Editar Aporte</DialogTitle>
+            <DialogDescription>
+              Corrija a data ou o valor do investimento. A alteração é sincronizada com a aba de
+              Aprovações e recalcula o rendimento acumulado automaticamente.
+            </DialogDescription>
+          </DialogHeader>
+
+          {editingSub && (
+            <div className="py-4 space-y-4">
+              <div className="text-xs bg-muted/40 p-3 rounded-md space-y-1">
+                <div>
+                  <span className="text-muted-foreground">Investidor: </span>
+                  <span className="font-semibold">{editingSub.investorName}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Produto: </span>
+                  <span className="font-medium">{editingSub.product?.title || '—'}</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Data do Aporte (Início do Rendimento)</Label>
+                <Input
+                  type="date"
+                  max={new Date().toLocaleDateString('en-CA')}
+                  value={editForm.subscription_date}
+                  onChange={(e) => setEditForm({ ...editForm, subscription_date: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Valor do Aporte (R$)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={editForm.total_amount}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, total_amount: parseFloat(e.target.value) || 0 })
+                  }
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingSub(null)} disabled={savingEdit}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveSubEdit} disabled={savingEdit}>
+              <CheckCircle className="w-4 h-4 mr-2" />
+              {savingEdit ? 'Salvando...' : 'Salvar e Sincronizar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
