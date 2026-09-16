@@ -35,17 +35,20 @@ import {
   Ban,
   FileText,
   Filter,
+  FileCheck,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/use-auth'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import { formatDate, toISODate } from '@/lib/utils'
+import { InvestmentProofModal, InvestmentProof } from '@/components/admin/InvestmentProofModal'
 
 export default function InvestmentsReview() {
   const { user } = useAuth()
   const [loading, setLoading] = useState(true)
   const [investments, setInvestments] = useState<any[]>([])
   const [redemptions, setRedemptions] = useState<any[]>([])
+  const [proofsMap, setProofsMap] = useState<Record<string, InvestmentProof>>({})
 
   // Aportes States
   const [editOpen, setEditOpen] = useState(false)
@@ -56,6 +59,11 @@ export default function InvestmentsReview() {
     unit_price: 1000,
     total_value: 1000,
   })
+
+  // Comprovante Modal State
+  const [proofModalOpen, setProofModalOpen] = useState(false)
+  const [selectedProof, setSelectedProof] = useState<InvestmentProof | null>(null)
+  const [selectedProofInv, setSelectedProofInv] = useState<any>(null)
 
   // Novos States de Reprovação e Exclusão de Aportes
   const [rejectInvOpen, setRejectInvOpen] = useState(false)
@@ -83,12 +91,26 @@ export default function InvestmentsReview() {
 
   const fetchData = async () => {
     setLoading(true)
-    const { data, error } = await supabase
-      .from('investments')
-      .select('*, profiles(full_name, document_number), investment_products(title, rate)')
-      .order('created_at', { ascending: false })
+    const [invRes, proofsRes] = await Promise.all([
+      supabase
+        .from('investments')
+        .select('*, profiles(full_name, document_number), investment_products(title, rate)')
+        .order('created_at', { ascending: false }),
+      supabase.from('investment_proofs').select('*').order('uploaded_at', { ascending: false }),
+    ])
 
-    if (data) setInvestments(data)
+    if (invRes.data) setInvestments(invRes.data)
+
+    if (proofsRes.data) {
+      // Mapear por investment_id pegando o mais recente
+      const map: Record<string, InvestmentProof> = {}
+      for (const proof of proofsRes.data) {
+        if (!map[proof.investment_id]) {
+          map[proof.investment_id] = proof
+        }
+      }
+      setProofsMap(map)
+    }
   }
 
   const fetchRedemptions = async () => {
@@ -268,6 +290,17 @@ export default function InvestmentsReview() {
     } finally {
       setProcessing(false)
     }
+  }
+
+  const handleViewProof = (inv: any) => {
+    const proof = proofsMap[inv.id]
+    if (!proof) {
+      toast.info('Nenhum comprovante anexado para este aporte.')
+      return
+    }
+    setSelectedProof(proof)
+    setSelectedProofInv(inv)
+    setProofModalOpen(true)
   }
 
   const handleEditDates = (inv: any) => {
@@ -686,6 +719,19 @@ export default function InvestmentsReview() {
                               !isRejected && <Badge variant="outline">{inv.status}</Badge>}
                           </TableCell>
                           <TableCell className="text-right space-x-1.5 whitespace-nowrap">
+                            {/* Ver Comprovante (visível quando o aporte possui anexo) */}
+                            {proofsMap[inv.id] && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
+                                onClick={() => handleViewProof(inv)}
+                                title={`Ver Comprovante (${proofsMap[inv.id].file_name})`}
+                              >
+                                <FileCheck className="w-4 h-4 mr-1.5" /> Comprovante
+                              </Button>
+                            )}
+
                             {/* 1. Botão Aprovar (mantido para pendentes) */}
                             {isAwaitingReview && (
                               <Button
@@ -699,7 +745,7 @@ export default function InvestmentsReview() {
                               </Button>
                             )}
 
-                            {/* 2. Botão Reprovar (NOVO: para aportes não aprovados) */}
+                            {/* 2. Botão Reprovar (para aportes não aprovados) */}
                             {!isApproved && !isRejected && (
                               <Button
                                 variant="outline"
@@ -722,7 +768,7 @@ export default function InvestmentsReview() {
                               <CalendarDays className="w-4 h-4" />
                             </Button>
 
-                            {/* 3. Botão Excluir (NOVO: apenas para aportes NÃO aprovados) */}
+                            {/* 3. Botão Excluir (apenas para aportes NÃO aprovados) */}
                             {!isApproved && (
                               <Button
                                 variant="ghost"
@@ -1334,6 +1380,14 @@ export default function InvestmentsReview() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Exibição de Comprovante de Depósito */}
+      <InvestmentProofModal
+        open={proofModalOpen}
+        onOpenChange={setProofModalOpen}
+        proof={selectedProof}
+        investment={selectedProofInv}
+      />
     </div>
   )
 }
