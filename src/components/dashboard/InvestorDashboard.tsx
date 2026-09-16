@@ -45,6 +45,14 @@ function getStatusBadge(status: string) {
       return <Badge className="bg-emerald-500 hover:bg-emerald-600">Aprovado</Badge>
     case 'pending_transfer':
       return <Badge variant="secondary">Pendente de Transferência</Badge>
+    case 'awaiting_review':
+      return (
+        <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300">
+          Em Análise
+        </Badge>
+      )
+    case 'rejected':
+      return <Badge variant="destructive">Reprovado</Badge>
     case 'resgatado':
       return (
         <Badge variant="outline" className="text-blue-600 border-blue-600">
@@ -199,7 +207,7 @@ export function InvestorDashboard() {
   )
   const redeemedInvestments = investments.filter((inv) => inv.status === 'resgatado')
   const cancelledInvestments = investments.filter(
-    (inv) => inv.status === 'Excluído' || inv.status === 'cancelled',
+    (inv) => inv.status === 'Excluído' || inv.status === 'cancelled' || inv.status === 'rejected',
   )
 
   const totalInvestedValue = activeInvestments

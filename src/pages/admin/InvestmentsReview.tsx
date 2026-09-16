@@ -31,6 +31,10 @@ import {
   Pencil,
   AlertTriangle,
   ArrowRightLeft,
+  Trash2,
+  Ban,
+  FileText,
+  Filter,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/use-auth'
@@ -52,6 +56,16 @@ export default function InvestmentsReview() {
     unit_price: 1000,
     total_value: 1000,
   })
+
+  // Novos States de Reprovação e Exclusão de Aportes
+  const [rejectInvOpen, setRejectInvOpen] = useState(false)
+  const [invToReject, setInvToReject] = useState<any>(null)
+  const [invRejectionReason, setInvRejectionReason] = useState('')
+  const [deleteInvOpen, setDeleteInvOpen] = useState(false)
+  const [invToDelete, setInvToDelete] = useState<any>(null)
+  const [invStatusFilter, setInvStatusFilter] = useState<
+    'pending' | 'all' | 'rejected' | 'approved'
+  >('pending')
 
   // Resgates States
   const [rejectOpen, setRejectOpen] = useState(false)
@@ -179,10 +193,80 @@ export default function InvestmentsReview() {
     try {
       const { error } = await supabase.rpc('approve_investment', { p_investment_id: id })
       if (error) throw error
-      toast.success('Aporte aprovado.')
+      toast.success('Aporte aprovado com sucesso!')
       fetchData()
     } catch (err: any) {
-      toast.error(err.message)
+      toast.error(err.message || 'Erro ao aprovar aporte.')
+    }
+  }
+
+  const handleOpenRejectInvModal = (inv: any) => {
+    if (inv.status === 'approved') {
+      toast.error('Não é possível reprovar um aporte que já foi aprovado.')
+      return
+    }
+    setInvToReject(inv)
+    setInvRejectionReason(inv.rejection_reason || '')
+    setRejectInvOpen(true)
+  }
+
+  const handleConfirmRejectInv = async () => {
+    if (!invToReject) return
+    setProcessing(true)
+    try {
+      const { error } = await supabase.rpc('reject_investment', {
+        p_investment_id: invToReject.id,
+        p_rejection_reason: invRejectionReason.trim() || null,
+      })
+      if (error) throw error
+
+      toast.success(
+        'Aporte reprovado com sucesso. Ele não será contabilizado na carteira do investidor.',
+      )
+      setRejectInvOpen(false)
+      setInvToReject(null)
+      setInvRejectionReason('')
+      fetchData()
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao reprovar aporte.')
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  const handleOpenDeleteInvModal = (inv: any) => {
+    if (inv.status === 'approved') {
+      toast.error('Atenção: Aportes já aprovados/liquidados NUNCA podem ser excluídos.')
+      return
+    }
+    setInvToDelete(inv)
+    setDeleteInvOpen(true)
+  }
+
+  const handleConfirmDeleteInv = async () => {
+    if (!invToDelete) return
+    if (invToDelete.status === 'approved') {
+      toast.error('Atenção: Aportes já aprovados/liquidados NUNCA podem ser excluídos.')
+      setDeleteInvOpen(false)
+      setInvToDelete(null)
+      return
+    }
+
+    setProcessing(true)
+    try {
+      const { error } = await supabase.rpc('delete_unapproved_investment', {
+        p_investment_id: invToDelete.id,
+      })
+      if (error) throw error
+
+      toast.success('Aporte e registros dependentes excluídos permanentemente.')
+      setDeleteInvOpen(false)
+      setInvToDelete(null)
+      fetchData()
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao excluir aporte.')
+    } finally {
+      setProcessing(false)
     }
   }
 
@@ -440,10 +524,61 @@ export default function InvestmentsReview() {
           <TabsTrigger value="resgates">Fila de Resgates</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="aportes" className="mt-6">
+        <TabsContent value="aportes" className="mt-6 space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-medium text-muted-foreground">Filtrar por status:</span>
+              <div className="inline-flex rounded-md border p-1 bg-muted/40">
+                <Button
+                  variant={invStatusFilter === 'pending' ? 'default' : 'ghost'}
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setInvStatusFilter('pending')}
+                >
+                  Pendentes (
+                  {
+                    investments.filter(
+                      (i) => i.status === 'awaiting_review' || i.status === 'pending_transfer',
+                    ).length
+                  }
+                  )
+                </Button>
+                <Button
+                  variant={invStatusFilter === 'approved' ? 'default' : 'ghost'}
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setInvStatusFilter('approved')}
+                >
+                  Aprovados ({investments.filter((i) => i.status === 'approved').length})
+                </Button>
+                <Button
+                  variant={invStatusFilter === 'rejected' ? 'default' : 'ghost'}
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setInvStatusFilter('rejected')}
+                >
+                  Reprovados ({investments.filter((i) => i.status === 'rejected').length})
+                </Button>
+                <Button
+                  variant={invStatusFilter === 'all' ? 'default' : 'ghost'}
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setInvStatusFilter('all')}
+                >
+                  Todos ({investments.length})
+                </Button>
+              </div>
+            </div>
+          </div>
+
           <Card>
             <CardHeader>
               <CardTitle>Histórico de Aportes</CardTitle>
+              <CardDescription>
+                Aprove novos aportes, reprove aportes inconsistentes ou exclua aportes pendentes que
+                não devem prosseguir.
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
@@ -451,51 +586,161 @@ export default function InvestmentsReview() {
                   <TableRow>
                     <TableHead>Investidor</TableHead>
                     <TableHead>Produto</TableHead>
-                    <TableHead>Valor</TableHead>
+                    <TableHead>Valor / Cotas</TableHead>
                     <TableHead>Data Transferência</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {investments.map((inv) => (
-                    <TableRow key={inv.id}>
-                      <TableCell>
-                        <div className="font-medium">{inv.profiles?.full_name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {inv.profiles?.document_number}
-                        </div>
-                      </TableCell>
-                      <TableCell>{inv.investment_products?.title}</TableCell>
-                      <TableCell className="font-mono">
-                        R$ {Number(inv.total_value).toLocaleString('pt-BR')}
-                      </TableCell>
-                      <TableCell>{formatDate(inv.transfer_date)}</TableCell>
-                      <TableCell>
-                        <Badge variant={inv.status === 'approved' ? 'default' : 'outline'}>
-                          {inv.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right space-x-2 whitespace-nowrap">
-                        {inv.status === 'awaiting_review' && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
-                            onClick={() => handleApprove(inv.id)}
-                          >
-                            <CheckCircle className="w-4 h-4 mr-2" /> Aprovar
-                          </Button>
-                        )}
-                        <Button variant="outline" size="sm" onClick={() => handleEditDates(inv)}>
-                          <CalendarDays className="w-4 h-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {investments
+                    .filter((inv) => {
+                      if (invStatusFilter === 'pending') {
+                        return inv.status === 'awaiting_review' || inv.status === 'pending_transfer'
+                      }
+                      if (invStatusFilter === 'approved') {
+                        return inv.status === 'approved'
+                      }
+                      if (invStatusFilter === 'rejected') {
+                        return inv.status === 'rejected'
+                      }
+                      return true
+                    })
+                    .map((inv) => {
+                      const isApproved = inv.status === 'approved'
+                      const isAwaitingReview = inv.status === 'awaiting_review'
+                      const isPendingTransfer = inv.status === 'pending_transfer'
+                      const isRejected = inv.status === 'rejected'
+
+                      return (
+                        <TableRow key={inv.id}>
+                          <TableCell>
+                            <div className="font-medium">
+                              {inv.profiles?.full_name || 'Investidor'}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {inv.profiles?.document_number || '-'}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="font-medium">
+                              {inv.investment_products?.title || 'Debênture'}
+                            </div>
+                            {inv.investment_products?.rate && (
+                              <div className="text-xs text-muted-foreground">
+                                Taxa: {inv.investment_products.rate}
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="font-mono font-medium">
+                              R${' '}
+                              {Number(inv.total_value).toLocaleString('pt-BR', {
+                                minimumFractionDigits: 2,
+                              })}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {inv.quotas} cota(s) a R${' '}
+                              {Number(inv.unit_price || 0).toLocaleString('pt-BR')}
+                            </div>
+                          </TableCell>
+                          <TableCell>{formatDate(inv.transfer_date)}</TableCell>
+                          <TableCell>
+                            {isApproved && (
+                              <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white">
+                                Aprovado
+                              </Badge>
+                            )}
+                            {isAwaitingReview && (
+                              <Badge
+                                variant="outline"
+                                className="bg-amber-100 text-amber-800 border-amber-300"
+                              >
+                                Em Análise
+                              </Badge>
+                            )}
+                            {isPendingTransfer && (
+                              <Badge
+                                variant="outline"
+                                className="bg-blue-50 text-blue-700 border-blue-200"
+                              >
+                                Pendente Transferência
+                              </Badge>
+                            )}
+                            {isRejected && (
+                              <div className="space-y-1">
+                                <Badge variant="destructive">Reprovado</Badge>
+                                {inv.rejection_reason && (
+                                  <p
+                                    className="text-[11px] text-muted-foreground line-clamp-1 max-w-[200px]"
+                                    title={inv.rejection_reason}
+                                  >
+                                    Motivo: {inv.rejection_reason}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                            {!isApproved &&
+                              !isAwaitingReview &&
+                              !isPendingTransfer &&
+                              !isRejected && <Badge variant="outline">{inv.status}</Badge>}
+                          </TableCell>
+                          <TableCell className="text-right space-x-1.5 whitespace-nowrap">
+                            {/* 1. Botão Aprovar (mantido para pendentes) */}
+                            {isAwaitingReview && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                onClick={() => handleApprove(inv.id)}
+                                title="Aprovar Aporte"
+                              >
+                                <CheckCircle className="w-4 h-4 mr-1.5" /> Aprovar
+                              </Button>
+                            )}
+
+                            {/* 2. Botão Reprovar (NOVO: para aportes não aprovados) */}
+                            {!isApproved && !isRejected && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                onClick={() => handleOpenRejectInvModal(inv)}
+                                title="Reprovar Aporte"
+                              >
+                                <Ban className="w-4 h-4 mr-1.5" /> Reprovar
+                              </Button>
+                            )}
+
+                            {/* Botão de Edição de Datas e Valores */}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEditDates(inv)}
+                              title="Editar Dados / Data"
+                            >
+                              <CalendarDays className="w-4 h-4" />
+                            </Button>
+
+                            {/* 3. Botão Excluir (NOVO: apenas para aportes NÃO aprovados) */}
+                            {!isApproved && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                                onClick={() => handleOpenDeleteInvModal(inv)}
+                                title="Excluir Permanentemente"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
                   {investments.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground">
+                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                         Nenhum aporte encontrado.
                       </TableCell>
                     </TableRow>
@@ -925,6 +1170,166 @@ export default function InvestmentsReview() {
             <Button onClick={handleSaveRetroactiveEdit} disabled={processing || !recalcResult}>
               {processing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Salvar Recálculo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Reprovação de Aporte */}
+      <Dialog open={rejectInvOpen} onOpenChange={setRejectInvOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-rose-600">
+              <Ban className="w-5 h-5" /> Reprovar Aporte de Investimento
+            </DialogTitle>
+            <DialogDescription>
+              O aporte será marcado como <strong>Reprovado</strong>. Ele não será apagado do
+              histórico, mas não aparecerá na fila de pendentes e não será contabilizado na carteira
+              ou rendimentos do investidor.
+            </DialogDescription>
+          </DialogHeader>
+
+          {invToReject && (
+            <div className="py-2 space-y-3">
+              <div className="text-xs bg-muted/50 p-3 rounded-md space-y-1 border">
+                <div>
+                  <span className="text-muted-foreground">Investidor: </span>
+                  <span className="font-semibold">
+                    {invToReject.profiles?.full_name || 'Desconhecido'}
+                  </span>
+                  {invToReject.profiles?.document_number && (
+                    <span className="text-muted-foreground ml-1">
+                      ({invToReject.profiles.document_number})
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Produto: </span>
+                  <span className="font-medium">{invToReject.investment_products?.title}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Valor: </span>
+                  <span className="font-mono font-semibold text-rose-600">
+                    R${' '}
+                    {Number(invToReject.total_value).toLocaleString('pt-BR', {
+                      minimumFractionDigits: 2,
+                    })}
+                  </span>
+                  <span className="text-muted-foreground ml-2">({invToReject.quotas} cota(s))</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="inv-rejection-reason">Motivo da Reprovação (opcional)</Label>
+                <Textarea
+                  id="inv-rejection-reason"
+                  placeholder="Ex: Comprovante ilegível, valor divergente do TED, titularidade divergente..."
+                  value={invRejectionReason}
+                  onChange={(e) => setInvRejectionReason(e.target.value)}
+                  rows={3}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  O motivo ficará visível na listagem de auditoria para referência da equipe.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRejectInvOpen(false)
+                setInvToReject(null)
+              }}
+              disabled={processing}
+            >
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmRejectInv} disabled={processing}>
+              {processing ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <Ban className="w-4 h-4 mr-2" />
+              )}
+              Confirmar Reprovação
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Exclusão Permanente de Aporte (Destrutivo) */}
+      <Dialog open={deleteInvOpen} onOpenChange={setDeleteInvOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-rose-600">
+              <Trash2 className="w-5 h-5" /> Excluir Aporte Permanentemente
+            </DialogTitle>
+            <DialogDescription>
+              Esta ação é <strong>irreversível</strong>. Todos os registros vinculados a este aporte
+              não aprovado (subscrições, transações de tesouraria preliminares e comprovantes) serão
+              removidos.
+            </DialogDescription>
+          </DialogHeader>
+
+          {invToDelete && (
+            <div className="py-2 space-y-3">
+              <Alert className="bg-rose-50 border-rose-200 text-rose-900">
+                <AlertTriangle className="h-4 w-4 text-rose-600" />
+                <AlertTitle className="text-rose-800 font-semibold">Atenção</AlertTitle>
+                <AlertDescription className="text-rose-700 text-xs mt-1">
+                  Aportes já aprovados não podem ser excluídos. Este registro tem status{' '}
+                  <strong>{invToDelete.status}</strong> e será apagado permanentemente da base de
+                  dados.
+                </AlertDescription>
+              </Alert>
+
+              <div className="text-xs bg-muted/50 p-3 rounded-md space-y-1 border">
+                <div>
+                  <span className="text-muted-foreground">Investidor: </span>
+                  <span className="font-semibold">
+                    {invToDelete.profiles?.full_name || 'Desconhecido'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Produto: </span>
+                  <span className="font-medium">{invToDelete.investment_products?.title}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Valor: </span>
+                  <span className="font-mono font-semibold">
+                    R${' '}
+                    {Number(invToDelete.total_value).toLocaleString('pt-BR', {
+                      minimumFractionDigits: 2,
+                    })}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Data da Operação: </span>
+                  <span>{formatDate(invToDelete.created_at)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteInvOpen(false)
+                setInvToDelete(null)
+              }}
+              disabled={processing}
+            >
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmDeleteInv} disabled={processing}>
+              {processing ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <Trash2 className="w-4 h-4 mr-2" />
+              )}
+              Excluir Definitivamente
             </Button>
           </DialogFooter>
         </DialogContent>
