@@ -106,6 +106,13 @@ function InvestmentList({ data }: { data: any[] }) {
                 <p className="font-semibold text-emerald-600">
                   {inv.investment_products?.rate || '-'}
                 </p>
+                {inv.investment_products?.interest_type && (
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    {inv.investment_products.interest_type === 'composto'
+                      ? 'Juro Composto'
+                      : 'Juro Simples'}
+                  </p>
+                )}
               </div>
               <div>
                 <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
@@ -146,7 +153,7 @@ export function InvestorDashboard() {
       try {
         const { data, error } = await supabase
           .from('investments_view')
-          .select('*, investment_products(id, title, type, rate, term, quota_value)')
+          .select('*, investment_products(id, title, type, rate, term, quota_value, interest_type)')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
 

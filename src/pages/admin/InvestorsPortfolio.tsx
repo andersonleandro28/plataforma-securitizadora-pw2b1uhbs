@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { supabase } from '@/lib/supabase/client'
-import { parseProductRate, parseProductTerm } from '@/lib/yield-calculator'
+import { parseProductRate, parseProductTerm, computeInterestYield } from '@/lib/yield-calculator'
 import { formatDate, cn } from '@/lib/utils'
 import {
   Search,
@@ -44,6 +44,7 @@ interface ProductInfo {
   rate: string
   term: string
   yield_split_pct: number
+  interest_type?: string | null
 }
 
 interface ProfileInfo {
@@ -166,7 +167,7 @@ export default function InvestorsPortfolio() {
           investments (
             status, user_id,
             profiles ( id, full_name, document_number ),
-            investment_products ( id, title, type, rate, term, yield_split_pct )
+            investment_products ( id, title, type, rate, term, yield_split_pct, interest_type )
           )
           `,
         )
@@ -187,7 +188,7 @@ export default function InvestorsPortfolio() {
       if (seriesIds.length > 0) {
         const { data: seriesProducts, error: seriesErr } = await supabase
           .from('investment_products')
-          .select('id, title, type, rate, term, yield_split_pct, series_id')
+          .select('id, title, type, rate, term, yield_split_pct, series_id, interest_type')
           .in('series_id', seriesIds)
 
         if (seriesErr) throw seriesErr
@@ -269,7 +270,7 @@ export default function InvestorsPortfolio() {
       if (annualRate === null) return 0
       const daysDiff = Math.floor((now.getTime() - sub.startDate.getTime()) / (1000 * 60 * 60 * 24))
       if (daysDiff <= 0) return 0
-      return (sub.totalAmount * (annualRate / 100) * daysDiff) / 365
+      return computeInterestYield(sub.totalAmount, annualRate, daysDiff, product.interest_type)
     }
 
     const groupMap = new Map<string, InvestorGroup>()

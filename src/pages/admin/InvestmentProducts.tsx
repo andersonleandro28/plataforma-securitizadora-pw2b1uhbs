@@ -84,6 +84,9 @@ export default function InvestmentProducts() {
                   Taxa
                 </th>
                 <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                  Capitalização
+                </th>
+                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
                   Visível
                 </th>
                 <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
@@ -94,7 +97,7 @@ export default function InvestmentProducts() {
             <tbody className="[&_tr:last-child]:border-0">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center">
+                  <td colSpan={9} className="p-8 text-center">
                     <div className="flex items-center justify-center">
                       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                     </div>
@@ -102,7 +105,7 @@ export default function InvestmentProducts() {
                 </tr>
               ) : products.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-muted-foreground">
+                  <td colSpan={9} className="p-8 text-center text-muted-foreground">
                     Nenhum produto cadastrado no banco.
                   </td>
                 </tr>
@@ -115,6 +118,11 @@ export default function InvestmentProducts() {
                     <td className="p-4 align-middle">{p.status}</td>
                     <td className="p-4 align-middle">{p.risk}</td>
                     <td className="p-4 align-middle">{p.rate}</td>
+                    <td className="p-4 align-middle">
+                      <Badge variant="outline" className="text-xs font-normal">
+                        {p.interest_type === 'composto' ? 'Juro Composto' : 'Juro Simples'}
+                      </Badge>
+                    </td>
                     <td className="p-4 align-middle">
                       <span
                         className={cn(

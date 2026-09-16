@@ -1,3 +1,5 @@
+export type InterestType = 'simples' | 'composto'
+
 export interface InvestmentWithProduct {
   id: string
   total_value: number | null
@@ -12,6 +14,7 @@ export interface InvestmentWithProduct {
     quota_value: number | null
     unit_price?: number | null
     type?: string | null
+    interest_type?: string | null
   } | null
 }
 
@@ -70,6 +73,33 @@ export function getInvestmentStartDate(inv: InvestmentWithProduct): Date | null 
   return isNaN(date.getTime()) ? null : date
 }
 
+/**
+ * Calcula o rendimento proporcional diário de um aporte, considerando se o juro é simples ou composto.
+ *
+ * - Juro simples: juros = capital × (taxa / 100) × (dias / 365)
+ * - Juro composto: juros = capital × ((1 + taxa / 100) ^ (dias / 365) - 1)
+ */
+export function computeInterestYield(
+  capital: number,
+  annualRatePct: number,
+  days: number,
+  interestType?: string | null,
+): number {
+  if (capital <= 0 || annualRatePct <= 0 || days <= 0) return 0
+
+  const rate = annualRatePct / 100
+  const timeInYears = days / 365
+
+  const type = (interestType || '').toLowerCase().trim()
+  if (type === 'composto') {
+    // Juro composto: M = C * (1 + i)^t => J = M - C = C * ((1 + i)^t - 1)
+    return capital * (Math.pow(1 + rate, timeInYears) - 1)
+  }
+
+  // Padrão / Juro simples: J = C * i * t
+  return capital * rate * timeInYears
+}
+
 export function calculateAccruedYield(
   inv: InvestmentWithProduct,
   referenceDate: Date = new Date(),
@@ -87,7 +117,12 @@ export function calculateAccruedYield(
   )
   if (daysDiff <= 0) return 0
 
-  return (inv.total_value * (annualRate / 100) * daysDiff) / 365
+  return computeInterestYield(
+    inv.total_value,
+    annualRate,
+    daysDiff,
+    inv.investment_products.interest_type,
+  )
 }
 
 export function calculateTotalAccruedYield(

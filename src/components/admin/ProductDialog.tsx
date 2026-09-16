@@ -75,6 +75,7 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
           title: '',
           type: 'Debênture',
           rate: '',
+          interest_type: 'simples',
           term: '',
           min_investment: 1000,
           risk: 'Médio',
@@ -378,8 +379,25 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
                   disabled={isReadOnly}
                   value={formData.rate || ''}
                   onChange={(e) => setFormData({ ...formData, rate: e.target.value })}
-                  placeholder="Ex: CDI + 2%"
+                  placeholder="Ex: CDI + 2% ou 12% a.a."
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Tipo de Rentabilidade</Label>
+                <Select
+                  disabled={isReadOnly}
+                  value={formData.interest_type || 'simples'}
+                  onValueChange={(v) => setFormData({ ...formData, interest_type: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a capitalização" />
+                  </SelectTrigger>
+                  <SelectContent className="z-[1100]">
+                    <SelectItem value="simples">Juro Simples</SelectItem>
+                    <SelectItem value="composto">Juro Composto</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {formData.type === 'Rendimento Variável (Forex Manual)' && (

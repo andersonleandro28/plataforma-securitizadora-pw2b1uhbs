@@ -194,7 +194,13 @@ export default function Investments() {
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
                         <TrendingUp className="h-3 w-3" /> Rentabilidade
                       </span>
-                      <p className="font-semibold text-emerald-600">{product.rate || '-'}</p>
+                      <p className="font-semibold text-emerald-600">
+                        {product.rate || '-'}
+                        <span className="text-[11px] font-normal text-muted-foreground ml-1">
+                          ({product.interest_type === 'composto' ? 'Juro Composto' : 'Juro Simples'}
+                          )
+                        </span>
+                      </p>
                     </div>
                     <div className="space-y-1">
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
@@ -307,7 +313,16 @@ export default function Investments() {
             <div className="grid grid-cols-2 gap-4 bg-muted/20 p-4 rounded-lg border mt-6">
               <div>
                 <h4 className="font-semibold text-xs text-muted-foreground">Rentabilidade Alvo</h4>
-                <p className="text-sm font-medium text-emerald-600">{detailsProduct?.rate}</p>
+                <p className="text-sm font-medium text-emerald-600">
+                  {detailsProduct?.rate}{' '}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    (
+                    {detailsProduct?.interest_type === 'composto'
+                      ? 'Juro Composto'
+                      : 'Juro Simples'}
+                    )
+                  </span>
+                </p>
               </div>
               <div>
                 <h4 className="font-semibold text-xs text-muted-foreground">Prazo / Vencimento</h4>
@@ -447,7 +462,16 @@ export default function Investments() {
                       </div>
                       <div>
                         <p className="text-muted-foreground">Rentabilidade</p>
-                        <p className="font-semibold text-emerald-600">{investProduct.rate}</p>
+                        <p className="font-semibold text-emerald-600">
+                          {investProduct.rate}{' '}
+                          <span className="text-xs font-normal text-muted-foreground">
+                            (
+                            {investProduct.interest_type === 'composto'
+                              ? 'Juro Composto'
+                              : 'Juro Simples'}
+                            )
+                          </span>
+                        </p>
                       </div>
                     </div>
                   </div>

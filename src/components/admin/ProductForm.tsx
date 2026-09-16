@@ -178,6 +178,21 @@ export function ProductForm({
               placeholder="Ex: CDI + 3% a.a."
             />
           </div>
+          <div className="space-y-1.5">
+            <Label>Tipo de Rentabilidade</Label>
+            <Select
+              value={data.interest_type || 'simples'}
+              onValueChange={(v) => onChange('interest_type', v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione a capitalização" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="simples">Juro Simples</SelectItem>
+                <SelectItem value="composto">Juro Composto</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="bg-muted/30 p-3 rounded-md border text-sm flex justify-between">
           <span>
