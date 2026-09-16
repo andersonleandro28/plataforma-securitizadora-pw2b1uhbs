@@ -38,7 +38,7 @@ import { AdminNewOperationDialog } from '@/components/operations/AdminNewOperati
 import { useAuth } from '@/hooks/use-auth'
 
 export default function Operations() {
-  const { role, isStaff } = useAuth()
+  const { profile, activeRole, user, isLoadingProfile } = useAuth()
   const [operations, setOperations] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -46,7 +46,12 @@ export default function Operations() {
   const [selectedOpId, setSelectedOpId] = useState<string | null>(null)
   const [newOpOpen, setNewOpOpen] = useState(false)
 
-  const canCreateOperation = role === 'admin' || isStaff
+  // Align permission criteria with RoleGuard and other admin screens
+  const isSuperAdmin = user?.email === 'andersonleandro28@gmail.com'
+  const isAdmin =
+    profile?.is_admin || profile?.role === 'admin' || activeRole === 'admin' || isSuperAdmin
+  const isStaff = profile?.is_staff || profile?.role === 'staff' || activeRole === 'staff'
+  const canCreateOperation = !isLoadingProfile && (isAdmin || isStaff)
 
   const fetchOperations = async () => {
     setLoading(true)
