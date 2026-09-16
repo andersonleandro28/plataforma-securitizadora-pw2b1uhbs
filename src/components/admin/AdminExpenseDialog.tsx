@@ -141,7 +141,7 @@ export function AdminExpenseDialog({
           </div>
           <div className="space-y-2">
             <Label>Categoria</Label>
-            <Select value={categoria || undefined} onValueChange={setCategoria}>
+            <Select value={categoria} onValueChange={setCategoria}>
               <SelectTrigger>
                 <SelectValue placeholder="Selecione a categoria" />
               </SelectTrigger>
