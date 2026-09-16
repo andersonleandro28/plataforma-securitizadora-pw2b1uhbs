@@ -343,6 +343,13 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
       const { error } = await supabase.from('credit_operations').update(payload).eq('id', opId)
       if (error) throw error
 
+      // Recalcular a operação para refletir a nova base de datas/juros
+      try {
+        await supabase.functions.invoke('calculate-operation', { body: { operation_id: opId } })
+      } catch (calcErr) {
+        console.warn('Erro ao recalcular operação pós-atualização de datas:', calcErr)
+      }
+
       await supabase.from('audit_logs').insert({
         entity_type: 'credit_operations',
         entity_id: opId,
@@ -357,7 +364,7 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
         },
       })
 
-      toast.success('Datas atualizadas com sucesso.')
+      toast.success('Datas atualizadas e cálculos recalculados com sucesso.')
       setDatesOpen(false)
       fetchData()
       if (onRefresh) onRefresh()

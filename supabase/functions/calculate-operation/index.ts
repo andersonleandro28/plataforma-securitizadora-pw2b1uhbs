@@ -56,13 +56,50 @@ Deno.serve(async (req: Request) => {
     const faceValue = Number(opData.face_value || opData.faceValue || 0)
     const reqValue = Number(opData.requested_value || opData.requestedValue || 0)
 
+    // Base date for interest/term calculation:
+    // If a base_date / issue_date / issueDate is provided (e.g. retroactive operation),
+    // calculate the term from this base date up to the due date.
+    // If none is provided, default to current date (today) preserving existing behavior.
+    const parseLocalDate = (dateVal: string | Date | undefined | null) => {
+      if (!dateVal) return null
+      if (dateVal instanceof Date) {
+        const d = new Date(dateVal.getTime())
+        d.setHours(0, 0, 0, 0)
+        return d
+      }
+      // If "YYYY-MM-DD"
+      if (typeof dateVal === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateVal)) {
+        const [y, m, d] = dateVal.split('-').map(Number)
+        return new Date(y, m - 1, d, 0, 0, 0, 0)
+      }
+      const d = new Date(dateVal)
+      d.setHours(0, 0, 0, 0)
+      return isNaN(d.getTime()) ? null : d
+    }
+
+    const dueDateRaw = opData.due_date || opData.dueDate
+    const baseDateRaw = opData.base_date || opData.baseDate || opData.issue_date || opData.issueDate
+
     let termDays = 0
-    if (opData.due_date || opData.dueDate) {
-      const due = new Date(opData.due_date || opData.dueDate)
-      const now = new Date()
-      due.setHours(0, 0, 0, 0)
-      now.setHours(0, 0, 0, 0)
-      termDays = Math.max(0, Math.round((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
+    let startDateObj: Date = new Date()
+    startDateObj.setHours(0, 0, 0, 0)
+
+    if (baseDateRaw) {
+      const parsedBase = parseLocalDate(baseDateRaw)
+      if (parsedBase) {
+        startDateObj = parsedBase
+      }
+    }
+
+    let dueDateObj: Date | null = null
+    if (dueDateRaw) {
+      dueDateObj = parseLocalDate(dueDateRaw)
+      if (dueDateObj) {
+        termDays = Math.max(
+          0,
+          Math.round((dueDateObj.getTime() - startDateObj.getTime()) / (1000 * 60 * 60 * 24)),
+        )
+      }
     }
 
     // FORMULA IMPLEMENTATION
@@ -107,6 +144,8 @@ Deno.serve(async (req: Request) => {
 
     const memory = {
       termDays,
+      startDate: startDateObj.toISOString().split('T')[0],
+      dueDate: dueDateObj ? dueDateObj.toISOString().split('T')[0] : null,
       discount_val,
       interest_val,
       ad_valorem_val,

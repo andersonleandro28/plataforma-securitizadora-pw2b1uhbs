@@ -130,7 +130,13 @@ export function AdminNewOperationDialog({
       }
     }, 800)
     return () => clearTimeout(handler)
-  }, [formData.receivableType, formData.faceValue, formData.requestedValue, formData.dueDate])
+  }, [
+    formData.receivableType,
+    formData.faceValue,
+    formData.requestedValue,
+    formData.issueDate,
+    formData.dueDate,
+  ])
 
   const handleSimulate = async () => {
     if (Number(formData.requestedValue) > Number(formData.faceValue)) return
@@ -142,6 +148,7 @@ export function AdminNewOperationDialog({
             receivable_type: formData.receivableType,
             face_value: formData.faceValue,
             requested_value: formData.requestedValue,
+            issue_date: formData.issueDate || undefined,
             due_date: formData.dueDate,
           },
         },
@@ -184,8 +191,15 @@ export function AdminNewOperationDialog({
       return toast.error('Descreva o tipo de recebível')
     if (!formData.cedente) return toast.error('Informe o nome do cedente / originador')
     if (!formData.documentNumber) return toast.error('Informe o número do documento')
-    if (!formData.issueDate) return toast.error('Informe a data de emissão')
+    if (!formData.issueDate)
+      return toast.error('Informe a data da operação / emissão (base do cálculo de juros)')
+    if (formData.issueDate > todayStr)
+      return toast.error(
+        'A data da operação não pode ser futura. Deve ser hoje ou uma data retroativa.',
+      )
     if (!formData.dueDate) return toast.error('Informe a data de vencimento')
+    if (formData.issueDate >= formData.dueDate)
+      return toast.error('A data de vencimento deve ser posterior à data da operação.')
     if (
       !formData.sacado ||
       !formData.sacadoDocument ||
@@ -298,6 +312,9 @@ export function AdminNewOperationDialog({
   }
 
   const selectedBorrower = borrowers.find((b) => b.id === selectedBorrowerId)
+  const todayStr = new Date().toISOString().split('T')[0]
+  const isRetroactiveDate = Boolean(formData.issueDate && formData.issueDate < todayStr)
+  const isFutureDate = Boolean(formData.issueDate && formData.issueDate > todayStr)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -444,20 +461,45 @@ export function AdminNewOperationDialog({
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Data de Emissão *</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="issueDate">Data da Operação (Emissão / Base dos Juros) *</Label>
+                    {isRetroactiveDate && (
+                      <span className="text-[10px] font-semibold uppercase tracking-wide bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded border border-amber-300 dark:border-amber-800">
+                        Retroativa
+                      </span>
+                    )}
+                  </div>
                   <Input
+                    id="issueDate"
                     type="date"
+                    max={todayStr}
                     value={formData.issueDate}
                     onChange={(e) => setFormData({ ...formData, issueDate: e.target.value })}
+                    className={
+                      isFutureDate ? 'border-destructive focus-visible:ring-destructive' : ''
+                    }
                   />
+                  <p className="text-[11px] text-muted-foreground">
+                    Pode ser uma <strong>data retroativa no passado</strong> ou a data de hoje. Os
+                    juros e deságio serão calculados a partir desta data até o vencimento.
+                  </p>
+                  {isFutureDate && (
+                    <p className="text-[11px] text-destructive font-medium flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" /> A data da operação não pode ser futura.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Label>Data de Vencimento *</Label>
+                  <Label htmlFor="dueDate">Data de Vencimento *</Label>
                   <Input
+                    id="dueDate"
                     type="date"
                     value={formData.dueDate}
                     onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
                   />
+                  <p className="text-[11px] text-muted-foreground">
+                    Data em que o título / recebível vence.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label>Parcelas</Label>
@@ -583,10 +625,36 @@ export function AdminNewOperationDialog({
                 ) : simulation ? (
                   <div className="space-y-2">
                     <div className="flex justify-between text-muted-foreground">
-                      <span>Prazo Base:</span>
+                      <span>Prazo de Juros:</span>
                       <span className="font-medium text-foreground">
                         {simulation.termDays} dias
                       </span>
+                    </div>
+                    <div className="text-[11px] bg-muted/40 p-1.5 rounded border text-muted-foreground">
+                      <span className="font-medium text-foreground">Período de Juros: </span>
+                      {formData.issueDate && formData.dueDate ? (
+                        <span>
+                          {simulation.termDays} dias (de{' '}
+                          <strong className="text-foreground">
+                            {new Date(formData.issueDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+                          </strong>{' '}
+                          a{' '}
+                          <strong className="text-foreground">
+                            {new Date(formData.dueDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+                          </strong>
+                          {isRetroactiveDate ? ' - base retroativa' : ''})
+                        </span>
+                      ) : formData.dueDate ? (
+                        <span>
+                          {simulation.termDays} dias (de hoje a{' '}
+                          <strong className="text-foreground">
+                            {new Date(formData.dueDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+                          </strong>
+                          )
+                        </span>
+                      ) : (
+                        <span>-</span>
+                      )}
                     </div>
                     <div className="flex justify-between">
                       <span>Valor de Face (VF):</span>
@@ -659,6 +727,9 @@ export function AdminNewOperationDialog({
                       !selectedBorrowerId ||
                       !formData.receivableType ||
                       !formData.documentNumber ||
+                      !formData.issueDate ||
+                      isFutureDate ||
+                      !formData.dueDate ||
                       !formData.faceValue ||
                       !formData.requestedValue ||
                       Number(formData.requestedValue) > Number(formData.faceValue)
