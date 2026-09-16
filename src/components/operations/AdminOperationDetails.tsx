@@ -38,6 +38,7 @@ import {
   AlertCircle,
   FileSignature,
   Send,
+  Calendar,
   CalendarDays,
 } from 'lucide-react'
 import { getStatusBadge } from '../dashboard/BorrowerOperationsList'
@@ -558,9 +559,88 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                       <span className="font-medium text-foreground">Vencimento:</span>{' '}
                       {op.due_date ? format(new Date(op.due_date), 'dd/MM/yyyy') : '-'}
                     </p>
+                    <p>
+                      <span className="font-medium text-foreground">Parcelas:</span>{' '}
+                      {op.installments || 1}x
+                    </p>
                   </CardContent>
                 </Card>
               </div>
+
+              {/* Se houver dados de parcelas individuais (installments_data) */}
+              {Array.isArray((op as any).installments_data) &&
+                (op as any).installments_data.length > 0 && (
+                  <div className="border rounded-lg p-3 bg-muted/20 space-y-2">
+                    <h4 className="font-semibold text-xs uppercase tracking-wider text-primary flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5" /> Cronograma de Parcelas &amp; Documentos
+                    </h4>
+                    <div className="space-y-1.5">
+                      {(op as any).installments_data.map((inst: any, idx: number) => {
+                        const instDoc = docs.find(
+                          (d) =>
+                            d.category === `parcela_${inst.number}` ||
+                            d.file_name?.toLowerCase().includes(`parcela ${inst.number}`) ||
+                            (inst.documentPath && d.file_path === inst.documentPath),
+                        )
+
+                        return (
+                          <div
+                            key={idx}
+                            className="flex flex-col sm:flex-row sm:items-center justify-between p-2 rounded border bg-background text-xs gap-2"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-[10px]">
+                                {inst.number}
+                              </span>
+                              <span className="font-medium">Parcela {inst.number}</span>
+                              <span className="text-muted-foreground">|</span>
+                              <span>
+                                Vencimento:{' '}
+                                <strong className="text-foreground">
+                                  {inst.dueDate
+                                    ? format(new Date(inst.dueDate + 'T00:00:00'), 'dd/MM/yyyy')
+                                    : '-'}
+                                </strong>
+                              </span>
+                              {inst.value && (
+                                <>
+                                  <span className="text-muted-foreground">|</span>
+                                  <span className="font-mono text-emerald-600 font-medium">
+                                    {formatCurrency(Number(inst.value))}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2 self-end sm:self-auto">
+                              {instDoc ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs gap-1.5 text-primary hover:text-primary"
+                                  onClick={() =>
+                                    handleDownload(instDoc.file_path, instDoc.file_name)
+                                  }
+                                >
+                                  <Download className="w-3 h-3" /> Baixar Doc (
+                                  {instDoc.file_name.replace(`Parcela ${inst.number} - `, '')})
+                                </Button>
+                              ) : inst.documentName ? (
+                                <span className="text-[11px] text-muted-foreground italic flex items-center gap-1">
+                                  <FileText className="w-3 h-3" /> {inst.documentName}
+                                </span>
+                              ) : (
+                                <span className="text-[11px] text-muted-foreground italic">
+                                  Sem documento individual
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
 
               {/* Informações Bancárias */}
               <Card className="shadow-none border-primary/20">
