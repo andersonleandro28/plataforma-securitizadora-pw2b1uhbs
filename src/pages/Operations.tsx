@@ -30,15 +30,23 @@ import {
 } from '@/components/ui/select'
 import { supabase } from '@/lib/supabase/client'
 import { format } from 'date-fns'
+import { Plus } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { getStatusBadge } from '@/components/dashboard/BorrowerOperationsList'
 import { AdminOperationDetails } from '@/components/operations/AdminOperationDetails'
+import { AdminNewOperationDialog } from '@/components/operations/AdminNewOperationDialog'
+import { useAuth } from '@/hooks/use-auth'
 
 export default function Operations() {
+  const { role, isStaff } = useAuth()
   const [operations, setOperations] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [selectedOpId, setSelectedOpId] = useState<string | null>(null)
+  const [newOpOpen, setNewOpOpen] = useState(false)
+
+  const canCreateOperation = role === 'admin' || isStaff
 
   const fetchOperations = async () => {
     setLoading(true)
@@ -139,6 +147,11 @@ export default function Operations() {
             Acompanhe e analise a esteira completa de borderôs submetidos pelos tomadores.
           </p>
         </div>
+        {canCreateOperation && (
+          <Button onClick={() => setNewOpOpen(true)} className="gap-2 shrink-0">
+            <Plus className="w-4 h-4" /> Lançar Operação
+          </Button>
+        )}
       </div>
 
       <Card className="shadow-sm">
@@ -249,6 +262,12 @@ export default function Operations() {
         open={!!selectedOpId}
         onOpenChange={(v: boolean) => !v && setSelectedOpId(null)}
         onRefresh={fetchOperations}
+      />
+
+      <AdminNewOperationDialog
+        open={newOpOpen}
+        onOpenChange={setNewOpOpen}
+        onSuccess={fetchOperations}
       />
     </div>
   )
