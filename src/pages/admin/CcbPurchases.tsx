@@ -29,11 +29,29 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { toast } from 'sonner'
-import { Plus, Trash2, Edit, Upload, FileText, List, CheckCircle } from 'lucide-react'
+import {
+  Plus,
+  Trash2,
+  Edit,
+  Upload,
+  FileText,
+  List,
+  CheckCircle,
+  RotateCcw,
+  AlertTriangle,
+  Loader2,
+} from 'lucide-react'
 import { formatDate, toISODate } from '@/lib/utils'
 
 export default function CcbPurchases() {
-  const { user } = useAuth()
+  const { user, profile, activeRole } = useAuth()
+  const isAdminOrStaff =
+    profile?.is_admin ||
+    profile?.role === 'admin' ||
+    profile?.is_staff ||
+    profile?.role === 'staff' ||
+    activeRole === 'admin' ||
+    activeRole === 'staff'
   const [purchases, setPurchases] = useState<any[]>([])
   const [ccbs, setCcbs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -50,6 +68,18 @@ export default function CcbPurchases() {
     interest: '',
     penalty: '',
   })
+
+  // Reversão de baixa de parcela
+  const [revertDialogOpen, setRevertDialogOpen] = useState(false)
+  const [revertingInstallment, setRevertingInstallment] = useState<{
+    purchaseId: string
+    idx: number
+    unitValue: number
+    paymentDate?: string
+    interest?: number
+    penalty?: number
+  } | null>(null)
+  const [revertingLoading, setRevertingLoading] = useState(false)
 
   const [form, setForm] = useState({
     ccb_id: '',
@@ -308,6 +338,69 @@ export default function CcbPurchases() {
   const openInstallments = (p: any) => {
     setSelectedPurchase(p)
     setInstallmentsOpen(true)
+  }
+
+  const handleOpenRevertModal = (purchaseId: string, idx: number, b: any) => {
+    setRevertingInstallment({
+      purchaseId,
+      idx,
+      unitValue: Number(b.unit_value || 0),
+      paymentDate: b.payment_date || b.data_pagamento,
+      interest: Number(b.interest_applied || 0),
+      penalty: Number(b.penalty_applied || 0),
+    })
+    setRevertDialogOpen(true)
+  }
+
+  const handleConfirmReversal = async () => {
+    if (!revertingInstallment) return
+    setRevertingLoading(true)
+
+    try {
+      const { data, error } = await supabase.rpc('revert_ccb_installment_liquidation', {
+        p_recebivel_id: revertingInstallment.purchaseId,
+        p_installment_idx: revertingInstallment.idx,
+      })
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      // Atualizar o selectedPurchase com a nova lista de boletos
+      if (data?.boletos && selectedPurchase) {
+        setSelectedPurchase({
+          ...selectedPurchase,
+          boletos: data.boletos,
+        })
+      } else if (selectedPurchase) {
+        // Fallback local caso retorne sem boletos
+        const updatedBoletos = [...selectedPurchase.boletos]
+        const targetBoleto = { ...updatedBoletos[revertingInstallment.idx] }
+        targetBoleto.status = 'Pendente'
+        delete targetBoleto.payment_date
+        delete targetBoleto.data_pagamento
+        delete targetBoleto.data_liquidacao
+        delete targetBoleto.interest_applied
+        delete targetBoleto.penalty_applied
+        updatedBoletos[revertingInstallment.idx] = targetBoleto
+        setSelectedPurchase({
+          ...selectedPurchase,
+          boletos: updatedBoletos,
+        })
+      }
+
+      toast.success(
+        `Baixa da Parcela ${revertingInstallment.idx + 1} revertida com sucesso! Lançamento de receita estornado do caixa/DRE.`,
+      )
+      setRevertDialogOpen(false)
+      setRevertingInstallment(null)
+      fetchPurchases()
+    } catch (err: any) {
+      console.error('Erro ao reverter baixa:', err)
+      toast.error('Erro ao reverter baixa: ' + (err.message || 'Falha na reversão'))
+    } finally {
+      setRevertingLoading(false)
+    }
   }
 
   const handleBoletoChange = (idx: number, field: string, val: any) => {
@@ -693,7 +786,19 @@ export default function CcbPurchases() {
                       )}
                     </TableCell>
                     <TableCell className="text-right">
-                      {b.status !== 'Pago' && (
+                      {b.status === 'Pago' ? (
+                        isAdminOrStaff && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-amber-700 border-amber-300 hover:bg-amber-50 hover:text-amber-800 gap-1"
+                            onClick={() => handleOpenRevertModal(selectedPurchase.id, i, b)}
+                            title="Reverter baixa e estornar receita do caixa"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" /> Reverter Baixa
+                          </Button>
+                        )
+                      ) : (
                         <Button
                           size="sm"
                           className="bg-emerald-600 hover:bg-emerald-700"
@@ -825,6 +930,111 @@ export default function CcbPurchases() {
               className="bg-emerald-600 hover:bg-emerald-700"
             >
               Confirmar Recebimento
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de Confirmação de Reversão de Baixa */}
+      <Dialog
+        open={revertDialogOpen}
+        onOpenChange={(openState) => {
+          if (!revertingLoading) {
+            setRevertDialogOpen(openState)
+            if (!openState) setRevertingInstallment(null)
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-700">
+              <AlertTriangle className="w-5 h-5 text-amber-600" />
+              Reverter Baixa da Parcela {(revertingInstallment?.idx ?? 0) + 1}?
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-sm text-foreground">
+            <p>
+              Você está prestes a reverter a liquidação da{' '}
+              <strong>Parcela {(revertingInstallment?.idx ?? 0) + 1}</strong> desta CCB.
+            </p>
+
+            <div className="bg-amber-50 border border-amber-200 rounded p-3 space-y-1.5 text-xs text-amber-900">
+              <div className="flex justify-between">
+                <span>Valor Nominal:</span>
+                <span className="font-semibold">
+                  R${' '}
+                  {Number(revertingInstallment?.unitValue || 0).toLocaleString('pt-BR', {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
+              {revertingInstallment?.paymentDate && (
+                <div className="flex justify-between">
+                  <span>Data de Pagamento Registrada:</span>
+                  <span className="font-semibold">
+                    {formatDate(revertingInstallment.paymentDate)}
+                  </span>
+                </div>
+              )}
+              {((revertingInstallment?.interest || 0) > 0 ||
+                (revertingInstallment?.penalty || 0) > 0) && (
+                <div className="flex justify-between">
+                  <span>Juros / Multa aplicados:</span>
+                  <span className="font-semibold">
+                    + R${' '}
+                    {(
+                      Number(revertingInstallment?.interest || 0) +
+                      Number(revertingInstallment?.penalty || 0)
+                    ).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="rounded bg-muted p-3 text-xs text-muted-foreground space-y-1">
+              <p className="font-medium text-foreground">O que esta ação faz:</p>
+              <ul className="list-disc pl-4 space-y-1">
+                <li>
+                  Restaura o status da parcela para <strong>Pendente</strong>.
+                </li>
+                <li>Remove a data de pagamento e os valores de juros/multa aplicados.</li>
+                <li>
+                  <strong>Remove o lançamento de receita correspondente</strong> da Tesouraria
+                  (Caixa, DRE e Contabilidade), evitando duplicidade ou valores incorretos.
+                </li>
+                <li>
+                  Permite que a parcela seja liquidada novamente a qualquer momento com nova data e
+                  valores.
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRevertDialogOpen(false)
+                setRevertingInstallment(null)
+              }}
+              disabled={revertingLoading}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              onClick={handleConfirmReversal}
+              disabled={revertingLoading}
+            >
+              {revertingLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Revertendo...
+                </>
+              ) : (
+                'Confirmar Reversão'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -60,6 +60,7 @@ export default function AdminCcbRequests() {
   const [manageOp, setManageOp] = useState<any>(null)
   const [uploadingBoleto, setUploadingBoleto] = useState<string | null>(null)
   const [payLoading, setPayLoading] = useState(false)
+  const [revertingInstallmentId, setRevertingInstallmentId] = useState<string | null>(null)
 
   const [adjustModal, setAdjustModal] = useState<any>(null)
   const [adjRate, setAdjRate] = useState('')
@@ -316,6 +317,62 @@ export default function AdminCcbRequests() {
       toast.error('Erro: ' + err.message)
     } finally {
       setPayLoading(false)
+    }
+  }
+
+  const handleRevertAnticipationInstallment = async (opId: string, installment: any) => {
+    if (
+      !confirm(
+        `Deseja realmente reverter a baixa da Parcela ${installment.number}? O lançamento correspondente será estornado do caixa.`,
+      )
+    ) {
+      return
+    }
+
+    setRevertingInstallmentId(installment.id)
+    try {
+      const opToUpdate = activeOps.find((o) => o.id === opId)
+      if (!opToUpdate) throw new Error('Operação não encontrada')
+
+      const updatedInstallments = opToUpdate.installments.map((i: any) => {
+        if (i.id === installment.id) {
+          const { payment_date, ...rest } = i
+          return { ...rest, status: 'aberta' }
+        }
+        return i
+      })
+
+      // Atualiza a tabela operacoes_antecipacao (o trigger on_operacoes_antecipacao_change remove de treasury_transactions)
+      const { error: updErr } = await supabase
+        .from('operacoes_antecipacao')
+        .update({ installments: updatedInstallments })
+        .eq('id', opId)
+
+      if (updErr) throw updErr
+
+      // 1. Remover mapeamento de caixa
+      await supabase
+        .from('mapeamento_movimentacoes')
+        .delete()
+        .eq('origem_tabela', 'ccb')
+        .eq('origem_id', installment.id)
+
+      // 2. Remover movimentação de caixa correspondente
+      await supabase
+        .from('movimentacoes_caixa')
+        .delete()
+        .eq('referencia_id', opToUpdate.ccb_id)
+        .eq('referencia_tipo', 'ccb')
+        .ilike('descricao', `%Parcela ${installment.number}%`)
+
+      toast.success(`Baixa da Parcela ${installment.number} revertida com sucesso!`)
+
+      setManageOp({ ...manageOp, installments: updatedInstallments })
+      fetchData()
+    } catch (err: any) {
+      toast.error('Erro ao reverter baixa: ' + err.message)
+    } finally {
+      setRevertingInstallmentId(null)
     }
   }
 
@@ -772,7 +829,21 @@ export default function AdminCcbRequests() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      {inst.status !== 'paga' && (
+                      {inst.status === 'paga' ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-amber-700 border-amber-300 hover:bg-amber-50 hover:text-amber-800"
+                          onClick={() => handleRevertAnticipationInstallment(manageOp.id, inst)}
+                          disabled={revertingInstallmentId === inst.id}
+                        >
+                          {revertingInstallmentId === inst.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            'Reverter Baixa'
+                          )}
+                        </Button>
+                      ) : (
                         <Button
                           size="sm"
                           onClick={() => handlePayInstallment(manageOp.id, inst)}
