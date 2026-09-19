@@ -171,7 +171,7 @@ export function AdminUserFormDialog({ open, onOpenChange, user, onSaved }: any) 
               ? Number(formData.pj_annual_revenue)
               : null,
             pj_foundation_date: formData.pj_foundation_date || null,
-          })
+          } as any)
           .eq('id', targetUserId)
         if (error) throw error
 

@@ -209,12 +209,7 @@ export function SeriesListTab({
         </div>
       </CardContent>
 
-      <AddSeriesDialog
-        debentures={debentures}
-        open={addSeriesOpen}
-        onOpenChange={setAddSeriesOpen}
-        onSuccess={onRefresh}
-      />
+      <AddSeriesDialog open={addSeriesOpen} onOpenChange={setAddSeriesOpen} onSuccess={onRefresh} />
 
       <ManageSubscriptionsDialog
         series={manageSeries}
@@ -227,7 +222,6 @@ export function SeriesListTab({
 
       <EditSeriesDialog
         series={editSeries}
-        debentures={debentures}
         open={!!editSeriesId}
         onOpenChange={(op: boolean) => {
           if (!op) setEditSeriesId(null)

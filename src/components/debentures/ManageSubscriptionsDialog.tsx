@@ -274,7 +274,7 @@ export function ManageSubscriptionsDialog({
       return toast.error('Esta operação já foi registrada no caixa')
     }
 
-    const { data: saldo } = await supabase
+    const { data: saldo } = await (supabase as any)
       .from('saldo_caixa')
       .select('saldo_atual')
       .limit(1)

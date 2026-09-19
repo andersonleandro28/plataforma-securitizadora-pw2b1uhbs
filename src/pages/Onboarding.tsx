@@ -48,7 +48,10 @@ export default function Onboarding() {
   }, [])
 
   const handleUpdateStatus = async (id: string, status: string) => {
-    const { error } = await supabase.from('profiles').update({ kyc_status: status }).eq('id', id)
+    const { error } = await supabase
+      .from('profiles')
+      .update({ kyc_status: status as any })
+      .eq('id', id)
     if (error) {
       toast.error('Erro ao atualizar status KYC.')
     } else {

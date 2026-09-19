@@ -97,7 +97,7 @@ export default function Users() {
       async () => {
         const { error } = await supabase
           .from('profiles')
-          .update({ [roleKey]: checked })
+          .update({ [roleKey]: checked } as any)
           .eq('id', userId)
         if (error) {
           toast.error('Erro ao atualizar permissões do usuário.')

@@ -330,11 +330,10 @@ export function CcbWizard({ onSuccess }: { onSuccess: () => void }) {
           onChange={(v: string) => setData({ ...data, neighborhood: v })}
         />
         <InputField
-          className="md:col-span-2"
+          className="md:col-span-2 bg-muted/50"
           label="Cidade/UF"
           value={`${data.city} - ${data.state}`}
           disabled
-          className="bg-muted/50"
         />
       </div>
     </div>

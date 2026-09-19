@@ -294,7 +294,10 @@ export default function Profile() {
       updated_at: new Date().toISOString(),
     }
 
-    const { error } = await supabase.from('profiles').update(payload).eq('id', user.id)
+    const { error } = await supabase
+      .from('profiles')
+      .update(payload as any)
+      .eq('id', user.id)
     if (error) {
       toast.error(error.message || 'Erro ao salvar dados cadastrais.')
     } else {

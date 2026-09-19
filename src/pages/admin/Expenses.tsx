@@ -217,7 +217,7 @@ export default function Expenses() {
       return false
     }
 
-    const { data: saldo } = await supabase
+    const { data: saldo } = await (supabase as any)
       .from('saldo_caixa')
       .select('saldo_atual')
       .limit(1)
@@ -269,7 +269,7 @@ export default function Expenses() {
 
   const handleSaveExpense = async () => {
     if (expForm.status === 'paid' && !expForm.id) {
-      const { data: saldo } = await supabase
+      const { data: saldo } = await (supabase as any)
         .from('saldo_caixa')
         .select('saldo_atual')
         .limit(1)
@@ -351,7 +351,7 @@ export default function Expenses() {
     const expense = expenses.find((e) => e.id === id)
     if (!expense) return
 
-    const { data: saldo } = await supabase
+    const { data: saldo } = await (supabase as any)
       .from('saldo_caixa')
       .select('saldo_atual')
       .limit(1)

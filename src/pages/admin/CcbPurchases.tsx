@@ -214,7 +214,7 @@ export default function CcbPurchases() {
       if (mappedCheck) {
         return toast.error('Esta operação já foi registrada no caixa')
       }
-      const { data: saldo } = await supabase
+      const { data: saldo } = await (supabase as any)
         .from('saldo_caixa')
         .select('saldo_atual')
         .limit(1)
@@ -367,10 +367,10 @@ export default function CcbPurchases() {
       }
 
       // Atualizar o selectedPurchase com a nova lista de boletos
-      if (data?.boletos && selectedPurchase) {
+      if ((data as any)?.boletos && selectedPurchase) {
         setSelectedPurchase({
           ...selectedPurchase,
-          boletos: data.boletos,
+          boletos: (data as any).boletos,
         })
       } else if (selectedPurchase) {
         // Fallback local caso retorne sem boletos

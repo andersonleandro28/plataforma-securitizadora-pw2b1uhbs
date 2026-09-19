@@ -1,5 +1,8 @@
 import { supabase } from '@/lib/supabase/client'
 
+/**
+ * Interface e tipos para o sistema de notificações in-app.
+ */
 export interface InAppNotification {
   id: string
   user_id: string

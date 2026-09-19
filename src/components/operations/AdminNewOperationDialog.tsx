@@ -45,6 +45,7 @@ export interface OperationInstallmentItem {
   value: string
   file?: File | null
   documentName?: string
+  documentPath?: string
 }
 
 interface AdminNewOperationDialogProps {
@@ -478,7 +479,7 @@ export function AdminNewOperationDialog({
 
       // 2. Upload de arquivos anexados
       // 2a. Documentos individuais por parcela (se parcelas > 1)
-      const updatedInstallments = [...serializedInstallments]
+      const updatedInstallments: any[] = [...serializedInstallments]
       let hasInstallmentUpdates = false
 
       if (numInstallments > 1) {

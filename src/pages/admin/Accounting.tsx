@@ -156,7 +156,7 @@ export default function Accounting() {
           <AlertTitle>Erro ao carregar dados</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
-        <Button onClick={refetch} className="mt-4">
+        <Button onClick={() => refetch()} className="mt-4">
           Tentar Novamente
         </Button>
       </div>

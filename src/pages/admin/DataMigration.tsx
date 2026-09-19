@@ -51,7 +51,7 @@ export default function DataMigration() {
 
     const status: Record<string, string> = {}
     for (const check of checks) {
-      const { count, error } = await supabase
+      const { count, error } = await (supabase as any)
         .from(check.table)
         .select('*', { count: 'exact', head: true })
       if (error || count === 0 || count === null) {
