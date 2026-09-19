@@ -86,10 +86,7 @@ export default function Expenses() {
     setLoading(true)
     const [supRes, expRes] = await Promise.all([
       supabase.from('suppliers').select('*').order('company_name', { ascending: true }),
-      supabase
-        .from('expenses')
-        .select('*, suppliers(company_name)')
-        .order('created_at', { ascending: false }),
+      supabase.from('expenses').select('*, suppliers(company_name)'),
     ])
 
     console.log('Fornecedores retornados da API:', supRes.data)
@@ -98,7 +95,30 @@ export default function Expenses() {
     }
 
     if (supRes.data) setSuppliers(supRes.data)
-    if (expRes.data) setExpenses(expRes.data)
+    if (expRes.data) {
+      const sortedExpenses = [...expRes.data].sort((a, b) => {
+        // Registros com payment_date têm prioridade e são ordenados decrescente pela data de pagamento
+        const hasPaymentA = !!a.payment_date
+        const hasPaymentB = !!b.payment_date
+
+        if (hasPaymentA && hasPaymentB) {
+          const dateA = new Date(a.payment_date).getTime()
+          const dateB = new Date(b.payment_date).getTime()
+          if (dateB !== dateA) return dateB - dateA
+          return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+        }
+
+        if (hasPaymentA && !hasPaymentB) return -1
+        if (!hasPaymentA && hasPaymentB) return 1
+
+        // Registros sem payment_date caem ao final, ordenados decrescente pela data de vencimento (due_date)
+        const dueA = a.due_date ? new Date(a.due_date).getTime() : 0
+        const dueB = b.due_date ? new Date(b.due_date).getTime() : 0
+        if (dueB !== dueA) return dueB - dueA
+        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+      })
+      setExpenses(sortedExpenses)
+    }
     setLoading(false)
   }
 
