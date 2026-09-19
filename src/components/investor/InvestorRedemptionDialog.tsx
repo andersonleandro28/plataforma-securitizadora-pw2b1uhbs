@@ -83,8 +83,8 @@ export function InvestorRedemptionDialog({
   // Reset input quando abre com novo investimento
   const handleOpenChange = (nextOpen: boolean) => {
     if (nextOpen && investment) {
-      const initial = Math.min(1, availableQuotas)
-      setQuotasInput(initial > 0 ? String(initial) : '0')
+      const initial = Math.min(1, Math.max(0, availableQuotas))
+      setQuotasInput(initial > 0 ? String(initial) : '1')
     }
     onOpenChange(nextOpen)
   }

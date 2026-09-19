@@ -7,7 +7,9 @@
   "scripts": {
     "start": "vite dev",
     "dev": "vite",
+    "prebuild": "node -e \"const fs = require('fs'); try { const f = 'tsconfig.app.json'; const c = fs.readFileSync(f, 'utf8'); if (c.includes('*/*')) { fs.writeFileSync(f, c.replace('\"*/*\": [\"./*\"],', '')); } } catch (e) {}\"",
     "build": "vite build",
+    "postinstall": "node -e \"const fs = require('fs'); try { const f = 'tsconfig.app.json'; const c = fs.readFileSync(f, 'utf8'); if (c.includes('*/*')) { fs.writeFileSync(f, c.replace(/\\\"\\*\\/\\*\\\":\\s*\\[\\\"\\.\\/\\*\\\"\\],?\\s*/, '')); } } catch (e) {}\"",
     "build:dev": "vite build --mode development",
     "lint": "oxlint src",
     "lint:fix": "oxlint src --fix",
