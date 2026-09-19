@@ -50,8 +50,12 @@ export interface Profile {
   pj_rep_role?: string
   pj_rep_is_procurator?: boolean
   wallet_balance?: number
+  credit_limit?: number | null
+  pf_birth_date?: string | null
+  kyc_signature_status?: string | null
+  kyc_signature_url?: string | null
+  [key: string]: any
 }
-
 interface AuthContextType {
   user: User | null
   profile: Profile | null

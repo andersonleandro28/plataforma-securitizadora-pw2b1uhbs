@@ -1,5 +1,7 @@
 import type { ManualYieldEntry } from '@/services/manual-yield'
 
+export type { ManualYieldEntry }
+
 export function calculateManualYieldAmount(
   totalValue: number,
   entries: ManualYieldEntry[],

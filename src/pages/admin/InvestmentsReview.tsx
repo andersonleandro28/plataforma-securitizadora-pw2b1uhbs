@@ -42,6 +42,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import { formatDate, toISODate } from '@/lib/utils'
 import { InvestmentProofModal, InvestmentProof } from '@/components/admin/InvestmentProofModal'
+import { sendNotification } from '@/services/notifications'
 
 export default function InvestmentsReview() {
   const { user } = useAuth()
@@ -424,7 +425,25 @@ export default function InvestmentsReview() {
 
       if (rpcErr) throw rpcErr
 
-      toast.success('Resgate aprovado e liquidado com sucesso.')
+      // Notificar investidor sobre aprovação/pagamento
+      const productName = approveData.red.investments?.investment_products?.title || 'Investimento'
+      const netFormatted = formatC(netVal)
+
+      await sendNotification({
+        userId: approveData.red.user_id,
+        title: 'Saque Aprovado e Pago!',
+        message: `Seu saque no valor líquido de ${netFormatted} referente a ${productName} (${approveData.red.requested_quotas} cota(s)) foi APROVADO e PAGO pela administração. O saldo está disponível em sua conta.`,
+        type: 'success',
+        link: '/investidor',
+        metadata: {
+          redemptionId: approveData.red.id,
+          productTitle: productName,
+          netValue: netVal,
+          status: 'paid',
+        },
+      })
+
+      toast.success('Resgate aprovado e liquidado com sucesso. Investidor notificado!')
       setApproveModalOpen(false)
       fetchRedemptions()
     } catch (err: any) {
@@ -449,7 +468,27 @@ export default function InvestmentsReview() {
         .eq('id', selectedRedemption.id)
       if (error) throw error
 
-      toast.success('Resgate rejeitado.')
+      // Notificar investidor sobre a rejeição
+      const productName =
+        selectedRedemption.investments?.investment_products?.title || 'Investimento'
+      const netFormatted = formatC(selectedRedemption.net_value)
+
+      await sendNotification({
+        userId: selectedRedemption.user_id,
+        title: 'Solicitação de Saque Reprovada',
+        message: `Sua solicitação de saque de ${netFormatted} em ${productName} foi REJEITADA. Motivo informado: "${rejectionReason.trim()}". Suas cotas permanecem preservadas.`,
+        type: 'error',
+        link: '/investidor',
+        metadata: {
+          redemptionId: selectedRedemption.id,
+          productTitle: productName,
+          netValue: selectedRedemption.net_value,
+          status: 'rejected',
+          reason: rejectionReason.trim(),
+        },
+      })
+
+      toast.success('Resgate rejeitado. Investidor notificado!')
       setRejectOpen(false)
       fetchRedemptions()
     } catch (err: any) {
@@ -521,6 +560,26 @@ export default function InvestmentsReview() {
           difference: netDifference,
         },
       })
+
+      // Notificar investidor sobre ajuste retroativo se houver diferença
+      if (netDifference !== 0) {
+        const productName =
+          selectedRedemption.investments?.investment_products?.title || 'Investimento'
+        await sendNotification({
+          userId: selectedRedemption.user_id,
+          title: 'Ajuste no Valor de Resgate',
+          message: `Houve um ajuste retroativo no resgate de ${productName}. Novo valor líquido: ${formatC(newNet)} (Diferença de ${netDifference > 0 ? '+' : ''}${formatC(netDifference)}).`,
+          type: 'info',
+          link: '/investidor',
+          metadata: {
+            redemptionId: selectedRedemption.id,
+            productTitle: productName,
+            netValue: newNet,
+            difference: netDifference,
+            status: selectedRedemption.status,
+          },
+        })
+      }
 
       toast.success('Resgate editado retroativamente com sucesso.')
       setEditRedemptionOpen(false)

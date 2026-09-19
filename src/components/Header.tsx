@@ -2,6 +2,7 @@ import { Search, User, LogOut, Settings, Check } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { ActionCenter } from './ActionCenter'
+import { NotificationBell } from './NotificationBell'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   DropdownMenu,
@@ -57,6 +58,7 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-4">
+        <NotificationBell />
         <ActionCenter />
         <div className="h-8 w-px bg-border hidden sm:block" />
 

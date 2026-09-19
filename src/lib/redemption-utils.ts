@@ -1,5 +1,6 @@
 import { computeInterestYield, parseProductRate } from '@/lib/yield-calculator'
-import { calculateManualYieldAmount, type ManualYieldEntry } from '@/lib/manual-yield-calculator'
+import { calculateManualYieldAmount } from '@/lib/manual-yield-calculator'
+import type { ManualYieldEntry } from '@/services/manual-yield'
 
 export interface ProductRedemptionRules {
   id?: string

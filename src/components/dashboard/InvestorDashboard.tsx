@@ -41,6 +41,8 @@ import {
 } from '@/lib/manual-yield-calculator'
 import { evaluateGracePeriod } from '@/lib/redemption-utils'
 import { InvestorRedemptionDialog } from '@/components/investor/InvestorRedemptionDialog'
+import { InvestorRedemptionStatement } from '@/components/investor/InvestorRedemptionStatement'
+import { InvestorTaxReport } from '@/components/investor/InvestorTaxReport'
 
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0)
@@ -263,6 +265,7 @@ export function InvestorDashboard() {
   const { user, profile, loading: authLoading } = useAuth()
   const [investments, setInvestments] = useState<any[]>([])
   const [manualYieldMap, setManualYieldMap] = useState<Record<string, ManualYieldEntry[]>>({})
+  const [allRedemptions, setAllRedemptions] = useState<any[]>([])
   const [pendingRedemptions, setPendingRedemptions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedProduct, setSelectedProduct] = useState<string>('all')
@@ -303,18 +306,32 @@ export function InvestorDashboard() {
           .order('created_at', { ascending: false }),
         supabase
           .from('investment_redemptions')
-          .select('id, investment_id, requested_quotas, status, net_value, created_at')
+          .select(
+            `*,
+            investments(
+              id,
+              unit_price,
+              transfer_date,
+              created_at,
+              investment_products(
+                title,
+                rate,
+                type
+              )
+            )`,
+          )
           .eq('user_id', user.id)
-          .eq('status', 'pending'),
+          .order('created_at', { ascending: false }),
       ])
 
       if (error) throw error
       if (redError) {
-        console.warn('Erro ao carregar resgates pendentes:', redError)
+        console.warn('Erro ao carregar resgates:', redError)
       }
 
       setInvestments(data || [])
-      setPendingRedemptions(redData || [])
+      setAllRedemptions(redData || [])
+      setPendingRedemptions((redData || []).filter((r: any) => r.status === 'pending'))
 
       const manualProducts = (data || []).filter(
         (inv: any) =>
@@ -621,14 +638,26 @@ export function InvestorDashboard() {
 
       <div className="space-y-4 pt-4">
         <div>
-          <h2 className="text-xl font-bold tracking-tight">Meus Investimentos</h2>
-          <p className="text-sm text-muted-foreground">Gerencie suas cotas e subscrições.</p>
+          <h2 className="text-xl font-bold tracking-tight">Gestão da Carteira</h2>
+          <p className="text-sm text-muted-foreground">
+            Acompanhe investimentos ativos, extrato completo de resgates e informe de rendimentos
+            para o Imposto de Renda.
+          </p>
         </div>
 
         <Tabs defaultValue="ativos" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 max-w-md">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 max-w-2xl">
             <TabsTrigger value="ativos">Ativos</TabsTrigger>
             <TabsTrigger value="resgatados">Resgatados</TabsTrigger>
+            <TabsTrigger value="extrato-resgates">
+              Extrato Resgates
+              {allRedemptions.length > 0 && (
+                <Badge variant="secondary" className="ml-1.5 px-1 py-0 text-[10px]">
+                  {allRedemptions.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="informe-ir">Informe IR</TabsTrigger>
             <TabsTrigger value="cancelados">Cancelados</TabsTrigger>
           </TabsList>
 
@@ -643,6 +672,28 @@ export function InvestorDashboard() {
 
             <TabsContent value="resgatados" className="m-0">
               <InvestmentList data={redeemedInvestments} />
+            </TabsContent>
+
+            <TabsContent value="extrato-resgates" className="m-0">
+              <InvestorRedemptionStatement
+                redemptions={allRedemptions}
+                loading={loading}
+                onRefresh={fetchData}
+                onOpenNewRedemption={
+                  activeInvestments.length > 0
+                    ? () => handleOpenRedeemModal(activeInvestments[0])
+                    : undefined
+                }
+              />
+            </TabsContent>
+
+            <TabsContent value="informe-ir" className="m-0">
+              <InvestorTaxReport
+                investorProfile={profile}
+                investments={investments}
+                redemptions={allRedemptions}
+                manualYieldMap={manualYieldMap}
+              />
             </TabsContent>
 
             <TabsContent value="cancelados" className="m-0">

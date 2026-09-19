@@ -1,4 +1,4 @@
-import { useAuth } from '@/hooks/use-auth'
+import { useAuth, type AppRole } from '@/hooks/use-auth'
 import { Card, CardContent } from '@/components/ui/card'
 import { Briefcase, Building, ShieldCheck, TrendingUp } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
