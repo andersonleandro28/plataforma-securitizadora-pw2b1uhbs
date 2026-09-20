@@ -136,6 +136,30 @@ export function InstallmentReceivables() {
   const [isEditingValues, setIsEditingValues] = useState(false)
   const [savingValues, setSavingValues] = useState(false)
 
+  // Helper para normalizar o array de parcelas de uma operação (inclusive parcela única)
+  const getNormalizedInstallments = useCallback((op: CreditOperation): InstallmentItem[] => {
+    if (Array.isArray(op.installments_data) && op.installments_data.length > 0) {
+      return op.installments_data
+    }
+    // Para operações de parcela única ou sem installments_data preenchido
+    const isOpPaid =
+      (op.status || '').toLowerCase() === 'pago' || (op.status || '').toLowerCase() === 'liquidado'
+    return [
+      {
+        number: 1,
+        dueDate: op.due_date || '',
+        due_date: op.due_date || '',
+        value: Number(op.face_value || 0),
+        valor_original: Number(op.face_value || 0),
+        original_value: Number(op.face_value || 0),
+        status: isOpPaid ? 'pago' : 'pendente',
+        payment_date: isOpPaid ? op.liquidation_date : null,
+        data_pagamento: isOpPaid ? op.liquidation_date : null,
+        amount_paid: isOpPaid ? Number(op.liquidation_value || op.face_value || 0) : null,
+      },
+    ]
+  }, [])
+
   const fetchOperations = useCallback(async () => {
     try {
       setLoading(true)
@@ -167,25 +191,52 @@ export function InstallmentReceivables() {
 
       if (error) throw error
 
-      // Filtrar operações que tenham mais de 1 parcela ou installments_data > 1
-      const installmentOps = (data || []).filter((op: any) => {
-        const count = Number(op.installments || 0)
+      // Inclui tanto operações parceladas quanto operações de parcela única
+      // Normaliza garantindo que toda operação tenha um cronograma navegável
+      const allReceivableOps = (data || []).map((op: any) => {
+        const count = Number(op.installments || 1)
         const arr = Array.isArray(op.installments_data) ? op.installments_data : []
-        return count > 1 || arr.length > 1
+        const isOpPaid =
+          (op.status || '').toLowerCase() === 'pago' ||
+          (op.status || '').toLowerCase() === 'liquidado'
+
+        const installmentsData =
+          arr.length > 0
+            ? arr
+            : [
+                {
+                  number: 1,
+                  dueDate: op.due_date || '',
+                  due_date: op.due_date || '',
+                  value: Number(op.face_value || 0),
+                  valor_original: Number(op.face_value || 0),
+                  original_value: Number(op.face_value || 0),
+                  status: isOpPaid ? 'pago' : 'pendente',
+                  payment_date: isOpPaid ? op.liquidation_date : null,
+                  data_pagamento: isOpPaid ? op.liquidation_date : null,
+                  amount_paid: isOpPaid ? Number(op.liquidation_value || op.face_value || 0) : null,
+                },
+              ]
+
+        return {
+          ...op,
+          installments: Math.max(1, count, installmentsData.length),
+          installments_data: installmentsData,
+        }
       })
 
-      setOperations(installmentOps as unknown as CreditOperation[])
+      setOperations(allReceivableOps as unknown as CreditOperation[])
 
       // Atualizar o selectedOp se estiver aberto
       if (selectedOp) {
-        const current = (installmentOps as unknown as CreditOperation[]).find(
+        const current = (allReceivableOps as unknown as CreditOperation[]).find(
           (o) => o.id === selectedOp.id,
         )
         if (current) setSelectedOp(current)
       }
     } catch (err: any) {
-      console.error('Erro ao buscar operações parceladas:', err)
-      toast.error('Erro ao carregar recebíveis parcelados: ' + (err.message || 'Falha de conexão'))
+      console.error('Erro ao buscar recebíveis:', err)
+      toast.error('Erro ao carregar recebíveis: ' + (err.message || 'Falha de conexão'))
     } finally {
       setLoading(false)
     }
@@ -408,12 +459,16 @@ export function InstallmentReceivables() {
 
   // Abrir detalhes de uma operação
   const handleOpenDetails = (op: CreditOperation) => {
-    setSelectedOp(op)
-    const insts = Array.isArray(op.installments_data) ? op.installments_data : []
+    const insts = getNormalizedInstallments(op)
+    const normalizedOp: CreditOperation = {
+      ...op,
+      installments_data: insts,
+    }
+    setSelectedOp(normalizedOp)
 
     const initValues: Record<number, string> = {}
     insts.forEach((inst, idx) => {
-      const vals = getInstallmentValues(inst, op)
+      const vals = getInstallmentValues(inst, normalizedOp)
       initValues[idx] = String(vals.originalValue)
     })
     setEditingValues(initValues)
@@ -580,18 +635,23 @@ export function InstallmentReceivables() {
     const currentDue = inst.dueDate || inst.due_date || origDue
 
     // Sugere prorrogação de 30 dias a partir do vencimento atual
-    const nextDueObj = new Date(currentDue)
+    // Evitar bug de fuso horário ao somar 30 dias na string YYYY-MM-DD
+    const [y, m, d] = (currentDue || new Date().toISOString().split('T')[0]).split('-').map(Number)
+    const nextDueObj = new Date(y, m - 1, d)
     nextDueObj.setDate(nextDueObj.getDate() + 30)
-    const nextDueStr = nextDueObj.toISOString().split('T')[0]
+    const nextDueYear = nextDueObj.getFullYear()
+    const nextDueMonth = String(nextDueObj.getMonth() + 1).padStart(2, '0')
+    const nextDueDate = String(nextDueObj.getDate()).padStart(2, '0')
+    const nextDueStr = `${nextDueYear}-${nextDueMonth}-${nextDueDate}`
 
     // Cálculo automático de juros pró-rata desde a data de vencimento original até a nova data
     let days = 30
     if (nextDueStr > origDue) {
+      const origDateObj = new Date(origDue + 'T00:00:00')
+      const targetDateObj = new Date(nextDueStr + 'T00:00:00')
       days = Math.max(
         0,
-        Math.round(
-          (new Date(nextDueStr).getTime() - new Date(origDue).getTime()) / (1000 * 60 * 60 * 24),
-        ),
+        Math.round((targetDateObj.getTime() - origDateObj.getTime()) / (1000 * 60 * 60 * 24)),
       )
     }
 
@@ -630,11 +690,11 @@ export function InstallmentReceivables() {
 
     let days = 0
     if (newDate && newDate > origDue) {
+      const origDateObj = new Date(origDue + 'T00:00:00')
+      const targetDateObj = new Date(newDate + 'T00:00:00')
       days = Math.max(
         0,
-        Math.round(
-          (new Date(newDate).getTime() - new Date(origDue).getTime()) / (1000 * 60 * 60 * 24),
-        ),
+        Math.round((targetDateObj.getTime() - origDateObj.getTime()) / (1000 * 60 * 60 * 24)),
       )
     }
 
@@ -729,14 +789,14 @@ export function InstallmentReceivables() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-bold tracking-tight">Recebíveis Parcelados</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Recebíveis e Parcelas</h1>
             <Badge variant="outline" className="border-primary/40 text-primary">
               Mesa de Operações
             </Badge>
           </div>
           <p className="text-muted-foreground mt-1">
-            Gestão operacional de cronogramas, prorrogação de vencimentos com cálculo automático e
-            baixa com conciliação contábil (DRE & Caixa).
+            Gestão operacional de cronogramas (parceladas e parcela única), prorrogação de
+            vencimentos com cálculo automático e baixa com conciliação contábil (DRE & Caixa).
           </p>
         </div>
         <Button variant="outline" onClick={fetchOperations} disabled={loading} className="gap-2">
@@ -819,7 +879,7 @@ export function InstallmentReceivables() {
           <CardContent>
             <div className="text-2xl font-bold">{indicators.totalParcelas}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              {operations.length} operações parceladas
+              {indicators.totalParcelas} parcelas em {operations.length} operações
             </p>
           </CardContent>
         </Card>
@@ -847,11 +907,11 @@ export function InstallmentReceivables() {
                   </div>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="todas">Todas as Operações</SelectItem>
-                  <SelectItem value="vencidas">Com Parcelas Vencidas</SelectItem>
+                  <SelectItem value="todas">Todas as Operações (Parceladas e Únicas)</SelectItem>
+                  <SelectItem value="vencidas">Com Vencidas</SelectItem>
                   <SelectItem value="pendentes">Pendentes (A vencer)</SelectItem>
-                  <SelectItem value="prorrogadas">Com Parcelas Prorrogadas</SelectItem>
-                  <SelectItem value="pagas">Todas Parcelas Pagas</SelectItem>
+                  <SelectItem value="prorrogadas">Com Prorrogações</SelectItem>
+                  <SelectItem value="pagas">Liquidadas / Pagas</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -859,13 +919,14 @@ export function InstallmentReceivables() {
         </CardContent>
       </Card>
 
-      {/* Tabela de Operações Parceladas */}
+      {/* Tabela de Operações com Cronograma (Parceladas e Parcela Única) */}
       <Card>
         <CardHeader>
-          <CardTitle>Operações com Cronograma Parcelado</CardTitle>
+          <CardTitle>Recebíveis e Operações de Crédito</CardTitle>
           <CardDescription>
-            Clique em qualquer operação para visualizar o cronograma detalhado de parcelas e
-            realizar prorrogações ou baixas.
+            Lista de operações parceladas e de parcela única. Clique em qualquer operação para
+            visualizar o cronograma, realizar prorrogações automáticas com juros/multa ou registrar
+            baixa com conciliação contábil.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -876,7 +937,7 @@ export function InstallmentReceivables() {
                 <TableHead>Sacado / Tomador</TableHead>
                 <TableHead>Cedente</TableHead>
                 <TableHead>Tipo</TableHead>
-                <TableHead>Parcelas</TableHead>
+                <TableHead>Formato / Parcelas</TableHead>
                 <TableHead>Valor Face</TableHead>
                 <TableHead>Status Geral</TableHead>
                 <TableHead className="text-right pr-6">Ação</TableHead>
@@ -888,14 +949,14 @@ export function InstallmentReceivables() {
                   <TableCell colSpan={8} className="text-center py-10">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto text-muted-foreground mb-2" />
                     <span className="text-sm text-muted-foreground">
-                      Carregando operações parceladas...
+                      Carregando operações e recebíveis...
                     </span>
                   </TableCell>
                 </TableRow>
               ) : filteredOperations.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
-                    Nenhuma operação parcelada encontrada com os filtros atuais.
+                    Nenhuma operação encontrada com os filtros atuais.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -953,26 +1014,36 @@ export function InstallmentReceivables() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-medium text-sm">
-                            {paidCount} / {insts.length || op.installments || 1}
-                          </span>
-                          {hasLate && (
-                            <Badge
-                              variant="destructive"
-                              className="h-5 px-1.5 text-[10px] animate-pulse"
-                            >
-                              Vencida(s)
-                            </Badge>
-                          )}
-                          {hasProrrogada && (
-                            <Badge
-                              variant="outline"
-                              className="h-5 px-1.5 text-[10px] border-amber-500/50 bg-amber-500/10 text-amber-600"
-                            >
-                              Prorrogada
-                            </Badge>
-                          )}
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-medium text-sm">
+                              {paidCount} / {insts.length || op.installments || 1}
+                            </span>
+                            {(insts.length || op.installments || 1) === 1 && (
+                              <Badge
+                                variant="secondary"
+                                className="h-4 px-1 text-[9px] font-normal"
+                              >
+                                Parcela Única
+                              </Badge>
+                            )}
+                            {hasLate && (
+                              <Badge
+                                variant="destructive"
+                                className="h-5 px-1.5 text-[10px] animate-pulse"
+                              >
+                                Vencida(s)
+                              </Badge>
+                            )}
+                            {hasProrrogada && (
+                              <Badge
+                                variant="outline"
+                                className="h-5 px-1.5 text-[10px] border-amber-500/50 bg-amber-500/10 text-amber-600"
+                              >
+                                Prorrogada
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -1044,12 +1115,18 @@ export function InstallmentReceivables() {
           <DialogHeader>
             <div className="flex items-center justify-between pr-4">
               <div>
-                <DialogTitle className="text-xl">
-                  Cronograma de Parcelas — {selectedOp?.sacado}
+                <DialogTitle className="text-xl flex items-center gap-2">
+                  <span>Cronograma da Operação — {selectedOp?.sacado}</span>
+                  {selectedOp && (selectedOp.installments_data || []).length <= 1 && (
+                    <Badge variant="outline" className="text-xs">
+                      Parcela Única
+                    </Badge>
+                  )}
                 </DialogTitle>
                 <DialogDescription className="mt-1">
                   Operação nº {selectedOp?.document_number || selectedOp?.id.substring(0, 8)} •
-                  Cedente: {selectedOp?.cedente || 'N/A'} • Valor de Face Original: R${' '}
+                  Cedente: {selectedOp?.cedente || 'N/A'} • Tipo:{' '}
+                  {selectedOp?.receivable_type || 'Crédito'} • Valor de Face Original: R${' '}
                   {Number(selectedOp?.face_value || 0).toLocaleString('pt-BR', {
                     minimumFractionDigits: 2,
                   })}

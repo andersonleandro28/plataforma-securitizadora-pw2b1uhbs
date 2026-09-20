@@ -58,7 +58,7 @@ const allNavItems = [
     roles: ['admin', 'staff'],
   },
   {
-    title: 'Recebíveis Parcelados',
+    title: 'Recebíveis e Parcelas',
     path: '/admin/recebiveis-parcelados',
     icon: CheckSquare,
     roles: ['admin', 'staff'],
