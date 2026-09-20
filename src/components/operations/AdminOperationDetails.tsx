@@ -803,13 +803,51 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                       </div>
                       <div className="flex justify-between text-xs text-muted-foreground mt-3 bg-background p-2 rounded border">
                         <span>
-                          Prazo Calculado: <strong>{calc.term_days} dias</strong>
+                          Prazo Calculado:{' '}
+                          <strong>
+                            {calc.term_days} dias
+                            {calc.calculation_memory?.isInstallmentCalculation
+                              ? ' (médio ponderado)'
+                              : ''}
+                          </strong>
                         </span>
                         <span>
                           Custo Efetivo Total (CET):{' '}
                           <strong>{calc.effective_cost_rate?.toFixed(2)}%</strong>
                         </span>
                       </div>
+
+                      {calc.calculation_memory?.isInstallmentCalculation &&
+                        Array.isArray(calc.calculation_memory?.installmentsBreakdown) &&
+                        calc.calculation_memory.installmentsBreakdown.length > 0 && (
+                          <div className="mt-2 border rounded p-2 bg-background space-y-1 text-xs">
+                            <span className="font-semibold text-primary block text-[11px]">
+                              Detalhamento por Parcela (Cálculo Individual):
+                            </span>
+                            <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
+                              {calc.calculation_memory.installmentsBreakdown.map((item: any) => (
+                                <div
+                                  key={item.number}
+                                  className="flex items-center justify-between text-[11px] p-1 rounded bg-muted/40"
+                                >
+                                  <span>
+                                    <strong>Parcela {item.number}</strong> ({item.termDays}d):{' '}
+                                    <span className="font-mono">
+                                      {formatCurrency(Number(item.faceValue || 0))}
+                                    </span>
+                                  </span>
+                                  <span className="font-mono text-destructive">
+                                    -
+                                    {formatCurrency(
+                                      Number(item.interest_val || 0) +
+                                        Number(item.discount_val || 0),
+                                    )}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                     </>
                   ) : (
                     <div className="flex items-center justify-center p-4 bg-background border border-dashed rounded text-muted-foreground text-xs">

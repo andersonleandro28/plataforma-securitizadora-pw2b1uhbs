@@ -142,18 +142,41 @@ export function AdminNewOperationDialog({
     }
   }
 
+  const numInstallments = Math.max(1, parseInt(formData.installments, 10) || 1)
+
+  // Serializar parcelas para envio na simulação
+  const serializeInstallmentsForCalc = () => {
+    if (numInstallments <= 1) return []
+    return installmentsList.map((inst) => ({
+      number: inst.number,
+      dueDate: inst.dueDate,
+      value: inst.value ? Number(inst.value) : null,
+    }))
+  }
+
+  // Chave de dependência das parcelas para re-simulação automática
+  const installmentsKey = installmentsList
+    .map((i) => `${i.number}:${i.dueDate}:${i.value}`)
+    .join('|')
+
   // Auto calculate simulation when important fields change
   useEffect(() => {
     const handler = setTimeout(() => {
+      const hasBaseDue = Boolean(formData.dueDate)
+      const hasInstallmentDues =
+        numInstallments > 1 &&
+        installmentsList.length > 0 &&
+        installmentsList.some((i) => Boolean(i.dueDate))
+
       if (
         formData.receivableType &&
         formData.faceValue &&
         formData.requestedValue &&
-        formData.dueDate
+        (hasBaseDue || hasInstallmentDues)
       ) {
         handleSimulate()
       }
-    }, 800)
+    }, 600)
     return () => clearTimeout(handler)
   }, [
     formData.receivableType,
@@ -161,12 +184,23 @@ export function AdminNewOperationDialog({
     formData.requestedValue,
     formData.issueDate,
     formData.dueDate,
+    formData.installments,
+    installmentsKey,
   ])
 
   const handleSimulate = async () => {
     if (Number(formData.requestedValue) > Number(formData.faceValue)) return
     setSimulating(true)
     try {
+      const serializedInstallments = serializeInstallmentsForCalc()
+      // Se parcelado, se não tiver dueDate geral, usa a última ou 1ª parcela como fallback
+      const effectiveDueDate =
+        formData.dueDate ||
+        (serializedInstallments.length > 0
+          ? serializedInstallments[serializedInstallments.length - 1]?.dueDate ||
+            serializedInstallments[0]?.dueDate
+          : undefined)
+
       const { data } = await supabase.functions.invoke('calculate-operation', {
         body: {
           simulate_data: {
@@ -174,7 +208,8 @@ export function AdminNewOperationDialog({
             face_value: formData.faceValue,
             requested_value: formData.requestedValue,
             issue_date: formData.issueDate || undefined,
-            due_date: formData.dueDate,
+            due_date: effectiveDueDate,
+            installments_data: serializedInstallments,
           },
         },
       })
@@ -185,8 +220,6 @@ export function AdminNewOperationDialog({
       setSimulating(false)
     }
   }
-
-  const numInstallments = Math.max(1, parseInt(formData.installments, 10) || 1)
 
   // Sincronizar número de parcelas com installmentsList
   const syncInstallmentsCount = (
@@ -1122,16 +1155,46 @@ export function AdminNewOperationDialog({
                   </div>
                 ) : simulation ? (
                   <div className="space-y-2">
-                    <div className="flex justify-between text-muted-foreground">
-                      <span>Prazo de Juros:</span>
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        Prazo de Juros:
+                        {simulation.isInstallmentCalculation && (
+                          <span className="text-[10px] text-primary font-medium">
+                            (médio ponderado)
+                          </span>
+                        )}
+                      </span>
                       <span className="font-medium text-foreground">
                         {simulation.termDays} dias
                       </span>
                     </div>
-                    <div className="text-[11px] bg-muted/40 p-1.5 rounded border text-muted-foreground">
-                      <span className="font-medium text-foreground">Período de Juros: </span>
-                      {formData.issueDate && formData.dueDate ? (
-                        <span>
+
+                    <div className="text-[11px] bg-muted/40 p-2 rounded border text-muted-foreground space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-foreground">Período de Juros:</span>
+                        {isRetroactiveDate && (
+                          <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-300 dark:border-amber-800">
+                            Retroativa
+                          </span>
+                        )}
+                      </div>
+                      {simulation.isInstallmentCalculation &&
+                      Array.isArray(simulation.installmentsBreakdown) ? (
+                        <p className="text-foreground">
+                          Cálculo somado individualmente para as{' '}
+                          <strong>{simulation.installmentsBreakdown.length} parcelas</strong> a
+                          partir de{' '}
+                          <strong>
+                            {formData.issueDate
+                              ? new Date(formData.issueDate + 'T00:00:00').toLocaleDateString(
+                                  'pt-BR',
+                                )
+                              : 'hoje'}
+                          </strong>
+                          .
+                        </p>
+                      ) : formData.issueDate && formData.dueDate ? (
+                        <p>
                           {simulation.termDays} dias (de{' '}
                           <strong className="text-foreground">
                             {new Date(formData.issueDate + 'T00:00:00').toLocaleDateString('pt-BR')}
@@ -1140,21 +1203,73 @@ export function AdminNewOperationDialog({
                           <strong className="text-foreground">
                             {new Date(formData.dueDate + 'T00:00:00').toLocaleDateString('pt-BR')}
                           </strong>
-                          {isRetroactiveDate ? ' - base retroativa' : ''})
-                        </span>
+                          )
+                        </p>
                       ) : formData.dueDate ? (
-                        <span>
+                        <p>
                           {simulation.termDays} dias (de hoje a{' '}
                           <strong className="text-foreground">
                             {new Date(formData.dueDate + 'T00:00:00').toLocaleDateString('pt-BR')}
                           </strong>
                           )
-                        </span>
+                        </p>
                       ) : (
                         <span>-</span>
                       )}
                     </div>
-                    <div className="flex justify-between">
+
+                    {/* Detalhamento por Parcela se cálculo for parcelado */}
+                    {simulation.isInstallmentCalculation &&
+                      Array.isArray(simulation.installmentsBreakdown) &&
+                      simulation.installmentsBreakdown.length > 0 && (
+                        <div className="mt-2 border rounded-md p-2 bg-background/50 space-y-1.5">
+                          <div className="flex items-center justify-between text-[11px] font-semibold text-primary">
+                            <span>Detalhamento por Parcela</span>
+                            <span>Prazo / Juros</span>
+                          </div>
+                          <div className="space-y-1 max-h-36 overflow-y-auto pr-0.5">
+                            {simulation.installmentsBreakdown.map((item: any) => (
+                              <div
+                                key={item.number}
+                                className="flex items-center justify-between text-[10.5px] p-1 rounded bg-muted/30 border border-muted"
+                              >
+                                <div>
+                                  <span className="font-semibold text-foreground">
+                                    P{item.number}:
+                                  </span>{' '}
+                                  <span className="font-mono text-muted-foreground">
+                                    {formatCurrency(Number(item.faceValue || 0))}
+                                  </span>
+                                  {item.dueDate && (
+                                    <span className="text-[10px] text-muted-foreground ml-1">
+                                      (
+                                      {new Date(item.dueDate + 'T00:00:00').toLocaleDateString(
+                                        'pt-BR',
+                                      )}
+                                      )
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-right">
+                                  <span className="font-medium text-foreground">
+                                    {item.termDays}d
+                                  </span>{' '}
+                                  <span className="text-destructive font-mono text-[10px]">
+                                    (-
+                                    {formatCurrency(
+                                      Number(item.interest_val || 0) +
+                                        Number(item.discount_val || 0),
+                                    )}
+                                    )
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                    <div className="flex justify-between pt-1">
                       <span>Valor de Face (VF):</span>
                       <span className="font-mono">
                         {formatCurrency(Number(formData.faceValue))}

@@ -56,10 +56,6 @@ Deno.serve(async (req: Request) => {
     const faceValue = Number(opData.face_value || opData.faceValue || 0)
     const reqValue = Number(opData.requested_value || opData.requestedValue || 0)
 
-    // Base date for interest/term calculation:
-    // If a base_date / issue_date / issueDate is provided (e.g. retroactive operation),
-    // calculate the term from this base date up to the due date.
-    // If none is provided, default to current date (today) preserving existing behavior.
     const parseLocalDate = (dateVal: string | Date | undefined | null) => {
       if (!dateVal) return null
       if (dateVal instanceof Date) {
@@ -67,7 +63,6 @@ Deno.serve(async (req: Request) => {
         d.setHours(0, 0, 0, 0)
         return d
       }
-      // If "YYYY-MM-DD"
       if (typeof dateVal === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateVal)) {
         const [y, m, d] = dateVal.split('-').map(Number)
         return new Date(y, m - 1, d, 0, 0, 0, 0)
@@ -80,10 +75,8 @@ Deno.serve(async (req: Request) => {
     const dueDateRaw = opData.due_date || opData.dueDate
     const baseDateRaw = opData.base_date || opData.baseDate || opData.issue_date || opData.issueDate
 
-    let termDays = 0
     let startDateObj: Date = new Date()
     startDateObj.setHours(0, 0, 0, 0)
-
     if (baseDateRaw) {
       const parsedBase = parseLocalDate(baseDateRaw)
       if (parsedBase) {
@@ -92,23 +85,140 @@ Deno.serve(async (req: Request) => {
     }
 
     let dueDateObj: Date | null = null
+    let fallbackTermDays = 0
     if (dueDateRaw) {
       dueDateObj = parseLocalDate(dueDateRaw)
       if (dueDateObj) {
-        termDays = Math.max(
+        fallbackTermDays = Math.max(
           0,
           Math.round((dueDateObj.getTime() - startDateObj.getTime()) / (1000 * 60 * 60 * 24)),
         )
       }
     }
 
-    // FORMULA IMPLEMENTATION
-    // Deságio Proporcional = VF * (TDM / 30) * P
-    const discount_val = faceValue * (discount_rate / 100 / 30) * termDays
+    // Verificar se há cronograma de parcelas individuais fornecido
+    // Pode vir em: opData.installments_data, opData.installmentsList, opData.installmentsData
+    const rawInstallments =
+      opData.installments_data || opData.installmentsData || opData.installmentsList || []
 
-    // Juros Proporcionais = VS * (TJM / 30) * P
-    const interest_val = reqValue * (interest_rate / 100 / 30) * termDays
+    const hasMultipleInstallments =
+      Array.isArray(rawInstallments) &&
+      rawInstallments.length > 1 &&
+      rawInstallments.some(
+        (i: any) => (i.dueDate || i.due_date) && parseLocalDate(i.dueDate || i.due_date) !== null,
+      )
 
+    let discount_val = 0
+    let interest_val = 0
+    let iof_daily_val = 0
+    let termDays = fallbackTermDays
+    let installmentsBreakdown: any[] | null = null
+
+    if (hasMultipleInstallments) {
+      const validInstallmentItems = rawInstallments
+        .map((inst: any, idx: number) => {
+          const instDueRaw = inst.dueDate || inst.due_date || dueDateRaw
+          const instDueObj = parseLocalDate(instDueRaw)
+          const instDays = instDueObj
+            ? Math.max(
+                0,
+                Math.round((instDueObj.getTime() - startDateObj.getTime()) / (1000 * 60 * 60 * 24)),
+              )
+            : fallbackTermDays
+
+          const instNum = Number(inst.number || idx + 1)
+          const rawInstVal = inst.value != null && inst.value !== '' ? Number(inst.value) : null
+
+          return {
+            number: instNum,
+            dueDate: instDueObj ? instDueObj.toISOString().split('T')[0] : null,
+            termDays: instDays,
+            declaredValue: rawInstVal,
+          }
+        })
+        .filter((i: any) => i.dueDate !== null)
+
+      const count = validInstallmentItems.length
+
+      // Rateio do valor de face por parcela
+      // Se a soma dos valores informados bater com o faceValue (ou estiver preenchida), usa o valor informado.
+      // Se não, divide faceValue igualmente entre as parcelas.
+      const sumDeclaredFace = validInstallmentItems.reduce(
+        (acc: number, curr: any) => acc + (curr.declaredValue || 0),
+        0,
+      )
+      const useDeclared =
+        validInstallmentItems.every(
+          (i: any) => typeof i.declaredValue === 'number' && i.declaredValue > 0,
+        ) && sumDeclaredFace > 0
+
+      // Proporção de valor solicitado em relação ao valor de face (ex: 100% ou 90%)
+      const reqToFaceRatio = faceValue > 0 ? reqValue / faceValue : count > 0 ? 1 / count : 1
+
+      let totalWeightedDaysFace = 0
+      let totalFaceAllocated = 0
+
+      installmentsBreakdown = validInstallmentItems.map((item: any) => {
+        const instFace = useDeclared
+          ? (item.declaredValue as number)
+          : count > 0
+            ? faceValue / count
+            : 0
+        const instReq = instFace * reqToFaceRatio
+
+        totalFaceAllocated += instFace
+        totalWeightedDaysFace += instFace * item.termDays
+
+        // Parcela juros = instReq * (TJM / 30) * instDays
+        const instInterest = instReq * (interest_rate / 100 / 30) * item.termDays
+
+        // Parcela deságio = instFace * (TDM / 30) * instDays
+        const instDiscount = instFace * (discount_rate / 100 / 30) * item.termDays
+
+        // Parcela IOF diário = instReq * taxa IOF diária * instDays
+        const instIofDaily = instReq * (iof_daily_rate / 100) * item.termDays
+
+        return {
+          number: item.number,
+          dueDate: item.dueDate,
+          termDays: item.termDays,
+          faceValue: instFace,
+          requestedValue: instReq,
+          discount_val: instDiscount,
+          interest_val: instInterest,
+          iof_daily_val: instIofDaily,
+        }
+      })
+
+      // Soma consolidada de todas as parcelas
+      discount_val = installmentsBreakdown.reduce((acc, c) => acc + c.discount_val, 0)
+      interest_val = installmentsBreakdown.reduce((acc, c) => acc + c.interest_val, 0)
+      iof_daily_val = installmentsBreakdown.reduce((acc, c) => acc + c.iof_daily_val, 0)
+
+      // Prazo médio ponderado pelo valor de face para exibição clara de prazo médio
+      const weightedAverageTermDays =
+        totalFaceAllocated > 0
+          ? Math.round(totalWeightedDaysFace / totalFaceAllocated)
+          : fallbackTermDays
+
+      // Se não havia dueDate geral ou se quisermos o prazo médio/último vencimento:
+      termDays = weightedAverageTermDays
+
+      // Atualiza dueDateObj para o último vencimento caso não houvesse dueDate geral
+      if (!dueDateObj && validInstallmentItems.length > 0) {
+        const lastInst = validInstallmentItems[validInstallmentItems.length - 1]
+        if (lastInst.dueDate) {
+          dueDateObj = parseLocalDate(lastInst.dueDate)
+        }
+      }
+    } else {
+      // 1 Parcela ou sem vencimentos individuais: Comportamento tradicional existente
+      discount_val = faceValue * (discount_rate / 100 / 30) * termDays
+      interest_val = reqValue * (interest_rate / 100 / 30) * termDays
+      iof_daily_val = reqValue * (iof_daily_rate / 100) * termDays
+    }
+
+    // FORMULA IMPLEMENTATION (TAXAS INDEPENDENTES DE PRAZO POR PARCELA)
     // Custo Ad Valorem = VF * TAV (Always based on Face Value as requested)
     const ad_valorem_val = faceValue * (ad_valorem_rate / 100)
 
@@ -122,9 +232,6 @@ Deno.serve(async (req: Request) => {
 
     // IOF Fixo = VS * taxa IOF fixa
     const iof_fixed_val = reqValue * (iof_fixed_rate / 100)
-
-    // IOF Diário = VS * taxa IOF diária * P
-    const iof_daily_val = reqValue * (iof_daily_rate / 100) * termDays
 
     // Total Descontos = [Deságio + Juros + Ad Valorem + Estruturação + TA + IOF]
     const total_discounts =
@@ -146,6 +253,8 @@ Deno.serve(async (req: Request) => {
       termDays,
       startDate: startDateObj.toISOString().split('T')[0],
       dueDate: dueDateObj ? dueDateObj.toISOString().split('T')[0] : null,
+      isInstallmentCalculation: hasMultipleInstallments,
+      installmentsBreakdown,
       discount_val,
       interest_val,
       ad_valorem_val,
