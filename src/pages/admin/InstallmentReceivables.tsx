@@ -53,6 +53,12 @@ export type InstallmentItem = {
   dueDate: string
   due_date?: string
   value: number | null
+  valor_original?: number | null
+  original_value?: number | null
+  valor_atualizado?: number | null
+  total_devido?: number | null
+  prorrogacao_juros?: number | null
+  prorrogacao_multa?: number | null
   status?: string
   documentName?: string | null
   file_url?: string | null
@@ -189,6 +195,62 @@ export function InstallmentReceivables() {
     fetchOperations()
   }, [])
 
+  // Helper para obter valores decompostos da parcela (original, juros prorrogação, multa prorrogação e total)
+  const getInstallmentValues = (
+    inst: InstallmentItem,
+    op: CreditOperation,
+  ): {
+    originalValue: number
+    extensionInterest: number
+    extensionPenalty: number
+    totalValue: number
+    isExtended: boolean
+  } => {
+    const count = (op.installments_data || []).length || op.installments || 1
+    const defaultVal = count > 0 ? Number(op.face_value || 0) / count : 0
+
+    const rawStatus = (inst.status || '').toLowerCase()
+    const isExtended =
+      rawStatus === 'prorrogado' ||
+      rawStatus === 'prorrogada' ||
+      inst.original_due_date != null ||
+      Number(inst.extension_interest || inst.prorrogacao_juros || 0) > 0
+
+    // Valor original base do documento
+    const originalValue =
+      inst.valor_original != null
+        ? Number(inst.valor_original)
+        : inst.original_value != null
+          ? Number(inst.original_value)
+          : inst.value != null
+            ? Number(inst.value)
+            : defaultVal
+
+    // Juros e multa da prorrogação
+    const extensionInterest = Number(inst.prorrogacao_juros ?? inst.extension_interest ?? 0)
+    const extensionPenalty = Number(inst.prorrogacao_multa ?? inst.extension_penalty ?? 0)
+
+    // Se estiver prorrogada, o total é original + juros + multa (ou valor_atualizado / total_devido)
+    let totalValue = originalValue
+    if (isExtended) {
+      if (inst.valor_atualizado != null && Number(inst.valor_atualizado) > 0) {
+        totalValue = Number(inst.valor_atualizado)
+      } else if (inst.total_devido != null && Number(inst.total_devido) > 0) {
+        totalValue = Number(inst.total_devido)
+      } else {
+        totalValue = Number((originalValue + extensionInterest + extensionPenalty).toFixed(2))
+      }
+    }
+
+    return {
+      originalValue,
+      extensionInterest,
+      extensionPenalty,
+      totalValue,
+      isExtended,
+    }
+  }
+
   // Helper para calcular status da parcela
   const getInstallmentCalculatedStatus = (
     inst: InstallmentItem,
@@ -301,26 +363,33 @@ export function InstallmentReceivables() {
     let parcelasProrrogadas = 0
     let valorTotalVencido = 0
     let valorTotalRecebido = 0
+    let valorTotalProrrogado = 0
+    let valorTotalJurosProrrogacao = 0
 
     operations.forEach((op) => {
       const insts = Array.isArray(op.installments_data) ? op.installments_data : []
-      const faceVal = Number(op.face_value || 0)
-      const count = insts.length || op.installments || 1
-      const defaultVal = count > 0 ? faceVal / count : 0
 
       insts.forEach((inst) => {
         totalParcelas++
-        const val = inst.value != null ? Number(inst.value) : defaultVal
+        const values = getInstallmentValues(inst, op)
         const calc = getInstallmentCalculatedStatus(inst, op)
 
         if (calc.status === 'vencida') {
           parcelasVencidas++
-          valorTotalVencido += val
+          valorTotalVencido += values.totalValue
         } else if (calc.status === 'paga') {
           parcelasPagas++
-          valorTotalRecebido += Number(inst.amount_paid || val)
+          valorTotalRecebido += Number(inst.amount_paid || values.totalValue)
         } else if (calc.status === 'prorrogada') {
           parcelasProrrogadas++
+          valorTotalProrrogado += values.totalValue
+          valorTotalJurosProrrogacao += values.extensionInterest + values.extensionPenalty
+        }
+
+        // Se for prorrogada mas estiver vencida, também soma no total de prorrogadas
+        if (values.isExtended && calc.status !== 'prorrogada' && calc.status !== 'paga') {
+          valorTotalProrrogado += values.totalValue
+          valorTotalJurosProrrogacao += values.extensionInterest + values.extensionPenalty
         }
       })
     })
@@ -332,6 +401,8 @@ export function InstallmentReceivables() {
       parcelasProrrogadas,
       valorTotalVencido,
       valorTotalRecebido,
+      valorTotalProrrogado,
+      valorTotalJurosProrrogacao,
     }
   }, [operations])
 
@@ -339,12 +410,11 @@ export function InstallmentReceivables() {
   const handleOpenDetails = (op: CreditOperation) => {
     setSelectedOp(op)
     const insts = Array.isArray(op.installments_data) ? op.installments_data : []
-    const count = insts.length || op.installments || 1
-    const defaultVal = count > 0 ? (Number(op.face_value || 0) / count).toFixed(2) : '0'
 
     const initValues: Record<number, string> = {}
     insts.forEach((inst, idx) => {
-      initValues[idx] = inst.value != null ? String(inst.value) : defaultVal
+      const vals = getInstallmentValues(inst, op)
+      initValues[idx] = String(vals.originalValue)
     })
     setEditingValues(initValues)
     setIsEditingValues(false)
@@ -359,10 +429,27 @@ export function InstallmentReceivables() {
       const insts = Array.isArray(selectedOp.installments_data)
         ? [...selectedOp.installments_data]
         : []
-      const updated = insts.map((inst, idx) => ({
-        ...inst,
-        value: Number(editingValues[idx] || 0),
-      }))
+      const updated = insts.map((inst, idx) => {
+        const newVal = Number(editingValues[idx] || 0)
+        const vals = getInstallmentValues(inst, selectedOp)
+        const isExt = vals.isExtended
+        const extInterest = vals.extensionInterest
+        const extPenalty = vals.extensionPenalty
+        const newTotal = isExt ? Number((newVal + extInterest + extPenalty).toFixed(2)) : newVal
+
+        return {
+          ...inst,
+          value: newVal,
+          valor_original: newVal,
+          original_value: newVal,
+          ...(isExt
+            ? {
+                valor_atualizado: newTotal,
+                total_devido: newTotal,
+              }
+            : {}),
+        }
+      })
 
       const { data, error } = await (supabase.rpc as any)('save_credit_operation_installments', {
         p_operation_id: selectedOp.id,
@@ -391,13 +478,16 @@ export function InstallmentReceivables() {
     if (!selectedOp) return
     setActiveInstallmentIdx(idx)
 
-    const count = (selectedOp.installments_data || []).length || 1
-    const defaultVal =
-      inst.value != null ? Number(inst.value) : Number(selectedOp.face_value || 0) / count
+    // Obter valores decompostos da parcela
+    const instVals = getInstallmentValues(inst, selectedOp)
     const todayStr = new Date().toISOString().split('T')[0]
     const dueDateStr = inst.dueDate || inst.due_date || todayStr
 
-    // Calcular atraso
+    // Para parcelas prorrogadas, o valor sugerido principal já é o total atualizado
+    // (valor original do documento + juros de prorrogação + multa pactuada)
+    const baseAmount = instVals.isExtended ? instVals.totalValue : instVals.originalValue
+
+    // Calcular atraso adicional após a data de vencimento (nova data se prorrogada)
     let suggestedInterest = 0
     let suggestedPenalty = 0
 
@@ -417,16 +507,18 @@ export function InstallmentReceivables() {
       )
       const penaltyRate = Number(calcMemory?.applied_params?.penalty_rate || 2.0)
 
-      suggestedInterest = Number((defaultVal * (monthlyRate / 100 / 30) * daysLate).toFixed(2))
-      suggestedPenalty = Number((defaultVal * (penaltyRate / 100)).toFixed(2))
+      suggestedInterest = Number((baseAmount * (monthlyRate / 100 / 30) * daysLate).toFixed(2))
+      suggestedPenalty = Number((baseAmount * (penaltyRate / 100)).toFixed(2))
     }
 
     setLiquidationForm({
       payment_date: todayStr,
-      amount: String(defaultVal),
+      amount: String(baseAmount),
       interest: String(suggestedInterest),
       penalty: String(suggestedPenalty),
-      notes: '',
+      notes: instVals.isExtended
+        ? `Liquidação de parcela prorrogada (Nominal R$ ${instVals.originalValue.toFixed(2)} + Juros Prorr. R$ ${instVals.extensionInterest.toFixed(2)}${instVals.extensionPenalty > 0 ? ` + Multa R$ ${instVals.extensionPenalty.toFixed(2)}` : ''})`
+        : '',
     })
 
     setLiquidationOpen(true)
@@ -477,18 +569,32 @@ export function InstallmentReceivables() {
     if (!selectedOp) return
     setActiveInstallmentIdx(idx)
 
-    const count = (selectedOp.installments_data || []).length || 1
-    const defaultVal =
-      inst.value != null ? Number(inst.value) : Number(selectedOp.face_value || 0) / count
-    const currentDue = inst.dueDate || inst.due_date || new Date().toISOString().split('T')[0]
+    const instVals = getInstallmentValues(inst, selectedOp)
+    const baseVal = instVals.originalValue
+    // Usa o vencimento original se existir para base de dias, ou o dueDate atual
+    const origDue =
+      inst.original_due_date ||
+      inst.dueDate ||
+      inst.due_date ||
+      new Date().toISOString().split('T')[0]
+    const currentDue = inst.dueDate || inst.due_date || origDue
 
-    // Sugere prorrogação de 30 dias por padrão
+    // Sugere prorrogação de 30 dias a partir do vencimento atual
     const nextDueObj = new Date(currentDue)
     nextDueObj.setDate(nextDueObj.getDate() + 30)
     const nextDueStr = nextDueObj.toISOString().split('T')[0]
 
-    // Cálculo automático de juros pró-rata
-    const days = 30
+    // Cálculo automático de juros pró-rata desde a data de vencimento original até a nova data
+    let days = 30
+    if (nextDueStr > origDue) {
+      days = Math.max(
+        0,
+        Math.round(
+          (new Date(nextDueStr).getTime() - new Date(origDue).getTime()) / (1000 * 60 * 60 * 24),
+        ),
+      )
+    }
+
     const calcMemory = (selectedOp.operation_calculations as any)?.[0]?.calculation_memory
     const monthlyRate = Number(
       calcMemory?.applied_params?.interest_rate_monthly ||
@@ -497,14 +603,14 @@ export function InstallmentReceivables() {
     )
     const penaltyRate = Number(calcMemory?.applied_params?.penalty_rate || 0)
 
-    const calcInterest = Number((defaultVal * (monthlyRate / 100 / 30) * days).toFixed(2))
-    const calcPenalty = Number((defaultVal * (penaltyRate / 100)).toFixed(2))
+    const calcInterest = Number((baseVal * (monthlyRate / 100 / 30) * days).toFixed(2))
+    const calcPenalty = Number((baseVal * (penaltyRate / 100)).toFixed(2))
 
     setExtensionForm({
       new_due_date: nextDueStr,
       interest: String(calcInterest),
       penalty: String(calcPenalty),
-      reason: 'Solicitação do cliente para extensão do prazo',
+      reason: inst.extension_reason || 'Solicitação do cliente para extensão do prazo',
     })
 
     setExtensionOpen(true)
@@ -514,10 +620,13 @@ export function InstallmentReceivables() {
   const handleNewDueDateChange = (newDate: string) => {
     if (!selectedOp || activeInstallmentIdx === null) return
     const inst = (selectedOp.installments_data || [])[activeInstallmentIdx]
-    const count = (selectedOp.installments_data || []).length || 1
-    const defaultVal =
-      inst?.value != null ? Number(inst.value) : Number(selectedOp.face_value || 0) / count
-    const origDue = inst?.dueDate || inst?.due_date || new Date().toISOString().split('T')[0]
+    const instVals = getInstallmentValues(inst, selectedOp)
+    const baseVal = instVals.originalValue
+    const origDue =
+      inst?.original_due_date ||
+      inst?.dueDate ||
+      inst?.due_date ||
+      new Date().toISOString().split('T')[0]
 
     let days = 0
     if (newDate && newDate > origDue) {
@@ -536,7 +645,7 @@ export function InstallmentReceivables() {
         3.5,
     )
 
-    const calcInterest = Number((defaultVal * (monthlyRate / 100 / 30) * days).toFixed(2))
+    const calcInterest = Number((baseVal * (monthlyRate / 100 / 30) * days).toFixed(2))
 
     setExtensionForm((prev) => ({
       ...prev,
@@ -544,7 +653,6 @@ export function InstallmentReceivables() {
       interest: String(calcInterest),
     }))
   }
-
   // Confirmar Prorrogação
   const handleConfirmExtension = async () => {
     if (!selectedOp || activeInstallmentIdx === null) return
@@ -672,18 +780,32 @@ export function InstallmentReceivables() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-amber-500/30 bg-amber-500/5">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-between">
+            <CardTitle className="text-sm font-medium text-amber-600 flex items-center justify-between">
               <span>Prorrogadas</span>
-              <CalendarClock className="w-4 h-4 text-amber-500" />
+              <CalendarClock className="w-4 h-4 text-amber-600" />
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-amber-600">
               {indicators.parcelasProrrogadas}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Com juros projetados</p>
+            <p className="text-xs text-amber-600/90 mt-1 font-medium">
+              Total a receber: R${' '}
+              {indicators.valorTotalProrrogado.toLocaleString('pt-BR', {
+                minimumFractionDigits: 2,
+              })}
+              {indicators.valorTotalJurosProrrogacao > 0 && (
+                <span className="block text-[11px] font-normal text-amber-600/75">
+                  (+R${' '}
+                  {indicators.valorTotalJurosProrrogacao.toLocaleString('pt-BR', {
+                    minimumFractionDigits: 2,
+                  })}{' '}
+                  juros/multa)
+                </span>
+              )}
+            </p>
           </CardContent>
         </Card>
 
@@ -786,6 +908,25 @@ export function InstallmentReceivables() {
                     (i) => getInstallmentCalculatedStatus(i, op).status === 'paga',
                   ).length
 
+                  // Calcular total atualizado do cronograma (incorporando juros/multas das parcelas prorrogadas)
+                  let opTotalCronograma = 0
+                  let opJurosProrrogacao = 0
+                  let hasProrrogada = false
+
+                  insts.forEach((i) => {
+                    const vals = getInstallmentValues(i, op)
+                    opTotalCronograma += vals.totalValue
+                    if (vals.isExtended) {
+                      hasProrrogada = true
+                      opJurosProrrogacao += vals.extensionInterest + vals.extensionPenalty
+                    }
+                  })
+
+                  // Se não houver cronograma ou for zero, fallback para face_value
+                  if (insts.length === 0 || opTotalCronograma === 0) {
+                    opTotalCronograma = Number(op.face_value || 0)
+                  }
+
                   return (
                     <TableRow
                       key={op.id}
@@ -824,13 +965,37 @@ export function InstallmentReceivables() {
                               Vencida(s)
                             </Badge>
                           )}
+                          {hasProrrogada && (
+                            <Badge
+                              variant="outline"
+                              className="h-5 px-1.5 text-[10px] border-amber-500/50 bg-amber-500/10 text-amber-600"
+                            >
+                              Prorrogada
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
-                      <TableCell className="font-semibold">
-                        R${' '}
-                        {Number(op.face_value || 0).toLocaleString('pt-BR', {
-                          minimumFractionDigits: 2,
-                        })}
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="font-semibold">
+                            R${' '}
+                            {opTotalCronograma.toLocaleString('pt-BR', {
+                              minimumFractionDigits: 2,
+                            })}
+                          </span>
+                          {hasProrrogada && opJurosProrrogacao > 0 && (
+                            <span
+                              className="text-[10px] text-amber-600 font-medium"
+                              title="Valor inclui juros/multas de prorrogação calculados"
+                            >
+                              (+R${' '}
+                              {opJurosProrrogacao.toLocaleString('pt-BR', {
+                                minimumFractionDigits: 2,
+                              })}{' '}
+                              juros)
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -884,10 +1049,33 @@ export function InstallmentReceivables() {
                 </DialogTitle>
                 <DialogDescription className="mt-1">
                   Operação nº {selectedOp?.document_number || selectedOp?.id.substring(0, 8)} •
-                  Cedente: {selectedOp?.cedente || 'N/A'} • Valor de Face Total: R${' '}
+                  Cedente: {selectedOp?.cedente || 'N/A'} • Valor de Face Original: R${' '}
                   {Number(selectedOp?.face_value || 0).toLocaleString('pt-BR', {
                     minimumFractionDigits: 2,
                   })}
+                  {(() => {
+                    const insts = Array.isArray(selectedOp?.installments_data)
+                      ? selectedOp!.installments_data
+                      : []
+                    let totalJurosProrr = 0
+                    insts.forEach((i) => {
+                      const vals = getInstallmentValues(i, selectedOp!)
+                      if (vals.isExtended) {
+                        totalJurosProrr += vals.extensionInterest + vals.extensionPenalty
+                      }
+                    })
+                    if (totalJurosProrr > 0) {
+                      const totalAtual = Number(selectedOp?.face_value || 0) + totalJurosProrr
+                      return (
+                        <span className="font-semibold text-amber-600 block sm:inline sm:ml-2">
+                          • Total Atualizado c/ Prorrogações: R${' '}
+                          {totalAtual.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (+R${' '}
+                          {totalJurosProrr.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})
+                        </span>
+                      )
+                    }
+                    return null
+                  })()}
                 </DialogDescription>
               </div>
             </div>
@@ -961,9 +1149,9 @@ export function InstallmentReceivables() {
                 <TableRow>
                   <TableHead className="w-12">#</TableHead>
                   <TableHead>Vencimento</TableHead>
-                  <TableHead>Valor Parcela</TableHead>
+                  <TableHead>Valor a Receber</TableHead>
                   <TableHead>Status Calculado</TableHead>
-                  <TableHead>Pagamento / Obs</TableHead>
+                  <TableHead>Pagamento / Detalhes</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -971,17 +1159,19 @@ export function InstallmentReceivables() {
                 {selectedOp &&
                   (selectedOp.installments_data || []).map((inst, idx) => {
                     const calc = getInstallmentCalculatedStatus(inst, selectedOp)
-                    const count = (selectedOp.installments_data || []).length || 1
-                    const suggestedVal =
-                      inst.value != null
-                        ? Number(inst.value)
-                        : Number(selectedOp.face_value || 0) / count
+                    const instVals = getInstallmentValues(inst, selectedOp)
                     const isPaid = calc.status === 'paga'
 
                     return (
                       <TableRow
                         key={idx}
-                        className={calc.status === 'vencida' ? 'bg-rose-500/5' : ''}
+                        className={
+                          calc.status === 'vencida'
+                            ? 'bg-rose-500/5'
+                            : instVals.isExtended && !isPaid
+                              ? 'bg-amber-500/5'
+                              : ''
+                        }
                       >
                         <TableCell className="font-bold text-sm">
                           {inst.number || idx + 1}
@@ -996,32 +1186,89 @@ export function InstallmentReceivables() {
                             {inst.original_due_date &&
                               inst.original_due_date !== (inst.dueDate || inst.due_date) && (
                                 <span className="text-[10px] text-muted-foreground line-through">
-                                  Orig: {formatDate(inst.original_due_date)}
+                                  Venc. Orig: {formatDate(inst.original_due_date)}
                                 </span>
                               )}
                           </div>
                         </TableCell>
                         <TableCell>
                           {isEditingValues && !isPaid ? (
-                            <div className="flex items-center gap-1">
-                              <span className="text-xs text-muted-foreground">R$</span>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                value={editingValues[idx] || ''}
-                                onChange={(e) =>
-                                  setEditingValues({ ...editingValues, [idx]: e.target.value })
-                                }
-                                className="h-8 w-28 text-sm"
-                              />
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs text-muted-foreground">R$</span>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={editingValues[idx] || ''}
+                                  onChange={(e) =>
+                                    setEditingValues({ ...editingValues, [idx]: e.target.value })
+                                  }
+                                  className="h-8 w-28 text-sm"
+                                />
+                              </div>
+                              <span className="text-[10px] text-muted-foreground">
+                                Valor nominal base
+                              </span>
                             </div>
                           ) : (
                             <div className="flex flex-col">
-                              <span className="font-semibold text-sm">
-                                R${' '}
-                                {suggestedVal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </span>
-                              {inst.value == null && (
+                              {/* Valor principal em destaque: total (original + juros + multa) para prorrogadas */}
+                              <div className="flex items-baseline gap-1.5">
+                                <span
+                                  className={`font-bold text-sm ${instVals.isExtended && !isPaid ? 'text-amber-600 dark:text-amber-400 font-mono text-base' : ''}`}
+                                >
+                                  R${' '}
+                                  {instVals.totalValue.toLocaleString('pt-BR', {
+                                    minimumFractionDigits: 2,
+                                  })}
+                                </span>
+                                {instVals.isExtended && !isPaid && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[9px] px-1 py-0 h-4 border-amber-500/40 text-amber-600 bg-amber-500/10"
+                                  >
+                                    Total Atualizado
+                                  </Badge>
+                                )}
+                              </div>
+
+                              {/* Detalhamento visível para parcelas prorrogadas */}
+                              {instVals.isExtended && (
+                                <div className="text-[11px] text-muted-foreground mt-0.5 space-y-0.5">
+                                  <div>
+                                    <span>Nominal: </span>
+                                    <span className="font-mono">
+                                      R${' '}
+                                      {instVals.originalValue.toLocaleString('pt-BR', {
+                                        minimumFractionDigits: 2,
+                                      })}
+                                    </span>
+                                  </div>
+                                  {(instVals.extensionInterest > 0 ||
+                                    instVals.extensionPenalty > 0) && (
+                                    <div className="text-amber-700 dark:text-amber-400 font-medium">
+                                      <span>+ Juros: </span>
+                                      <span className="font-mono">
+                                        R${' '}
+                                        {instVals.extensionInterest.toLocaleString('pt-BR', {
+                                          minimumFractionDigits: 2,
+                                        })}
+                                      </span>
+                                      {instVals.extensionPenalty > 0 && (
+                                        <span>
+                                          {' '}
+                                          + Multa: R${' '}
+                                          {instVals.extensionPenalty.toLocaleString('pt-BR', {
+                                            minimumFractionDigits: 2,
+                                          })}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {inst.value == null && !instVals.isExtended && (
                                 <span className="text-[10px] text-muted-foreground">
                                   (rateio sugerido)
                                 </span>
@@ -1042,9 +1289,12 @@ export function InstallmentReceivables() {
                               </span>
                               <span className="text-[11px]">
                                 Total: R${' '}
-                                {Number(inst.amount_paid || suggestedVal).toLocaleString('pt-BR', {
-                                  minimumFractionDigits: 2,
-                                })}
+                                {Number(inst.amount_paid || instVals.totalValue).toLocaleString(
+                                  'pt-BR',
+                                  {
+                                    minimumFractionDigits: 2,
+                                  },
+                                )}
                               </span>
                               {(Number(inst.interest_applied || 0) > 0 ||
                                 Number(inst.penalty_applied || 0) > 0) && (
@@ -1054,14 +1304,19 @@ export function InstallmentReceivables() {
                                     Number(inst.interest_applied || 0) +
                                     Number(inst.penalty_applied || 0)
                                   ).toFixed(2)}{' '}
-                                  juros/multa)
+                                  juros/multa pós-vencimento)
                                 </span>
                               )}
                             </div>
                           ) : inst.extension_reason ? (
-                            <span className="italic line-clamp-1" title={inst.extension_reason}>
-                              Prorrogado: {inst.extension_reason}
-                            </span>
+                            <div className="flex flex-col">
+                              <span className="italic line-clamp-1" title={inst.extension_reason}>
+                                Motivo: {inst.extension_reason}
+                              </span>
+                              <span className="text-[10px] text-amber-600 font-medium">
+                                Recalculado c/ juros diários
+                              </span>
+                            </div>
                           ) : (
                             <span>Aguardando liquidação</span>
                           )}
@@ -1315,12 +1570,60 @@ export function InstallmentReceivables() {
               />
             </div>
 
+            <div className="bg-muted p-3 rounded-lg border space-y-1.5 text-xs">
+              <div className="flex justify-between text-muted-foreground">
+                <span>Valor Original:</span>
+                {(() => {
+                  if (!selectedOp || activeInstallmentIdx === null) return null
+                  const currentInst = (selectedOp.installments_data || [])[activeInstallmentIdx]
+                  const currentVals = currentInst
+                    ? getInstallmentValues(currentInst, selectedOp)
+                    : null
+                  return (
+                    <span className="font-mono">
+                      R${' '}
+                      {Number(currentVals?.originalValue || 0).toLocaleString('pt-BR', {
+                        minimumFractionDigits: 2,
+                      })}
+                    </span>
+                  )
+                })()}
+              </div>
+              <div className="flex justify-between text-muted-foreground">
+                <span>+ Juros e Multa Calculados:</span>
+                <span className="font-mono text-amber-600 font-medium">
+                  + R${' '}
+                  {(
+                    Number(extensionForm.interest || 0) + Number(extensionForm.penalty || 0)
+                  ).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex justify-between text-base font-bold text-foreground border-t pt-1.5">
+                <span>Novo Total da Parcela:</span>
+                <span className="text-amber-600 font-mono">
+                  {(() => {
+                    if (!selectedOp || activeInstallmentIdx === null) return 'R$ 0,00'
+                    const currentInst = (selectedOp.installments_data || [])[activeInstallmentIdx]
+                    const currentVals = currentInst
+                      ? getInstallmentValues(currentInst, selectedOp)
+                      : null
+                    const totalExt =
+                      Number(currentVals?.originalValue || 0) +
+                      Number(extensionForm.interest || 0) +
+                      Number(extensionForm.penalty || 0)
+                    return `R$ ${totalExt.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                  })()}
+                </span>
+              </div>
+            </div>
+
             <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-lg text-xs space-y-1">
               <p className="font-semibold text-amber-800 dark:text-amber-300">
                 Atenção sobre a Prorrogação:
               </p>
               <p className="text-muted-foreground">
-                A prorrogação apenas recalcula o cronograma projetado e juros devidos.{' '}
+                A prorrogação atualiza o cronograma para exibir o valor total devido (original +
+                juros/multa).{' '}
                 <strong>Nenhum lançamento contábil de receita será gerado agora</strong>; o
                 lançamento financeiro ocorrerá apenas no momento da baixa efetiva.
               </p>
