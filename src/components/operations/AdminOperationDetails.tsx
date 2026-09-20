@@ -204,78 +204,60 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
         } = await supabase.auth.getUser()
         if (!user) throw new Error('Não autenticado')
 
-        const { data: mapped } = await supabase
-          .from('mapeamento_movimentacoes')
-          .select('id')
-          .eq('origem_tabela', 'recebíveis')
-          .eq('origem_id', op.id)
-          .maybeSingle()
+        const effectivePaymentDate =
+          datesForm.liquidation_date ||
+          op.liquidation_date ||
+          new Date().toISOString().split('T')[0]
+        const effectiveAmount =
+          op.liquidation_value || op.face_value || calc?.net_value || op.requested_value || 0
 
-        if (mapped) {
-          toast.error('Esta operação já foi registrada no caixa anteriormente.')
-        } else {
-          const netValue = calc?.net_value || op.requested_value || 0
-          const interestValue = (op.face_value || 0) - netValue
-          // Valor de face = valor que efetivamente entra na conta bancária
-          const faceValue = op.face_value || netValue + interestValue
+        // Chama a RPC atômica que sincroniza credit_operations, treasury_transactions,
+        // movimentacoes_caixa, mapeamento_movimentacoes e audit_logs de forma idempotente
+        const { error: rpcErr } = await (supabase.rpc as any)('liquidate_credit_operation_full', {
+          p_operation_id: op.id,
+          p_payment_date: effectivePaymentDate,
+          p_amount_paid: effectiveAmount,
+          p_notes: 'Baixa integral executada na Mesa de Operações',
+        })
 
-          if (faceValue > 0) {
-            const { data: mov, error: movErr } = await supabase
-              .from('movimentacoes_caixa')
-              .insert({
-                tipo: 'entrada',
-                categoria: 'liquidação_recebível',
-                descricao: `Liquidação de recebível — ${op.sacado}`,
-                valor: faceValue,
-                saldo_anterior: 0,
-                saldo_novo: 0,
-                referencia_id: op.id,
-                referencia_tipo: 'recebível',
-                referencia_numero: op.document_number,
-                user_id: user.id,
-              })
-              .select()
-              .single()
+        if (rpcErr) throw rpcErr
 
-            if (movErr) throw movErr
-            await supabase.from('mapeamento_movimentacoes').insert({
-              movimentacao_caixa_id: mov.id,
-              origem_tabela: 'recebíveis',
-              origem_id: op.id,
-              sincronizado: true,
-              user_id: user.id,
-            })
-            toast.success('Recebível liquidado e registrado no caixa')
-          }
-        }
+        toast.success(
+          `Operação liquidada com sucesso! Lançamento de R$ ${Number(effectiveAmount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} registrado na Contabilidade (Livro Caixa) e DRE.`,
+        )
+        fetchData()
+        if (onRefresh) onRefresh()
+        setActionLoading(false)
+        return
       } catch (err: any) {
-        toast.error('Erro ao registrar no caixa: ' + err.message)
+        console.error(err)
+        toast.error('Erro ao liquidar operação no caixa/DRE: ' + err.message)
         setActionLoading(false)
         return
       }
     }
 
     // Reversão de liquidação: ao sair do status "liquidado" para qualquer outro,
-    // remove os registros de caixa criados anteriormente (evita duplicação/fantasmas).
+    // estorna os registros de tesouraria, caixa e mapeamento de forma segura
     if (newStatus !== 'liquidado' && op.status === 'liquidado') {
       try {
-        // 1. Deleta primeiro os mapeamentos (FK que referencia movimentacoes_caixa)
-        await supabase
-          .from('mapeamento_movimentacoes')
-          .delete()
-          .eq('origem_id', op.id)
-          .in('origem_tabela', ['recebíveis', 'juros'])
+        const { error: revErr } = await (supabase.rpc as any)(
+          'revert_credit_operation_full_liquidation',
+          {
+            p_operation_id: op.id,
+          },
+        )
 
-        // 2. Depois deleta as movimentações de caixa vinculadas à operação
-        await supabase
-          .from('movimentacoes_caixa')
-          .delete()
-          .eq('referencia_id', op.id)
-          .eq('referencia_tipo', 'recebível')
+        if (revErr) throw revErr
 
-        toast.info('Registros de liquidação removidos do caixa.')
+        toast.info('Baixa revertida: lançamentos de receita estornados do Caixa e DRE.')
+        fetchData()
+        if (onRefresh) onRefresh()
+        setActionLoading(false)
+        return
       } catch (err: any) {
-        toast.error('Erro ao remover registros de liquidação: ' + err.message)
+        console.error(err)
+        toast.error('Erro ao reverter liquidação: ' + err.message)
         setActionLoading(false)
         return
       }
@@ -510,6 +492,15 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                 )}
 
                 <div className="flex-1 min-w-[180px] flex gap-2 ml-auto">
+                  <Button
+                    size="sm"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+                    onClick={() => handleStatusChange('liquidado')}
+                    disabled={actionLoading || op.status === 'liquidado'}
+                  >
+                    <CheckCircle2 className="w-4 h-4 mr-2" /> Baixar / Liquidar
+                  </Button>
+
                   <Select
                     value={statusInput}
                     onValueChange={(v) => {

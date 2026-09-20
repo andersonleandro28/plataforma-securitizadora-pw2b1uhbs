@@ -91,14 +91,18 @@ export function useAccounting() {
         supabase
           .from('movimentacoes_caixa')
           .select('id, tipo, categoria, descricao, valor, user_id, created_at'),
-        // 8. Transações do Tesourário — Recebimento de Parcelas (CCB e Operações Parceladas)
-        // O `treasury_transactions` contém recebimentos de parcelas de CCBs e de Operações de Crédito.
-        // A deduplicação por `external_ref` evita somar duas vezes o mesmo boleto/parcela.
+        // 8. Transações do Tesourário — Recebimento de Parcelas e Liquidações de Operações
+        // O `treasury_transactions` contém recebimentos de parcelas de CCBs, parcelas de crédito e liquidação integral de operações.
+        // A deduplicação por `external_ref` evita somar duas vezes o mesmo boleto/parcela/operação.
         supabase
           .from('treasury_transactions')
           .select('id, type, category, amount, description, date, external_ref')
           .eq('type', 'in')
-          .in('category', ['Recebimento de Parcelas - CCB', 'Recebimento de Parcelas - Operação']),
+          .in('category', [
+            'Recebimento de Parcelas - CCB',
+            'Recebimento de Parcelas - Operação',
+            'Liquidação de Recebível',
+          ]),
       ])
 
       // 1. Subscrições
@@ -165,17 +169,29 @@ export function useAccounting() {
         })
       })
 
-      // 8. Transações do Tesourário — Recebimento de Parcelas - CCB
+      // Coleta referências já presentes em movimentações de caixa para evitar duplicação com treasury_transactions
+      const movsExternalRefs = new Set<string>()
+      ;(movs || []).forEach((m: any) => {
+        if (m.referencia_id) {
+          movsExternalRefs.add(`op-liq-${m.referencia_id}`)
+          if (m.referencia_numero) {
+            movsExternalRefs.add(`op-bol-${m.referencia_id}-${m.referencia_numero}`)
+          }
+        }
+      })
+
+      // 8. Transações do Tesourário — Recebimento de Parcelas e Liquidação de Operações
       // Adiciona os recebimentos que não chegaram via JSONB (CCBs com boletos
-      // truncados pelo PostgREST). Pula os que já foram capturados em `recs`.
+      // truncados pelo PostgREST) e liquidações não duplicadas no Livro Caixa.
       ;(tt || []).forEach((tx: any) => {
         const ref = tx.external_ref ? String(tx.external_ref) : null
         if (ref && boletoExternalRefs.has(ref)) return
+        if (ref && movsExternalRefs.has(ref)) return
         if (ref) boletoExternalRefs.add(ref)
         transactions.push({
           id: `tt-${tx.id}`,
           type: 'in' as const,
-          category: 'Recebimento de Parcelas - CCB',
+          category: tx.category || 'Recebimento de Parcelas - CCB',
           description: tx.description,
           value: Number(tx.amount || 0),
           date: normalizeAccountingDate(tx.date),
