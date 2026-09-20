@@ -40,9 +40,11 @@ import {
   Send,
   Calendar,
   CalendarDays,
+  Percent,
 } from 'lucide-react'
 import { getStatusBadge } from '../dashboard/BorrowerOperationsList'
 import { RiskDossier } from './RiskDossier'
+import { AdminEditRatesDialog } from './AdminEditRatesDialog'
 
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
@@ -68,6 +70,8 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
     due_date: '',
     liquidation_date: '',
   })
+
+  const [editRatesOpen, setEditRatesOpen] = useState(false)
 
   useEffect(() => {
     if (open && opId) fetchData()
@@ -452,6 +456,16 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                 <Button
                   size="sm"
                   variant="outline"
+                  className="bg-primary/5 border-primary/30 text-primary hover:bg-primary/10"
+                  onClick={() => setEditRatesOpen(true)}
+                  disabled={actionLoading || op.status === 'liquidado' || op.status === 'pago'}
+                >
+                  <Percent className="w-4 h-4 mr-2" /> Editar Taxas &amp; Juros
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
                   onClick={() => setDatesOpen(true)}
                   disabled={actionLoading}
                 >
@@ -742,10 +756,25 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
 
               {/* Calc Memory */}
               <Card className="shadow-none border-primary/20 bg-muted/10">
-                <CardHeader className="p-4 pb-2 bg-primary/5">
-                  <CardTitle className="text-sm">
+                <CardHeader className="p-4 pb-2 bg-primary/5 flex flex-row items-center justify-between space-y-0">
+                  <CardTitle className="text-sm flex items-center gap-2">
                     Memória de Cálculo Financeiro (Server-side)
+                    {calc?.calculation_memory?.applied_params?.is_custom_admin_rate && (
+                      <span className="bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-[10px] px-2 py-0.5 rounded-full font-semibold border border-amber-300 dark:border-amber-700">
+                        Proposta com Taxas Editadas
+                      </span>
+                    )}
                   </CardTitle>
+                  {op.status !== 'liquidado' && op.status !== 'pago' && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs text-primary hover:text-primary hover:bg-primary/10 gap-1"
+                      onClick={() => setEditRatesOpen(true)}
+                    >
+                      <Percent className="w-3.5 h-3.5" /> Alterar Taxas
+                    </Button>
+                  )}
                 </CardHeader>
                 <CardContent className="p-4 space-y-2 text-sm">
                   <div className="flex justify-between">
@@ -816,6 +845,57 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                           <strong>{calc.effective_cost_rate?.toFixed(2)}%</strong>
                         </span>
                       </div>
+
+                      {calc.calculation_memory?.applied_params?.is_custom_admin_rate && (
+                        <div className="text-[11px] bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-2.5 rounded text-amber-900 dark:text-amber-200 space-y-1">
+                          <div className="font-semibold flex items-center justify-between">
+                            <span>Taxas customizadas pela mesa de operações:</span>
+                            {calc.calculation_memory.applied_params.rates_updated_at && (
+                              <span className="text-[10px] font-normal text-muted-foreground">
+                                Editado em{' '}
+                                {format(
+                                  new Date(calc.calculation_memory.applied_params.rates_updated_at),
+                                  'dd/MM/yyyy HH:mm',
+                                )}
+                              </span>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 font-mono text-[10px]">
+                            <div>
+                              Deságio:{' '}
+                              <strong>
+                                {calc.calculation_memory.applied_params.discount_rate_monthly}%/mês
+                              </strong>
+                            </div>
+                            <div>
+                              Juros:{' '}
+                              <strong>
+                                {calc.calculation_memory.applied_params.interest_rate_monthly}%/mês
+                              </strong>
+                            </div>
+                            <div>
+                              Ad Valorem:{' '}
+                              <strong>
+                                {calc.calculation_memory.applied_params.ad_valorem_rate}%
+                              </strong>
+                            </div>
+                            <div>
+                              Estruturação:{' '}
+                              <strong>
+                                {calc.calculation_memory.applied_params.structuring_fee}%
+                              </strong>
+                            </div>
+                          </div>
+                          {calc.calculation_memory.applied_params.rates_justification && (
+                            <p className="text-[10px] italic pt-1 border-t border-amber-200/60 dark:border-amber-800/60 text-muted-foreground">
+                              Justificativa:{' '}
+                              <span className="text-foreground">
+                                {calc.calculation_memory.applied_params.rates_justification}
+                              </span>
+                            </p>
+                          )}
+                        </div>
+                      )}
 
                       {calc.calculation_memory?.isInstallmentCalculation &&
                         Array.isArray(calc.calculation_memory?.installmentsBreakdown) &&
@@ -1016,6 +1096,18 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Edição de Taxas e Juros */}
+      <AdminEditRatesDialog
+        open={editRatesOpen}
+        onOpenChange={setEditRatesOpen}
+        operation={op}
+        currentCalc={calc}
+        onSuccess={() => {
+          fetchData()
+          if (onRefresh) onRefresh()
+        }}
+      />
     </>
   )
 }

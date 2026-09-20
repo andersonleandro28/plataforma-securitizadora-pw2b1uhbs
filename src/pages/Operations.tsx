@@ -30,11 +30,12 @@ import {
 } from '@/components/ui/select'
 import { supabase } from '@/lib/supabase/client'
 import { format } from 'date-fns'
-import { Plus } from 'lucide-react'
+import { Plus, Percent } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { getStatusBadge } from '@/components/dashboard/BorrowerOperationsList'
 import { AdminOperationDetails } from '@/components/operations/AdminOperationDetails'
 import { AdminNewOperationDialog } from '@/components/operations/AdminNewOperationDialog'
+import { AdminEditRatesDialog } from '@/components/operations/AdminEditRatesDialog'
 import { useAuth } from '@/hooks/use-auth'
 
 export default function Operations() {
@@ -45,6 +46,7 @@ export default function Operations() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [selectedOpId, setSelectedOpId] = useState<string | null>(null)
   const [newOpOpen, setNewOpOpen] = useState(false)
+  const [editingRatesOp, setEditingRatesOp] = useState<any | null>(null)
 
   // Align permission criteria with RoleGuard and other admin screens
   const isSuperAdmin = user?.email === 'andersonleandro28@gmail.com'
@@ -57,7 +59,7 @@ export default function Operations() {
     setLoading(true)
     const { data } = await supabase
       .from('credit_operations')
-      .select('*, profiles(full_name), operation_calculations(net_value)')
+      .select('*, profiles(full_name), operation_calculations(*)')
       .order('created_at', { ascending: false })
 
     if (data) setOperations(data)
@@ -217,44 +219,73 @@ export default function Operations() {
                     <TableHead>Valor Face (VF)</TableHead>
                     <TableHead>Valor Líquido</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead className="text-center">Taxas</TableHead>
                     <TableHead className="text-center">Formalização</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((op) => (
-                    <TableRow
-                      key={op.id}
-                      className="cursor-pointer hover:bg-muted/50 transition-colors"
-                      onClick={() => setSelectedOpId(op.id)}
-                    >
-                      <TableCell className="font-mono text-xs text-muted-foreground font-medium">
-                        #{op.id?.split('-')[0]?.toUpperCase()}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {format(new Date(op.created_at), 'dd/MM/yyyy HH:mm')}
-                      </TableCell>
-                      <TableCell className="font-medium text-sm truncate max-w-[150px]">
-                        {op.profiles?.full_name || 'Desconhecido'}
-                      </TableCell>
-                      <TableCell className="uppercase text-xs font-semibold text-muted-foreground">
-                        {op.receivable_type?.replace('_', ' ')}
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {formatCurrency(op.face_value)}
-                      </TableCell>
-                      <TableCell className="font-mono text-sm font-medium text-emerald-600">
-                        {op.operation_calculations?.[0]?.net_value
-                          ? formatCurrency(op.operation_calculations[0].net_value)
-                          : '---'}
-                      </TableCell>
-                      <TableCell>{getStatusBadge(op.status)}</TableCell>
-                      <TableCell>
-                        <div className="flex justify-center">
-                          {getSignatureIcon(op.signature_status)}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {filtered.map((op) => {
+                    const calc = op.operation_calculations?.[0]
+                    const isRatesEdited =
+                      !!calc?.calculation_memory?.applied_params?.is_custom_admin_rate
+                    const canEditRates = op.status !== 'liquidado' && op.status !== 'pago'
+
+                    return (
+                      <TableRow
+                        key={op.id}
+                        className="cursor-pointer hover:bg-muted/50 transition-colors"
+                        onClick={() => setSelectedOpId(op.id)}
+                      >
+                        <TableCell className="font-mono text-xs text-muted-foreground font-medium">
+                          #{op.id?.split('-')[0]?.toUpperCase()}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {format(new Date(op.created_at), 'dd/MM/yyyy HH:mm')}
+                        </TableCell>
+                        <TableCell className="font-medium text-sm truncate max-w-[150px]">
+                          {op.profiles?.full_name || 'Desconhecido'}
+                        </TableCell>
+                        <TableCell className="uppercase text-xs font-semibold text-muted-foreground">
+                          {op.receivable_type?.replace('_', ' ')}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">
+                          {formatCurrency(op.face_value)}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm font-medium text-emerald-600">
+                          {calc?.net_value ? formatCurrency(calc.net_value) : '---'}
+                        </TableCell>
+                        <TableCell>{getStatusBadge(op.status)}</TableCell>
+                        <TableCell className="text-center">
+                          {isRatesEdited ? (
+                            <span className="inline-flex items-center gap-1 bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-700">
+                              <Percent className="w-2.5 h-2.5" /> Editadas
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground">Padrão</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex justify-center">
+                            {getSignatureIcon(op.signature_status)}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                          {canEditRates && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs gap-1 border-primary/30 text-primary hover:bg-primary/10"
+                              onClick={() => setEditingRatesOp(op)}
+                              title="Alterar Taxas e Juros da Proposta"
+                            >
+                              <Percent className="w-3 h-3" /> Alterar Taxas
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -274,6 +305,19 @@ export default function Operations() {
         onOpenChange={setNewOpOpen}
         onSuccess={fetchOperations}
       />
+
+      {editingRatesOp && (
+        <AdminEditRatesDialog
+          open={!!editingRatesOp}
+          onOpenChange={(v) => !v && setEditingRatesOp(null)}
+          operation={editingRatesOp}
+          currentCalc={editingRatesOp.operation_calculations?.[0]}
+          onSuccess={() => {
+            fetchOperations()
+            setEditingRatesOp(null)
+          }}
+        />
+      )}
     </div>
   )
 }

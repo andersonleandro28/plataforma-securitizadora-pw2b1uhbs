@@ -33,10 +33,26 @@ Deno.serve(async (req: Request) => {
 
     // Fetch parameters - Priority for specific asset type, fallback to global
     const { data: paramsData } = await supabase.from('financial_parameters').select('*')
-    let params =
+    let defaultParams =
       paramsData?.find((p: any) => p.receivable_type === opData.receivable_type) ||
       paramsData?.find((p: any) => p.receivable_type === 'global') ||
       {}
+
+    // Check if operation already has customized applied_params saved in its calculation_memory
+    let existingAppliedParams: any = null
+    if (operation_id) {
+      const { data: existingCalc } = await supabase
+        .from('operation_calculations')
+        .select('calculation_memory')
+        .eq('operation_id', operation_id)
+        .maybeSingle()
+
+      if (existingCalc?.calculation_memory?.applied_params) {
+        existingAppliedParams = existingCalc.calculation_memory.applied_params
+      }
+    }
+
+    let params = { ...defaultParams, ...(existingAppliedParams || {}) }
 
     if (override_params) {
       params = { ...params, ...override_params }
