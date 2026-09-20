@@ -209,14 +209,14 @@ export function useDre() {
       })
 
       // 5. Operações de Crédito (credit_operations).
-      // Operações liquidadas geram um desembolso (saída do dinheiro emprestado
-      // ao cliente). Considera os status 'liquidado' (minúsculo) e 'Liquidado'
-      // (maiúsculo). Usa issue_date como data e net_value (via
-      // operation_calculations) como valor. Deduplica contra lançamentos já
-      // existentes no caixa vinculados via referencia_tipo = 'recebível'.
+      // Operações liquidadas ou pagas geram um desembolso (saída do dinheiro
+      // emprestado ao cliente). Considera os status 'liquidado' e 'pago'.
+      // Usa issue_date como data e net_value (via operation_calculations)
+      // como valor. Deduplica contra lançamentos já existentes no caixa
+      // vinculados via referencia_tipo = 'recebível'.
       ;(credRes.data || []).forEach((op) => {
         const st = (op.status || '').toLowerCase()
-        if (st !== 'liquidado') return
+        if (st !== 'liquidado' && st !== 'pago') return
         // Deduplicação: desembolso já refletido no Livro Caixa.
         if (creditOpIdsNoCaixa.has(op.id)) return
 
@@ -347,7 +347,6 @@ export function useDre() {
 
       const totalReceitas = receitasPorCategoria.reduce((s, c) => s + c.total, 0)
       const totalDespesas = despesasPorCategoria.reduce((s, c) => s + c.total, 0)
-
       setDados({
         lancamentos: lancamentos.sort(
           (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
