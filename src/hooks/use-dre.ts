@@ -83,7 +83,7 @@ export function useDre() {
         supabase
           .from('movimentacoes_caixa')
           .select(
-            'id, tipo, categoria, descricao, valor, created_at, referencia_tipo, referencia_id',
+            'id, tipo, categoria, descricao, valor, created_at, referencia_tipo, referencia_id, referencia_numero',
           )
           .gte('created_at', inicioTs)
           .lte('created_at', fimTs),
@@ -140,8 +140,14 @@ export function useDre() {
       // vinculadas à operação de crédito via referencia_id. Entradas de
       // liquidação de recebível (inflow) NÃO são consideradas equivalentes,
       // pois representam o recebível entrando, não o desembolso saindo.
+      //
+      // Também coleta as referências externas equivalentes a estas movimentações
+      // (ex.: op-liq-{id} e op-bol-{id}-{numero}) para evitar que a mesma liquidação
+      // ou parcela já presente no caixa seja adicionada novamente a partir de
+      // treasury_transactions.
       const creditOpIdsNoCaixa = new Set<string>()
-      ;(movsRes.data || []).forEach((mov) => {
+      const movsExternalRefs = new Set<string>()
+      ;(movsRes.data || []).forEach((mov: any) => {
         const tipoLower = (mov.tipo || '').toLowerCase()
         const tipo: DreTipo = tipoLower === 'saida' ? 'despesa' : 'receita'
         const catOriginal = mov.categoria || 'Outros'
@@ -152,6 +158,12 @@ export function useDre() {
           mov.referencia_id
         ) {
           creditOpIdsNoCaixa.add(mov.referencia_id)
+        }
+        if (mov.referencia_id) {
+          movsExternalRefs.add(`op-liq-${mov.referencia_id}`)
+          if (mov.referencia_numero) {
+            movsExternalRefs.add(`op-bol-${mov.referencia_id}-${mov.referencia_numero}`)
+          }
         }
         lancamentos.push({
           id: `mov-${mov.id}`,
@@ -243,6 +255,8 @@ export function useDre() {
       // de CCB). Saídas (type='out') entram como despesa, mas são deduplicadas
       // contra o expenses quando vinculadas via expense_id, para evitar dupla
       // contagem.
+      // Também deduplica contra lançamentos de caixa já existentes usando movsExternalRefs
+      // (ex.: op-liq-{id} ou op-bol-{id}-{numero}).
       // Coleta os `external_ref` já processados para deduplicar contra os
       // boletos pagos do `recebiveis_ccb` (fonte 6) — o trigger que popula a
       // tesouraria usa o formato `ccb-bol-{recebivel_id}-{parcela}`.
@@ -252,7 +266,11 @@ export function useDre() {
         // Deduplicação: se a saída já está refletida em expenses, ignora.
         if (tipo === 'despesa' && t.expense_id && expenseIdsInDre.has(t.expense_id)) return
 
-        if (t.external_ref) treasuryExternalRefs.add(String(t.external_ref))
+        const extRef = t.external_ref ? String(t.external_ref) : null
+        // Deduplicação: se o evento já foi lançado em movimentacoes_caixa, ignora.
+        if (extRef && movsExternalRefs.has(extRef)) return
+
+        if (extRef) treasuryExternalRefs.add(extRef)
 
         const catOriginal =
           t.category || (tipo === 'receita' ? 'Recebimento de Parcelas - CCB' : 'Tesouraria')

@@ -90,7 +90,9 @@ export function useAccounting() {
         // RLS já garante que admins veem tudo e usuários comuns só os próprios registros.
         supabase
           .from('movimentacoes_caixa')
-          .select('id, tipo, categoria, descricao, valor, user_id, created_at'),
+          .select(
+            'id, tipo, categoria, descricao, valor, user_id, created_at, referencia_id, referencia_tipo, referencia_numero',
+          ),
         // 8. Transações do Tesourário — Recebimento de Parcelas e Liquidações de Operações
         // O `treasury_transactions` contém recebimentos de parcelas de CCBs, parcelas de crédito e liquidação integral de operações.
         // A deduplicação por `external_ref` evita somar duas vezes o mesmo boleto/parcela/operação.
