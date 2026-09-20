@@ -91,17 +91,14 @@ export function useAccounting() {
         supabase
           .from('movimentacoes_caixa')
           .select('id, tipo, categoria, descricao, valor, user_id, created_at'),
-        // 8. Transações do Tesourário — Recebimento de Parcelas - CCB.
-        // Fonte de segurança: CCBs com muitos boletos têm o JSONB truncado pelo
-        // PostgREST na resposta REST, então boletos pagos podem não chegar via
-        // `recebiveis_ccb`. O `treasury_transactions` é populado por trigger do
-        // banco e contém esses registros. A deduplicação por `external_ref`
-        // evita somar duas vezes o mesmo boleto que apareceu por ambas as fontes.
+        // 8. Transações do Tesourário — Recebimento de Parcelas (CCB e Operações Parceladas)
+        // O `treasury_transactions` contém recebimentos de parcelas de CCBs e de Operações de Crédito.
+        // A deduplicação por `external_ref` evita somar duas vezes o mesmo boleto/parcela.
         supabase
           .from('treasury_transactions')
           .select('id, type, category, amount, description, date, external_ref')
           .eq('type', 'in')
-          .eq('category', 'Recebimento de Parcelas - CCB'),
+          .in('category', ['Recebimento de Parcelas - CCB', 'Recebimento de Parcelas - Operação']),
       ])
 
       // 1. Subscrições

@@ -58,6 +58,12 @@ const allNavItems = [
     roles: ['admin', 'staff'],
   },
   {
+    title: 'Recebíveis Parcelados',
+    path: '/admin/recebiveis-parcelados',
+    icon: CheckSquare,
+    roles: ['admin', 'staff'],
+  },
+  {
     title: 'Minhas Parcelas CCB',
     path: '/borrower/ccb-installments',
     icon: CheckSquare,

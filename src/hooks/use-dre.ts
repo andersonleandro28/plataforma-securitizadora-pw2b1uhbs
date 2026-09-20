@@ -103,9 +103,9 @@ export function useDre() {
         supabase
           .from('treasury_transactions')
           .select(
-            'id, type, category, amount, description, date, external_ref, expense_id, reference_id',
+            'id, type, category, amount, description, date, external_ref, expense_id, reference_id, status',
           )
-          .eq('status', 'Confirmado')
+          .or('status.eq.Confirmado,status.is.null')
           .gte('date', inicio)
           .lte('date', fim),
         supabase

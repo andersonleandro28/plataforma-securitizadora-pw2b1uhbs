@@ -35,6 +35,7 @@ import KycOnboarding from './pages/KycOnboarding'
 import CcbDigital from './pages/borrower/CcbDigital'
 import MyCcbInstallments from './pages/borrower/MyCcbInstallments'
 import CcbPurchases from './pages/admin/CcbPurchases'
+import InstallmentReceivables from './pages/admin/InstallmentReceivables'
 import { AuthGuard } from './components/auth/AuthGuard'
 import { RoleGuard } from './components/auth/RoleGuard'
 import { PendingSignatures } from './components/docusign/PendingSignatures'
@@ -383,6 +384,14 @@ const App = () => (
               element={
                 <RoleGuard allowedRoles={['admin', 'staff']}>
                   <CcbPurchases />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/admin/recebiveis-parcelados"
+              element={
+                <RoleGuard allowedRoles={['admin', 'staff']}>
+                  <InstallmentReceivables />
                 </RoleGuard>
               }
             />
