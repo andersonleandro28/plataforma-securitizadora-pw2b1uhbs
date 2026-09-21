@@ -60,9 +60,30 @@ export default function Operations() {
     const { data } = await supabase
       .from('credit_operations')
       .select('*, profiles(full_name), operation_calculations(*)')
+      .order('issue_date', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })
 
-    if (data) setOperations(data)
+    if (data) {
+      // Ordenação em memória garantindo fallback de issue_date nulo para created_at
+      const sorted = [...data].sort((a, b) => {
+        const dateA = a.issue_date
+          ? new Date(a.issue_date + 'T00:00:00').getTime()
+          : new Date(a.created_at).getTime()
+        const dateB = b.issue_date
+          ? new Date(b.issue_date + 'T00:00:00').getTime()
+          : new Date(b.created_at).getTime()
+
+        if (dateB !== dateA) {
+          return dateB - dateA // mais recente primeiro
+        }
+
+        // Desempate por created_at desc
+        const createdA = new Date(a.created_at).getTime()
+        const createdB = new Date(b.created_at).getTime()
+        return createdB - createdA
+      })
+      setOperations(sorted)
+    }
     setLoading(false)
   }
 
@@ -216,7 +237,7 @@ export default function Operations() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>ID</TableHead>
-                    <TableHead>Data</TableHead>
+                    <TableHead>Data Operação</TableHead>
                     <TableHead>Tomador</TableHead>
                     <TableHead>Tipo Ativo</TableHead>
                     <TableHead>Valor Face (VF)</TableHead>
@@ -244,7 +265,18 @@ export default function Operations() {
                           #{op.id?.split('-')[0]?.toUpperCase()}
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
-                          {format(new Date(op.created_at), 'dd/MM/yyyy HH:mm')}
+                          {op.issue_date ? (
+                            <div className="flex flex-col">
+                              <span className="font-medium text-foreground">
+                                {format(new Date(op.issue_date + 'T00:00:00'), 'dd/MM/yyyy')}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground/75">
+                                Reg: {format(new Date(op.created_at), 'dd/MM/yy HH:mm')}
+                              </span>
+                            </div>
+                          ) : (
+                            format(new Date(op.created_at), 'dd/MM/yyyy HH:mm')
+                          )}
                         </TableCell>
                         <TableCell className="font-medium text-sm truncate max-w-[150px]">
                           {op.profiles?.full_name || 'Desconhecido'}
