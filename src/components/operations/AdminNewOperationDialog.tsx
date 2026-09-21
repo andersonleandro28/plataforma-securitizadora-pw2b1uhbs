@@ -22,6 +22,9 @@ import { FileUpload } from '@/components/operations/FileUpload'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { useBorrowerLimit } from '@/hooks/use-borrower-limit'
+import { useSacadoSuggestions, KnownSacado } from '@/hooks/use-sacado-suggestions'
+import { SacadoAutocomplete } from '@/components/operations/SacadoAutocomplete'
+import { onlyDigits, maskCpf, maskCnpj } from '@/lib/cpf-cnpj'
 import { toast } from 'sonner'
 import {
   Loader2,
@@ -36,6 +39,7 @@ import {
   Sparkles,
   FileCheck,
   Paperclip,
+  CheckCircle2,
 } from 'lucide-react'
 
 export interface OperationInstallmentItem {
@@ -107,6 +111,15 @@ export function AdminNewOperationDialog({
   })
 
   const [installmentsList, setInstallmentsList] = useState<OperationInstallmentItem[]>([])
+  const [autoFilledSacado, setAutoFilledSacado] = useState(false)
+  const [autoFilledSource, setAutoFilledSource] = useState<string>('')
+
+  const {
+    findByExactDocument,
+    findByExactName,
+    searchSuggestions,
+    loading: loadingSacados,
+  } = useSacadoSuggestions()
 
   // Load borrowers list when modal opens
   useEffect(() => {
@@ -392,9 +405,65 @@ export function AdminNewOperationDialog({
       initialStatus: 'enviado',
       observations: '',
     })
+    setAutoFilledSacado(false)
+    setAutoFilledSource('')
     setInstallmentsList([])
     setFiles([])
     setSimulation(null)
+  }
+
+  // Preenche dados do sacado a partir de um registro conhecido encontrado
+  const applyKnownSacado = (item: KnownSacado, notify = true) => {
+    setFormData((prev) => ({
+      ...prev,
+      sacado: item.name || prev.sacado,
+      sacadoDocument: item.document || prev.sacadoDocument,
+      sacadoEmail: item.email || prev.sacadoEmail,
+      sacadoPhone: item.phone || prev.sacadoPhone,
+    }))
+    setAutoFilledSacado(true)
+    setAutoFilledSource(item.source)
+    if (notify) {
+      toast.info(
+        `Dados do sacado preenchidos automaticamente (${item.source === 'credit_operations' ? 'operação anterior' : 'cadastro'})`,
+        { duration: 3500 },
+      )
+    }
+  }
+
+  // Handler para mudança no Documento (CPF/CNPJ) do Sacado com detecção automática exata
+  const handleSacadoDocumentChange = (val: string) => {
+    // Formatação amigável se o usuário digitar/colar apenas números
+    const clean = onlyDigits(val)
+    let formattedVal = val
+    if (clean.length === 11) {
+      formattedVal = maskCpf(clean)
+    } else if (clean.length === 14) {
+      formattedVal = maskCnpj(clean)
+    }
+
+    setFormData((prev) => ({ ...prev, sacadoDocument: formattedVal }))
+
+    // Buscar match por documento exato (prioridade máxima)
+    if (clean.length === 11 || clean.length === 14) {
+      const match = findByExactDocument(clean)
+      if (match) {
+        applyKnownSacado(match, true)
+      }
+    }
+  }
+
+  // Handler para mudança no Nome do Sacado
+  const handleSacadoNameChange = (val: string) => {
+    setFormData((prev) => ({ ...prev, sacado: val }))
+
+    // Se o usuário não digitou documento e o nome digitado bater exatamente com um único sacado conhecido
+    if (!formData.sacadoDocument && val.trim().length >= 4) {
+      const match = findByExactName(val)
+      if (match) {
+        applyKnownSacado(match, true)
+      }
+    }
   }
 
   const handleSubmit = async () => {
@@ -1046,26 +1115,73 @@ export function AdminNewOperationDialog({
 
             {/* Dados do Sacado (Devedor) */}
             <div className="space-y-3 pt-2">
-              <div className="border-b pb-1">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Dados do Sacado (Devedor)
+              <div className="border-b pb-1 flex items-center justify-between">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <Building className="w-3.5 h-3.5" /> Dados do Sacado (Devedor)
                 </h4>
+                {autoFilledSacado && (
+                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-medium bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded">
+                    <CheckCircle2 className="w-3 h-3" />
+                    Dados preenchidos automaticamente de{' '}
+                    {autoFilledSource === 'credit_operations' ? 'operação anterior' : 'cadastro'}
+                  </span>
+                )}
               </div>
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Nome / Razão Social *</Label>
-                  <Input
-                    value={formData.sacado}
-                    onChange={(e) => setFormData({ ...formData, sacado: e.target.value })}
-                    placeholder="Nome do Sacado / Devedor"
-                  />
+
+              {autoFilledSacado && (
+                <div className="text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 p-2.5 rounded flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span>
+                      Reconhecemos este sacado no histórico. Os campos foram preenchidos e estão
+                      abertos para edição caso necessite alterar.
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-[11px] text-muted-foreground hover:text-foreground underline px-1.5"
+                    onClick={() => {
+                      setAutoFilledSacado(false)
+                      setAutoFilledSource('')
+                    }}
+                  >
+                    Dispensar
+                  </Button>
                 </div>
+              )}
+
+              <div className="grid md:grid-cols-2 gap-4">
+                {/* Autocomplete com sugestões ao digitar Nome */}
+                <SacadoAutocomplete
+                  label="Nome / Razão Social *"
+                  placeholder="Digite o nome ou selecione das sugestões..."
+                  value={formData.sacado}
+                  onChange={handleSacadoNameChange}
+                  onSelectSacado={(item) => applyKnownSacado(item, true)}
+                  suggestions={searchSuggestions(formData.sacado)}
+                  isLoading={loadingSacados}
+                  autoFilled={autoFilledSacado}
+                  autoFilledSource={autoFilledSource}
+                  onClearAutoFill={() => {
+                    setAutoFilledSacado(false)
+                    setAutoFilledSource('')
+                  }}
+                />
+
                 <div className="space-y-2">
-                  <Label>CPF / CNPJ *</Label>
+                  <div className="flex items-center justify-between">
+                    <Label>CPF / CNPJ *</Label>
+                    <span className="text-[10px] text-muted-foreground">
+                      Match automático por documento
+                    </span>
+                  </div>
                   <Input
                     value={formData.sacadoDocument}
-                    onChange={(e) => setFormData({ ...formData, sacadoDocument: e.target.value })}
-                    placeholder="00.000.000/0000-00"
+                    onChange={(e) => handleSacadoDocumentChange(e.target.value)}
+                    placeholder="00.000.000/0000-00 ou CPF"
+                    className={autoFilledSacado ? 'border-emerald-500/40' : ''}
                   />
                 </div>
                 <div className="space-y-2">
@@ -1075,6 +1191,7 @@ export function AdminNewOperationDialog({
                     value={formData.sacadoEmail}
                     onChange={(e) => setFormData({ ...formData, sacadoEmail: e.target.value })}
                     placeholder="contato@sacado.com"
+                    className={autoFilledSacado ? 'border-emerald-500/40' : ''}
                   />
                 </div>
                 <div className="space-y-2">
@@ -1083,6 +1200,7 @@ export function AdminNewOperationDialog({
                     value={formData.sacadoPhone}
                     onChange={(e) => setFormData({ ...formData, sacadoPhone: e.target.value })}
                     placeholder="(00) 00000-0000"
+                    className={autoFilledSacado ? 'border-emerald-500/40' : ''}
                   />
                 </div>
               </div>
