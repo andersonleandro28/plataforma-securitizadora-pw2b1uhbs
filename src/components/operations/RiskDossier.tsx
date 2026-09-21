@@ -56,16 +56,9 @@ export function RiskDossier({ operationId, sacadoDocument, onStatusChanged }: Ri
 
         const { data: usedOps } = await supabase
           .from('credit_operations')
-          .select('requested_value, id')
+          .select('requested_value, id, status')
           .eq('borrower_id', opData.borrower_id)
-          .in('status', [
-            'em_analise',
-            'em_triagem',
-            'pendencia_documental',
-            'aprovado',
-            'aguardando_formalizacao',
-            'pago',
-          ])
+          .not('status', 'in', '("liquidado","pago","reprovado","cancelado","excluido")')
 
         let used = 0
         usedOps?.forEach((o) => {

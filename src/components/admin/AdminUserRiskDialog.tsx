@@ -73,11 +73,11 @@ export function AdminUserRiskDialog({ user, open, onOpenChange, onSaved }: any) 
 
       const activeOps =
         ops?.filter(
-          (o) => !['liquidado', 'reprovado', 'cancelado', 'excluido'].includes(o.status),
+          (o) => !['liquidado', 'pago', 'reprovado', 'cancelado', 'excluido'].includes(o.status),
         ) || []
       const activeCcbs =
         ccbs?.filter(
-          (c) => !['liquidado', 'reprovado', 'cancelado', 'excluido'].includes(c.status),
+          (c) => !['liquidado', 'pago', 'reprovado', 'cancelado', 'excluido'].includes(c.status),
         ) || []
 
       const currentUsed =
@@ -86,7 +86,7 @@ export function AdminUserRiskDialog({ user, open, onOpenChange, onSaved }: any) 
 
       setUsed(currentUsed)
 
-      const liqOps = ops?.filter((o) => o.status === 'liquidado') || []
+      const liqOps = ops?.filter((o) => o.status === 'liquidado' || o.status === 'pago') || []
       setLiquidated(liqOps.reduce((acc, o) => acc + Number(o.requested_value), 0))
 
       const today = new Date()

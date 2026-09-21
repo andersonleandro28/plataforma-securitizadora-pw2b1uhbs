@@ -25,13 +25,13 @@ export function useBorrowerLimit(userId?: string) {
           .from('credit_operations')
           .select('requested_value, status')
           .eq('borrower_id', userId)
-          .not('status', 'in', '("liquidado","reprovado","cancelado","excluido")')
+          .not('status', 'in', '("liquidado","pago","reprovado","cancelado","excluido")')
 
         const { data: ccbs } = await supabase
           .from('ccb_solicitacoes')
           .select('requested_value, status')
           .eq('user_id', userId)
-          .not('status', 'in', '("liquidado","reprovado","cancelado","excluido")')
+          .not('status', 'in', '("liquidado","pago","reprovado","cancelado","excluido")')
 
         const usedOps = (ops || []).reduce((acc, op) => acc + Number(op.requested_value || 0), 0)
         const usedCcbs = (ccbs || []).reduce((acc, c) => acc + Number(c.requested_value || 0), 0)
