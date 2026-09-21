@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import {
   Table,
@@ -36,6 +36,8 @@ import {
   FileText,
   Filter,
   FileCheck,
+  Clock,
+  CheckCircle2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/use-auth'
@@ -43,6 +45,7 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import { formatDate, toISODate } from '@/lib/utils'
 import { InvestmentProofModal, InvestmentProof } from '@/components/admin/InvestmentProofModal'
 import { sendNotification } from '@/services/notifications'
+import { evaluateGracePeriod } from '@/lib/redemption-utils'
 
 export default function InvestmentsReview() {
   const { user } = useAuth()
@@ -76,6 +79,65 @@ export default function InvestmentsReview() {
     'pending' | 'all' | 'rejected' | 'approved'
   >('pending')
 
+  // Aportes avaliados com data de liberação para saque e ordenados por proximidade da liberação
+  const sortedInvestments = useMemo(() => {
+    const today = new Date()
+    today.setUTCHours(0, 0, 0, 0)
+    const todayMs = today.getTime()
+
+    const evaluated = investments.map((inv) => {
+      const graceEval = evaluateGracePeriod(inv, today)
+      const releaseDate = graceEval?.graceReleaseDate || null
+      const releaseMs = releaseDate ? releaseDate.getTime() : null
+
+      const daysUntilRelease =
+        releaseMs !== null ? Math.round((releaseMs - todayMs) / (1000 * 60 * 60 * 24)) : 0
+
+      // Considera liberado se a data de carência já passou ou se o produto não tem carência mínima obrigatória
+      const isLiberado = !releaseDate || releaseMs <= todayMs
+
+      return {
+        investment: inv,
+        graceEval,
+        releaseDate,
+        releaseMs,
+        daysUntilRelease,
+        isLiberado,
+      }
+    })
+
+    // Ordenação por proximidade da data de liberação para saque:
+    // 1º: A liberar no futuro ou liberando hoje (dias >= 0), ordenados ascendente (o mais próximo no topo)
+    // 2º: Já liberados no passado (dias < 0), ordenados do liberado mais recentemente para o mais antigo (releaseMs desc)
+    // 3º: Sem data de liberação / fallback (ordenados por created_at desc)
+    return evaluated.sort((a, b) => {
+      const aRelease = a.releaseMs
+      const bRelease = b.releaseMs
+
+      const aIsFuture = aRelease !== null && aRelease >= todayMs
+      const bIsFuture = bRelease !== null && bRelease >= todayMs
+
+      if (aIsFuture && bIsFuture) {
+        return (aRelease as number) - (bRelease as number)
+      }
+      if (aIsFuture && !bIsFuture) return -1
+      if (!aIsFuture && bIsFuture) return 1
+
+      const aIsPast = aRelease !== null && aRelease < todayMs
+      const bIsPast = bRelease !== null && bRelease < todayMs
+
+      if (aIsPast && bIsPast) {
+        return (bRelease as number) - (aRelease as number)
+      }
+      if (aIsPast && !bIsPast) return -1
+      if (!aIsPast && bIsPast) return 1
+
+      const aCreated = new Date(a.investment.created_at || 0).getTime()
+      const bCreated = new Date(b.investment.created_at || 0).getTime()
+      return bCreated - aCreated
+    })
+  }, [investments])
+
   // Resgates States
   const [rejectOpen, setRejectOpen] = useState(false)
   const [editRedemptionOpen, setEditRedemptionOpen] = useState(false)
@@ -95,7 +157,7 @@ export default function InvestmentsReview() {
     const [invRes, proofsRes] = await Promise.all([
       supabase
         .from('investments')
-        .select('*, profiles(full_name, document_number), investment_products(title, rate)')
+        .select('*, profiles(full_name, document_number), investment_products(*)')
         .order('created_at', { ascending: false }),
       supabase.from('investment_proofs').select('*').order('uploaded_at', { ascending: false }),
     ])
@@ -708,8 +770,8 @@ export default function InvestmentsReview() {
             <CardHeader>
               <CardTitle>Histórico de Aportes</CardTitle>
               <CardDescription>
-                Aprove novos aportes, reprove aportes inconsistentes ou exclua aportes pendentes que
-                não devem prosseguir.
+                Aportes organizados por data de liberação para saque (carência mínima). Visualize a
+                previsão de resgates para melhor gestão do fluxo de caixa.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -720,13 +782,15 @@ export default function InvestmentsReview() {
                     <TableHead>Produto</TableHead>
                     <TableHead>Valor / Cotas</TableHead>
                     <TableHead>Data Transferência</TableHead>
+                    <TableHead>Carência / Liberação Saque</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {investments
-                    .filter((inv) => {
+                  {sortedInvestments
+                    .filter((item) => {
+                      const inv = item.investment
                       if (invStatusFilter === 'pending') {
                         return inv.status === 'awaiting_review' || inv.status === 'pending_transfer'
                       }
@@ -738,11 +802,13 @@ export default function InvestmentsReview() {
                       }
                       return true
                     })
-                    .map((inv) => {
+                    .map((item) => {
+                      const inv = item.investment
                       const isApproved = inv.status === 'approved'
                       const isAwaitingReview = inv.status === 'awaiting_review'
                       const isPendingTransfer = inv.status === 'pending_transfer'
                       const isRejected = inv.status === 'rejected'
+                      const { graceEval, releaseDate, daysUntilRelease, isLiberado } = item
 
                       return (
                         <TableRow key={inv.id}>
@@ -777,6 +843,50 @@ export default function InvestmentsReview() {
                             </div>
                           </TableCell>
                           <TableCell>{formatDate(inv.transfer_date)}</TableCell>
+                          <TableCell>
+                            {releaseDate ? (
+                              <div className="space-y-1">
+                                <div className="text-xs font-semibold text-foreground">
+                                  {releaseDate.toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
+                                </div>
+                                <div>
+                                  {isLiberado ? (
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-emerald-50 text-emerald-700 border-emerald-300 text-[11px] font-medium inline-flex items-center gap-1"
+                                    >
+                                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                      {daysUntilRelease === 0
+                                        ? 'Libera hoje'
+                                        : `Liberado há ${Math.abs(daysUntilRelease)}d`}
+                                    </Badge>
+                                  ) : (
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-amber-50 text-amber-800 border-amber-300 text-[11px] font-medium inline-flex items-center gap-1"
+                                    >
+                                      <Clock className="w-3 h-3 text-amber-600" />
+                                      {daysUntilRelease === 1
+                                        ? 'Libera em 1 dia'
+                                        : `Libera em ${daysUntilRelease} dias`}
+                                    </Badge>
+                                  )}
+                                </div>
+                                {graceEval?.gracePeriodMonths > 0 && (
+                                  <div className="text-[10px] text-muted-foreground">
+                                    Carência: {graceEval.gracePeriodMonths} meses
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[11px]"
+                              >
+                                Sem carência
+                              </Badge>
+                            )}
+                          </TableCell>
                           <TableCell>
                             {isApproved && (
                               <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white">
@@ -885,7 +995,7 @@ export default function InvestmentsReview() {
                     })}
                   {investments.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                         Nenhum aporte encontrado.
                       </TableCell>
                     </TableRow>
