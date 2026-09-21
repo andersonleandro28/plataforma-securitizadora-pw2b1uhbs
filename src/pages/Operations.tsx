@@ -81,7 +81,10 @@ export default function Operations() {
       op.profiles?.full_name?.toLowerCase().includes(sStr) ||
       op.id?.split('-')[0]?.toLowerCase().includes(sStr) ||
       false // Search by short ID
-    const matchStatus = statusFilter === 'all' || op.status === statusFilter
+    const matchStatus =
+      statusFilter === 'all' ||
+      op.status === statusFilter ||
+      (statusFilter === 'pago' && (op.status === 'pago' || op.status === 'liquidado'))
     return matchSearch && matchStatus
   })
 

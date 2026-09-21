@@ -114,7 +114,10 @@ export function BorrowerOperationsList() {
       op.document_number?.toLowerCase().includes(search.toLowerCase()) ||
       op.cedente?.toLowerCase().includes(search.toLowerCase()) ||
       op.sacado?.toLowerCase().includes(search.toLowerCase())
-    const matchStatus = statusFilter === 'all' || op.status === statusFilter
+    const matchStatus =
+      statusFilter === 'all' ||
+      op.status === statusFilter ||
+      (statusFilter === 'pago' && (op.status === 'pago' || op.status === 'liquidado'))
     return matchSearch && matchStatus
   })
 
@@ -170,7 +173,7 @@ export function BorrowerOperationsList() {
                 <SelectItem value="em_analise">Em Análise</SelectItem>
                 <SelectItem value="aprovado">Aprovado</SelectItem>
                 <SelectItem value="aguardando_formalizacao">Formalização</SelectItem>
-                <SelectItem value="pago">Pago</SelectItem>
+                <SelectItem value="pago">Pago / Liquidado</SelectItem>
               </SelectContent>
             </Select>
           </div>
