@@ -141,9 +141,12 @@ export function InstallmentReceivables() {
     if (Array.isArray(op.installments_data) && op.installments_data.length > 0) {
       return op.installments_data
     }
-    // Para operações de parcela única ou sem installments_data preenchido
+    // Para operações de parcela única ou sem installments_data preenchido:
+    // Só considera como paga se a operação tem data de liquidação válida além do status
     const isOpPaid =
-      (op.status || '').toLowerCase() === 'pago' || (op.status || '').toLowerCase() === 'liquidado'
+      ((op.status || '').toLowerCase() === 'pago' ||
+        (op.status || '').toLowerCase() === 'liquidado') &&
+      Boolean(op.liquidation_date)
     return [
       {
         number: 1,
@@ -197,8 +200,9 @@ export function InstallmentReceivables() {
         const count = Number(op.installments || 1)
         const arr = Array.isArray(op.installments_data) ? op.installments_data : []
         const isOpPaid =
-          (op.status || '').toLowerCase() === 'pago' ||
-          (op.status || '').toLowerCase() === 'liquidado'
+          ((op.status || '').toLowerCase() === 'pago' ||
+            (op.status || '').toLowerCase() === 'liquidado') &&
+          Boolean(op.liquidation_date)
 
         const installmentsData =
           arr.length > 0
@@ -313,36 +317,33 @@ export function InstallmentReceivables() {
     daysLate: number
   } => {
     const rawStatus = (inst.status || '').toLowerCase()
-    if (rawStatus === 'pago' || rawStatus === 'liquidado' || inst.payment_date) {
-      return {
-        status: 'paga',
-        label: 'Paga',
-        color: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
-        daysLate: 0,
-      }
-    }
+
+    // 1. Verificar se a parcela é prorrogada PRIMEIRO:
+    // Uma parcela prorrogada NUNCA deve ser exibida como "Paga" / "Liquidada" enquanto estiver em aberto
+    const isExtended =
+      rawStatus === 'prorrogado' ||
+      rawStatus === 'prorrogada' ||
+      inst.original_due_date != null ||
+      Number(inst.extension_interest || inst.prorrogacao_juros || 0) > 0
 
     const dueDateStr = inst.dueDate || inst.due_date || op.due_date
-    if (!dueDateStr) {
-      return {
-        status: 'a_vencer',
-        label: 'A Vencer',
-        color: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
-        daysLate: 0,
-      }
-    }
-
     const todayStr = new Date().toISOString().split('T')[0]
-    const isLate = dueDateStr < todayStr
+    const isLate = Boolean(dueDateStr && dueDateStr < todayStr)
+    const diffDays = dueDateStr
+      ? Math.max(
+          0,
+          Math.round(
+            (new Date(todayStr).getTime() - new Date(dueDateStr).getTime()) / (1000 * 60 * 60 * 24),
+          ),
+        )
+      : 0
 
-    const diffDays = Math.max(
-      0,
-      Math.round(
-        (new Date(todayStr).getTime() - new Date(dueDateStr).getTime()) / (1000 * 60 * 60 * 24),
-      ),
-    )
-
-    if (rawStatus === 'prorrogado') {
+    // Se a parcela tem status gravado de prorrogação e NÃO foi explicitamente paga após prorrogar
+    if (
+      rawStatus === 'prorrogado' ||
+      rawStatus === 'prorrogada' ||
+      (isExtended && rawStatus !== 'pago' && rawStatus !== 'liquidado')
+    ) {
       if (isLate) {
         return {
           status: 'vencida',
@@ -355,6 +356,25 @@ export function InstallmentReceivables() {
         status: 'prorrogada',
         label: 'Prorrogada',
         color: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+        daysLate: 0,
+      }
+    }
+
+    // 2. Parcela paga: somente quando o status for pago/liquidado ou tiver payment_date e não for prorrogada
+    if (rawStatus === 'pago' || rawStatus === 'liquidado' || (inst.payment_date && !isExtended)) {
+      return {
+        status: 'paga',
+        label: 'Paga',
+        color: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
+        daysLate: 0,
+      }
+    }
+
+    if (!dueDateStr) {
+      return {
+        status: 'a_vencer',
+        label: 'A Vencer',
+        color: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
         daysLate: 0,
       }
     }
@@ -1069,26 +1089,52 @@ export function InstallmentReceivables() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={
-                            hasLate
-                              ? 'border-rose-500 text-rose-600 bg-rose-500/10'
-                              : op.status === 'liquidado' ||
-                                  op.status === 'pago' ||
-                                  (paidCount > 0 && paidCount === (insts.length || op.installments))
-                                ? 'border-emerald-500 text-emerald-600 bg-emerald-500/10'
-                                : 'border-blue-500 text-blue-600 bg-blue-500/10'
+                        {(() => {
+                          const totalInsts = insts.length || op.installments || 1
+                          const allPaid =
+                            totalInsts > 0 && paidCount === totalInsts && !hasProrrogada && !hasLate
+                          const isFullyLiquidated =
+                            (op.status === 'liquidado' || op.status === 'pago') && allPaid
+
+                          if (hasLate) {
+                            return (
+                              <Badge
+                                variant="outline"
+                                className="border-rose-500 text-rose-600 bg-rose-500/10"
+                              >
+                                Contém Atraso
+                              </Badge>
+                            )
                           }
-                        >
-                          {hasLate
-                            ? 'Contém Atraso'
-                            : op.status === 'liquidado' ||
-                                op.status === 'pago' ||
-                                (paidCount > 0 && paidCount === (insts.length || op.installments))
-                              ? 'Liquidada'
-                              : 'Em Aberto'}
-                        </Badge>
+                          if (isFullyLiquidated) {
+                            return (
+                              <Badge
+                                variant="outline"
+                                className="border-emerald-500 text-emerald-600 bg-emerald-500/10"
+                              >
+                                Liquidada
+                              </Badge>
+                            )
+                          }
+                          if (hasProrrogada) {
+                            return (
+                              <Badge
+                                variant="outline"
+                                className="border-amber-500 text-amber-600 bg-amber-500/10"
+                              >
+                                Prorrogada
+                              </Badge>
+                            )
+                          }
+                          return (
+                            <Badge
+                              variant="outline"
+                              className="border-blue-500 text-blue-600 bg-blue-500/10"
+                            >
+                              Em Aberto
+                            </Badge>
+                          )
+                        })()}
                       </TableCell>
                       <TableCell className="text-right pr-6">
                         <Button
