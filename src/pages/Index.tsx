@@ -1,18 +1,23 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/use-auth'
 import {
-  RefreshCw,
-  DollarSign,
   TrendingUp,
   Calendar,
-  FileText,
   AlertCircle,
   AlertTriangle,
-  Info,
-  Activity,
   ChevronRight,
-  Sparkles,
+  ArrowUpRight,
+  Clock,
+  CheckCircle2,
+  CalendarClock,
+  ArrowDownLeft,
+  CircleAlert,
+  Wallet,
+  Receipt,
+  PiggyBank,
+  RefreshCw,
+  ExternalLink,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -25,79 +30,263 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  ChartLegend,
-  ChartLegendContent,
-} from '@/components/ui/chart'
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 import { Badge } from '@/components/ui/badge'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import { supabase } from '@/lib/supabase/client'
 import { useToast } from '@/hooks/use-toast'
-
-const riskConfig = {
-  value: { label: 'Participação' },
-}
-
-const issuerConfig = {
-  exposure: { label: 'Exposição', color: 'hsl(var(--primary))' },
-}
-
-type Status = 'loading' | 'success' | 'error' | 'empty'
 
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
 
+export type DashboardInstallment = {
+  id: string
+  operationId: string
+  installmentNumber: number
+  totalInstallments: number
+  sacado: string
+  cedente: string
+  documentNumber: string
+  dueDateStr: string
+  daysDifference: number // < 0 se vencida há X dias (positivo em atraso), >= 0 dias até o vencimento
+  daysLate: number
+  originalValue: number
+  totalValue: number
+  isExtended: boolean
+  status: 'paga' | 'vencida' | 'a_vencer' | 'prorrogada'
+  statusLabel: string
+  statusColor: string
+}
+
+export type DashboardRedemption = {
+  id: string
+  investmentId: string
+  userId: string
+  investorName: string
+  investorDocument: string
+  productTitle: string
+  requestedQuotas: number
+  netValue: number
+  grossValue: number
+  status: string
+  createdAt: string
+}
+
+export type MonthlyCaptacao = {
+  monthKey: string // "2025-09"
+  label: string // "Set/25"
+  total: number
+  count: number
+}
+
 export default function Index() {
   const { activeRole, loading: authLoading } = useAuth()
-  const [status, setStatus] = useState<Status>('loading')
-  const [data, setData] = useState<{ recebiveis: any[]; investimentos: any[] } | null>(null)
-  const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 10
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [investments, setInvestments] = useState<any[]>([])
+  const [creditOperations, setCreditOperations] = useState<any[]>([])
+  const [redemptions, setRedemptions] = useState<any[]>([])
   const { toast } = useToast()
   const fetchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const fetchData = useCallback(() => {
-    if (activeRole !== 'admin' && activeRole !== 'staff' && activeRole !== 'accountant') return
+  // Função auxiliar de valores e status conforme /admin/recebiveis-parcelados
+  const getInstallmentValues = useCallback((inst: any, op: any) => {
+    const count = (op.installments_data || []).length || op.installments || 1
+    const defaultVal = count > 0 ? Number(op.face_value || 0) / count : 0
 
-    if (fetchTimeout.current) clearTimeout(fetchTimeout.current)
+    const rawStatus = (inst.status || '').toLowerCase()
+    const isExtended =
+      rawStatus === 'prorrogado' ||
+      rawStatus === 'prorrogada' ||
+      inst.original_due_date != null ||
+      Number(inst.extension_interest || inst.prorrogacao_juros || 0) > 0
 
-    fetchTimeout.current = setTimeout(async () => {
+    const originalValue =
+      inst.valor_original != null
+        ? Number(inst.valor_original)
+        : inst.original_value != null
+          ? Number(inst.original_value)
+          : inst.value != null
+            ? Number(inst.value)
+            : defaultVal
+
+    const extensionInterest = Number(inst.prorrogacao_juros ?? inst.extension_interest ?? 0)
+    const extensionPenalty = Number(inst.prorrogacao_multa ?? inst.extension_penalty ?? 0)
+
+    let totalValue = originalValue
+    if (isExtended) {
+      if (inst.valor_atualizado != null && Number(inst.valor_atualizado) > 0) {
+        totalValue = Number(inst.valor_atualizado)
+      } else if (inst.total_devido != null && Number(inst.total_devido) > 0) {
+        totalValue = Number(inst.total_devido)
+      } else {
+        totalValue = Number((originalValue + extensionInterest + extensionPenalty).toFixed(2))
+      }
+    }
+
+    return {
+      originalValue,
+      extensionInterest,
+      extensionPenalty,
+      totalValue,
+      isExtended,
+    }
+  }, [])
+
+  const getInstallmentCalculatedStatus = useCallback((inst: any, op: any) => {
+    const rawStatus = (inst.status || '').toLowerCase()
+
+    const hasPayment = Boolean(
+      (rawStatus === 'pago' || rawStatus === 'liquidado') &&
+      (inst.payment_date || inst.data_pagamento),
+    )
+
+    if (hasPayment) {
+      return {
+        status: 'paga' as const,
+        label: 'Paga',
+        color: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
+        daysLate: 0,
+      }
+    }
+
+    const isExtended =
+      rawStatus === 'prorrogado' ||
+      rawStatus === 'prorrogada' ||
+      inst.original_due_date != null ||
+      Number(inst.extension_interest || inst.prorrogacao_juros || 0) > 0
+
+    const dueDateStr = inst.dueDate || inst.due_date || op.due_date
+    const todayStr = new Date().toISOString().split('T')[0]
+    const isLate = Boolean(dueDateStr && dueDateStr < todayStr)
+    const diffDays = dueDateStr
+      ? Math.max(
+          0,
+          Math.round(
+            (new Date(todayStr).getTime() - new Date(dueDateStr).getTime()) / (1000 * 60 * 60 * 24),
+          ),
+        )
+      : 0
+
+    if (isExtended || rawStatus === 'prorrogado' || rawStatus === 'prorrogada') {
+      if (isLate) {
+        return {
+          status: 'vencida' as const,
+          label: `Prorrogada (Vencida há ${diffDays}d)`,
+          color: 'bg-rose-500/10 text-rose-600 border-rose-500/20',
+          daysLate: diffDays,
+        }
+      }
+      return {
+        status: 'prorrogada' as const,
+        label: 'Prorrogada',
+        color: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+        daysLate: 0,
+      }
+    }
+
+    if (!dueDateStr) {
+      return {
+        status: 'a_vencer' as const,
+        label: 'Pendente',
+        color: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+        daysLate: 0,
+      }
+    }
+
+    if (isLate) {
+      return {
+        status: 'vencida' as const,
+        label: `Vencida (${diffDays}d)`,
+        color: 'bg-rose-500/10 text-rose-600 border-rose-500/20',
+        daysLate: diffDays,
+      }
+    }
+
+    return {
+      status: 'a_vencer' as const,
+      label: 'Pendente',
+      color: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+      daysLate: 0,
+    }
+  }, [])
+
+  const fetchData = useCallback(
+    async (isSilent = false) => {
+      if (activeRole !== 'admin' && activeRole !== 'staff' && activeRole !== 'accountant') return
+
+      if (!isSilent) setLoading(true)
+      else setRefreshing(true)
+
       try {
-        setStatus('loading')
-        const [{ data: recebiveis, error: err1 }, { data: investimentos, error: err2 }] =
-          await Promise.all([
-            supabase
-              .from('recebiveis_ccb')
-              .select(
-                '*, tomador:profiles!recebiveis_ccb_tomador_id_fkey(full_name, pj_company_name)',
-              )
-              .eq('status', 'Ativo'),
-            supabase
-              .from('investments')
-              .select('total_value, status')
-              .in('status', ['approved', 'Ativo']),
-          ])
+        const [invRes, creditRes, redemptionsRes] = await Promise.all([
+          supabase
+            .from('investments')
+            .select('id, total_value, status, transfer_date, created_at, quotas, unit_price')
+            .in('status', ['approved', 'Ativo']),
+          supabase
+            .from('credit_operations')
+            .select(`
+            id,
+            receivable_type,
+            cedente,
+            sacado,
+            document_number,
+            face_value,
+            requested_value,
+            issue_date,
+            due_date,
+            installments,
+            installments_data,
+            status,
+            liquidation_date,
+            liquidation_value,
+            created_at
+          `)
+            .order('issue_date', { ascending: false, nullsFirst: false }),
+          supabase
+            .from('investment_redemptions')
+            .select(`
+            id,
+            investment_id,
+            user_id,
+            requested_quotas,
+            net_value,
+            gross_value,
+            status,
+            created_at,
+            profiles(full_name, document_number),
+            investments(
+              id,
+              total_value,
+              investment_products(title, quota_value)
+            )
+          `)
+            .order('created_at', { ascending: false }),
+        ])
 
-        if (err1) throw err1
-        if (err2) throw err2
+        if (invRes.error) throw invRes.error
+        if (creditRes.error) throw creditRes.error
+        if (redemptionsRes.error) throw redemptionsRes.error
 
-        setData({ recebiveis: recebiveis || [], investimentos: investimentos || [] })
-        setStatus('success')
+        setInvestments(invRes.data || [])
+        setCreditOperations(creditRes.data || [])
+        setRedemptions(redemptionsRes.data || [])
       } catch (error: any) {
-        setStatus('error')
+        console.error('Erro ao carregar dados do dashboard:', error)
         toast({
           title: 'Erro ao carregar dados',
           description: error.message || 'Falha na comunicação com o servidor',
           variant: 'destructive',
         })
+      } finally {
+        setLoading(false)
+        setRefreshing(false)
       }
-    }, 300)
-  }, [toast, activeRole])
+    },
+    [activeRole, toast],
+  )
 
   useEffect(() => {
     if (activeRole !== 'admin' && activeRole !== 'staff' && activeRole !== 'accountant') return
@@ -105,12 +294,17 @@ export default function Index() {
     fetchData()
 
     const channel = supabase
-      .channel('dashboard_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'recebiveis_ccb' }, () =>
-        fetchData(),
+      .channel('dashboard_admin_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'credit_operations' }, () =>
+        fetchData(true),
       )
       .on('postgres_changes', { event: '*', schema: 'public', table: 'investments' }, () =>
-        fetchData(),
+        fetchData(true),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'investment_redemptions' },
+        () => fetchData(true),
       )
       .subscribe()
 
@@ -119,237 +313,268 @@ export default function Index() {
     }
   }, [fetchData, activeRole])
 
-  const processedData = useMemo(() => {
-    if (!data) return null
-    const { recebiveis, investimentos } = data
+  // Processamento e Agregação de Dados
+  const processed = useMemo(() => {
+    // 1. Total captado de investimentos e evolução mensal (últimos 12 meses)
+    let totalCaptado = 0
+    const monthlyMap: Record<string, { total: number; count: number; date: Date }> = {}
 
-    const aumRecebiveis = recebiveis.reduce(
-      (acc, curr) => acc + (Number(curr.acquisition_value) || 0),
-      0,
-    )
-    const aumInvestimentos = investimentos.reduce(
-      (acc, curr) => acc + (Number(curr.total_value) || 0),
-      0,
-    )
-    const totalAUM = aumRecebiveis + aumInvestimentos
+    // Inicializar os últimos 12 meses para o gráfico ter linha do tempo contínua
+    const now = new Date()
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      const monthNames = [
+        'Jan',
+        'Fev',
+        'Mar',
+        'Abr',
+        'Mai',
+        'Jun',
+        'Jul',
+        'Ago',
+        'Set',
+        'Out',
+        'Nov',
+        'Dez',
+      ]
+      const shortYear = String(d.getFullYear()).slice(-2)
+      const label = `${monthNames[d.getMonth()]}/${shortYear}`
+      monthlyMap[key] = { total: 0, count: 0, date: d }
+    }
 
-    const receitaMensal = recebiveis.reduce((acc, curr) => {
-      const val = Number(curr.acquisition_value) || 0
-      const taxa = Number(curr.tir_effective) || 0
-      return acc + (val * (taxa / 100)) / 12
-    }, 0)
+    investments.forEach((inv) => {
+      const val = Number(inv.total_value) || 0
+      totalCaptado += val
 
-    let sumProd = 0
-    let sumVal = 0
-    recebiveis.forEach((r) => {
-      const val = Number(r.acquisition_value) || 0
-      let maxDate = new Date()
-      if (r.boletos && Array.isArray(r.boletos)) {
-        const dates = r.boletos
-          .map((b) => new Date(b.due_date || b.payment_date || new Date()))
-          .filter((d) => !isNaN(d.getTime()))
-        if (dates.length > 0) {
-          maxDate = new Date(Math.max(...dates.map((d) => d.getTime())))
+      // Usar transfer_date ou created_at
+      const dateStr = inv.transfer_date || inv.created_at
+      if (dateStr) {
+        const d = new Date(dateStr)
+        if (!isNaN(d.getTime())) {
+          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+          if (monthlyMap[key]) {
+            monthlyMap[key].total += val
+            monthlyMap[key].count += 1
+          } else {
+            // Se estiver fora da janela inicial de 12 meses mas recente
+            const monthNames = [
+              'Jan',
+              'Fev',
+              'Mar',
+              'Abr',
+              'Mai',
+              'Jun',
+              'Jul',
+              'Ago',
+              'Set',
+              'Out',
+              'Nov',
+              'Dez',
+            ]
+            const shortYear = String(d.getFullYear()).slice(-2)
+            monthlyMap[key] = {
+              total: val,
+              count: 1,
+              date: d,
+            }
+          }
         }
       }
-      const days = Math.max(0, (maxDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
-      sumProd += val * days
-      sumVal += val
     })
-    const pdlMonths = sumVal > 0 ? sumProd / sumVal / 30 : 0
 
-    const totalEscrituras = recebiveis.length
-
-    const riskMap: Record<string, number> = { AAA: 0, AA: 0, A: 0, BBB: 0, BB: 0 }
-    recebiveis.forEach((r) => {
-      const val = Number(r.acquisition_value) || 0
-      const tir = Number(r.tir_effective) || 0
-      let rating = 'BB'
-      if (tir < 1.5) rating = 'AAA'
-      else if (tir < 2.0) rating = 'AA'
-      else if (tir < 3.0) rating = 'A'
-      else if (tir < 4.0) rating = 'BBB'
-      riskMap[rating] += val
-    })
-    const riskData = Object.entries(riskMap)
-      .filter(([_, val]) => val > 0)
-      .map(([name, value]) => {
-        let fill = '#ef4444'
-        if (name === 'AAA') fill = '#22c55e'
-        if (name === 'AA') fill = '#84cc16'
-        if (name === 'A') fill = '#eab308'
-        if (name === 'BBB') fill = '#f97316'
-        return { name, value, fill }
+    const monthlyChartData = Object.entries(monthlyMap)
+      .map(([key, item]) => {
+        const monthNames = [
+          'Jan',
+          'Fev',
+          'Mar',
+          'Abr',
+          'Mai',
+          'Jun',
+          'Jul',
+          'Ago',
+          'Set',
+          'Out',
+          'Nov',
+          'Dez',
+        ]
+        const label = `${monthNames[item.date.getMonth()]}/${String(item.date.getFullYear()).slice(-2)}`
+        return {
+          monthKey: key,
+          label,
+          total: Number(item.total.toFixed(2)),
+          count: item.count,
+          dateMs: item.date.getTime(),
+        }
       })
+      .sort((a, b) => a.dateMs - b.dateMs)
+      // Exibir os últimos 12 meses ordenados
+      .slice(-12)
 
-    const emissorMap: Record<string, number> = {}
-    recebiveis.forEach((r) => {
-      const val = Number(r.acquisition_value) || 0
-      const emissorObj = Array.isArray(r.tomador) ? r.tomador[0] : r.tomador
-      const emissor = emissorObj?.pj_company_name || emissorObj?.full_name || 'Desconhecido'
-      emissorMap[emissor] = (emissorMap[emissor] || 0) + val
-    })
-    const issuerData = Object.entries(emissorMap)
-      .map(([name, exposure]) => ({ name, exposure }))
-      .sort((a, b) => b.exposure - a.exposure)
-      .slice(0, 3)
+    // 2. Extrair todas as parcelas normalizadas das credit_operations
+    const allInstallments: DashboardInstallment[] = []
+    let totalAReceber = 0
+    let totalJaRecebido = 0
+    let totalEmAtraso = 0
+    let countVencidas = 0
+    let countPendentes = 0
+    let countProrrogadas = 0
+    let countPagas = 0
 
-    const upcomingBoletos: any[] = []
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const next30Days = new Date(today)
-    next30Days.setDate(today.getDate() + 30)
+    const todayStr = new Date().toISOString().split('T')[0]
+    const today = new Date(todayStr + 'T00:00:00')
 
-    recebiveis.forEach((r) => {
-      if (r.boletos && Array.isArray(r.boletos)) {
-        r.boletos.forEach((b, idx) => {
-          if (!b.due_date) return
-          const bDate = new Date(b.due_date)
-          bDate.setHours(0, 0, 0, 0)
-          const bStatus = b.status || 'Pendente'
-          if (
-            bStatus.toLowerCase() !== 'pago' &&
-            bDate.getTime() >= today.getTime() &&
-            bDate.getTime() <= next30Days.getTime()
-          ) {
-            const emissorObj = Array.isArray(r.tomador) ? r.tomador[0] : r.tomador
-            upcomingBoletos.push({
-              id: `${r.id}-${idx}`,
-              date: bDate.toLocaleDateString('pt-BR', { timeZone: 'UTC' }),
-              dateObj: bDate,
-              issuer: emissorObj?.pj_company_name || emissorObj?.full_name || 'Desconhecido',
-              amount: Number(b.unit_value || b.face_value || r.boleto_unit_value) || 0,
-              status: bStatus,
-            })
+    creditOperations.forEach((op) => {
+      const arr = Array.isArray(op.installments_data) ? op.installments_data : []
+      const isOpPaid =
+        ((op.status || '').toLowerCase() === 'pago' ||
+          (op.status || '').toLowerCase() === 'liquidado') &&
+        Boolean(op.liquidation_date)
+
+      const normalizedInstallments =
+        arr.length > 0
+          ? arr
+          : [
+              {
+                number: 1,
+                dueDate: op.due_date || '',
+                due_date: op.due_date || '',
+                value: Number(op.face_value || 0),
+                valor_original: Number(op.face_value || 0),
+                original_value: Number(op.face_value || 0),
+                status: isOpPaid ? 'pago' : 'pendente',
+                payment_date: isOpPaid ? op.liquidation_date : null,
+                data_pagamento: isOpPaid ? op.liquidation_date : null,
+                amount_paid: isOpPaid ? Number(op.liquidation_value || op.face_value || 0) : null,
+              },
+            ]
+
+      const totalInstCount = Math.max(
+        1,
+        Number(op.installments || 1),
+        normalizedInstallments.length,
+      )
+
+      normalizedInstallments.forEach((inst: any, idx: number) => {
+        const vals = getInstallmentValues(inst, op)
+        const calc = getInstallmentCalculatedStatus(inst, op)
+        const dueDateStr = inst.dueDate || inst.due_date || op.due_date || ''
+
+        let daysDiff = 999
+        if (dueDateStr) {
+          const dObj = new Date(dueDateStr + 'T00:00:00')
+          daysDiff = Math.round((dObj.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+        }
+
+        const item: DashboardInstallment = {
+          id: `${op.id}-${idx}`,
+          operationId: op.id,
+          installmentNumber: inst.number || idx + 1,
+          totalInstallments: totalInstCount,
+          sacado: op.sacado || 'Sacado não informado',
+          cedente: op.cedente || '—',
+          documentNumber: op.document_number || `OP-${op.id.substring(0, 6).toUpperCase()}`,
+          dueDateStr,
+          daysDifference: daysDiff,
+          daysLate: calc.daysLate,
+          originalValue: vals.originalValue,
+          totalValue: vals.totalValue,
+          isExtended: vals.isExtended,
+          status: calc.status,
+          statusLabel: calc.label,
+          statusColor: calc.color,
+        }
+
+        allInstallments.push(item)
+
+        // Agregações financeiras
+        if (calc.status === 'paga') {
+          countPagas++
+          totalJaRecebido += Number(inst.amount_paid || vals.totalValue)
+        } else {
+          // Em aberto (a_vencer, prorrogada ou vencida) compõem o valor a receber da carteira
+          totalAReceber += vals.totalValue
+
+          if (calc.status === 'vencida') {
+            countVencidas++
+            totalEmAtraso += vals.totalValue
+          } else if (calc.status === 'prorrogada') {
+            countProrrogadas++
+          } else {
+            countPendentes++
           }
-        })
-      }
+        }
+      })
     })
-    upcomingBoletos.sort((a, b) => a.dateObj.getTime() - b.dateObj.getTime())
 
-    const insights = []
+    // 3. Recebíveis Próximos da Cobrança:
+    // Parcelas em aberto (pendente ou prorrogada não vencida) com vencimento entre hoje e os próximos 15 dias (ou até 30 se poucos)
+    const upcomingReceivables = allInstallments
+      .filter((item) => {
+        // Não pode estar paga nem vencida
+        if (item.status === 'paga' || item.status === 'vencida') return false
+        // Vencimento de hoje até 30 dias (foco em próximos dias)
+        return item.daysDifference >= 0 && item.daysDifference <= 30
+      })
+      .sort((a, b) => a.daysDifference - b.daysDifference)
 
-    const upcoming7Days = upcomingBoletos.filter(
-      (b) => b.dateObj.getTime() <= today.getTime() + 7 * 24 * 60 * 60 * 1000,
+    // 4. Alertas de Recebíveis em Atraso:
+    // Parcelas com status 'vencida' (dias em atraso > 0)
+    const overdueReceivables = allInstallments
+      .filter((item) => item.status === 'vencida')
+      .sort((a, b) => b.daysLate - a.daysLate) // Maiores atrasos primeiro
+
+    // 5. Pedidos de Resgate de Investimento (status pendente):
+    const pendingRedemptions: DashboardRedemption[] = redemptions
+      .filter(
+        (r) =>
+          (r.status || '').toLowerCase() === 'pending' ||
+          (r.status || '').toLowerCase() === 'pendente',
+      )
+      .map((r) => ({
+        id: r.id,
+        investmentId: r.investment_id,
+        userId: r.user_id,
+        investorName: r.profiles?.full_name || 'Investidor não identificado',
+        investorDocument: r.profiles?.document_number || '—',
+        productTitle: r.investments?.investment_products?.title || 'Produto de Investimento',
+        requestedQuotas: Number(r.requested_quotas || 0),
+        netValue: Number(r.net_value || 0),
+        grossValue: Number(r.gross_value || 0),
+        status: r.status,
+        createdAt: r.created_at,
+      }))
+
+    const totalPendingRedemptionsValue = pendingRedemptions.reduce(
+      (acc, curr) => acc + curr.netValue,
+      0,
     )
-    if (upcoming7Days.length > 0) {
-      insights.push({
-        id: 'parcelas_7d',
-        type: upcoming7Days.length > 5 ? 'critical' : 'warning',
-        message: `${upcoming7Days.length} parcela(s) vencem nos próximos 7 dias`,
-        actionText: 'Ver parcelas',
-        icon: AlertCircle,
-        action: 'scrollToBoletos',
-      })
-    }
-
-    const hasConcentration = Object.entries(emissorMap).some(
-      ([_, val]) => totalAUM > 0 && val / totalAUM > 0.3,
-    )
-    if (hasConcentration) {
-      insights.push({
-        id: 'concentracao',
-        type: 'warning',
-        message: 'Concentração acima de 30% em 1 emissor',
-        actionText: 'Ver emissores',
-        icon: AlertTriangle,
-        action: 'scrollToEmissores',
-      })
-    }
-
-    if (pdlMonths > 0 && pdlMonths < 6) {
-      insights.push({
-        id: 'pdl_baixo',
-        type: 'info',
-        message: 'PDL médio abaixo de 6 meses',
-        actionText: 'Ver PDL',
-        icon: Info,
-        action: 'scrollToCards',
-      })
-    }
-
-    const ratingScores: Record<string, number> = { AAA: 5, AA: 4, A: 3, BBB: 2, BB: 1 }
-    let sumRatingScores = 0
-    let totalRatedValue = 0
-    recebiveis.forEach((r) => {
-      const val = Number(r.acquisition_value) || 0
-      const tir = Number(r.tir_effective) || 0
-      let rating = 'BB'
-      if (tir < 1.5) rating = 'AAA'
-      else if (tir < 2.0) rating = 'AA'
-      else if (tir < 3.0) rating = 'A'
-      else if (tir < 4.0) rating = 'BBB'
-      sumRatingScores += val * ratingScores[rating]
-      totalRatedValue += val
-    })
-    const avgRatingScore = totalRatedValue > 0 ? sumRatingScores / totalRatedValue : 0
-    if (totalRatedValue > 0 && avgRatingScore < 3) {
-      insights.push({
-        id: 'rating_baixo',
-        type: 'critical',
-        message: 'Rating médio abaixo de A',
-        actionText: 'Ver risco',
-        icon: Activity,
-        action: 'scrollToRisco',
-      })
-    }
 
     return {
-      totalAUM,
-      receitaMensal,
-      pdlMonths,
-      totalEscrituras,
-      riskData,
-      issuerData,
-      upcomingBoletos,
-      insights,
+      totalCaptado,
+      investmentsCount: investments.length,
+      monthlyChartData,
+      totalAReceber,
+      totalJaRecebido,
+      totalEmAtraso,
+      countVencidas,
+      countPendentes,
+      countProrrogadas,
+      countPagas,
+      totalParcelas: allInstallments.length,
+      upcomingReceivables,
+      overdueReceivables,
+      pendingRedemptions,
+      totalPendingRedemptionsValue,
     }
-  }, [data])
-
-  const totalPages = processedData
-    ? Math.ceil(processedData.upcomingBoletos.length / itemsPerPage)
-    : 0
-  const paginatedBoletos = processedData
-    ? processedData.upcomingBoletos.slice(
-        (currentPage - 1) * itemsPerPage,
-        currentPage * itemsPerPage,
-      )
-    : []
-
-  const cards = processedData
-    ? [
-        {
-          title: 'Total AUM',
-          icon: DollarSign,
-          value: formatCurrency(processedData.totalAUM),
-          sub: 'Soma de todas as emissões',
-          delay: '0ms',
-        },
-        {
-          title: 'Receita Estimada (Fees)',
-          icon: TrendingUp,
-          value: `${formatCurrency(processedData.receitaMensal)}/mês`,
-          sub: 'Projeção mensal baseada em taxa anual',
-          delay: '50ms',
-        },
-        {
-          title: 'PDL Médio',
-          icon: Calendar,
-          value: `${processedData.pdlMonths.toFixed(1).replace('.', ',')} meses`,
-          sub: 'Prazo médio ponderado',
-          delay: '100ms',
-        },
-        {
-          title: 'Escrituras Base',
-          icon: FileText,
-          value: String(processedData.totalEscrituras),
-          sub: 'Emissões ativas no fundo',
-          delay: '150ms',
-        },
-      ]
-    : []
-
-  const isEmpty = processedData?.totalAUM === 0 && processedData?.totalEscrituras === 0
+  }, [
+    investments,
+    creditOperations,
+    redemptions,
+    getInstallmentValues,
+    getInstallmentCalculatedStatus,
+  ])
 
   if (authLoading) {
     return (
@@ -368,202 +593,624 @@ export default function Index() {
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto p-6 animate-fade-in-up pb-10">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard Administrativo</h1>
-        <p className="text-muted-foreground">Visão geral das operações e portfólio.</p>
+    <div className="space-y-8 max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 animate-fade-in-up pb-16">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border/50 pb-5">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+              Dashboard de Gestão
+            </h1>
+            <Badge
+              variant="outline"
+              className="text-xs font-normal border-primary/30 text-primary bg-primary/5"
+            >
+              Nexum Security 360º
+            </Badge>
+          </div>
+          <p className="text-sm text-muted-foreground mt-1">
+            Painel executivo com captações, fluxo de recebíveis e fila de liquidação.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchData(true)}
+            disabled={refreshing || loading}
+            className="gap-2 h-9 text-xs"
+          >
+            <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
+            Atualizar dados
+          </Button>
+          <Button asChild size="sm" className="h-9 gap-1.5 text-xs">
+            <Link to="/admin/recebiveis-parcelados">
+              Mesa de Recebíveis
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
+        </div>
       </div>
 
-      {status === 'loading' && !processedData ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Skeleton className="h-32 w-full" />
-          <Skeleton className="h-32 w-full" />
-          <Skeleton className="h-32 w-full" />
-          <Skeleton className="h-32 w-full" />
+      {loading ? (
+        <div className="space-y-6">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Skeleton className="h-28 w-full rounded-xl" />
+            <Skeleton className="h-28 w-full rounded-xl" />
+            <Skeleton className="h-28 w-full rounded-xl" />
+            <Skeleton className="h-28 w-full rounded-xl" />
+          </div>
+          <Skeleton className="h-80 w-full rounded-xl" />
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Skeleton className="h-72 w-full rounded-xl" />
+            <Skeleton className="h-72 w-full rounded-xl" />
+          </div>
         </div>
-      ) : isEmpty ? (
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Nenhum dado encontrado</AlertTitle>
-          <AlertDescription>Ainda não há operações ou investimentos registrados.</AlertDescription>
-        </Alert>
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {cards.map((card, i) => (
-              <Card key={i} className="animate-fade-in" style={{ animationDelay: card.delay }}>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    {card.title}
-                  </CardTitle>
-                  <card.icon className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{card.value}</div>
-                  <p className="text-xs text-muted-foreground mt-1">{card.sub}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {processedData && processedData.insights.length > 0 && (
-            <div className="space-y-3">
-              <h2 className="text-lg font-semibold">Insights e Alertas</h2>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {processedData.insights.map((insight) => (
-                  <Alert
-                    key={insight.id}
-                    variant={insight.type === 'critical' ? 'destructive' : 'default'}
-                    className={insight.type === 'warning' ? 'border-amber-500 text-amber-600' : ''}
-                  >
-                    <insight.icon className="h-4 w-4" />
-                    <AlertTitle className="mb-1">
-                      {insight.type === 'critical' ? 'Atenção' : 'Aviso'}
-                    </AlertTitle>
-                    <AlertDescription className="flex flex-col gap-2 mt-2 sm:flex-row sm:justify-between sm:items-center">
-                      <span>{insight.message}</span>
-                      <Button variant="link" size="sm" className="p-0 h-auto font-semibold">
-                        {insight.actionText} <ChevronRight className="h-3 w-3 ml-1" />
-                      </Button>
-                    </AlertDescription>
-                  </Alert>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="grid gap-6 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Exposição por Risco</CardTitle>
-                <CardDescription>Distribuição do AUM por rating</CardDescription>
-              </CardHeader>
-              <CardContent className="h-[300px]">
-                <ChartContainer config={riskConfig} className="h-full w-full">
-                  <PieChart>
-                    <Pie
-                      data={processedData?.riskData}
-                      dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={80}
-                      paddingAngle={2}
-                    >
-                      {processedData?.riskData.map((entry, idx) => (
-                        <Cell key={`cell-${idx}`} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <ChartLegend content={<ChartLegendContent />} />
-                  </PieChart>
-                </ChartContainer>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Maiores Emissores</CardTitle>
-                <CardDescription>Top 3 emissores por volume</CardDescription>
-              </CardHeader>
-              <CardContent className="h-[300px]">
-                <ChartContainer config={issuerConfig} className="h-full w-full">
-                  <BarChart
-                    data={processedData?.issuerData}
-                    layout="vertical"
-                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                    <XAxis
-                      type="number"
-                      tickFormatter={(val) => `R$ ${(val / 1000000).toFixed(1)}M`}
-                    />
-                    <YAxis dataKey="name" type="category" width={100} />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar dataKey="exposure" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ChartContainer>
-              </CardContent>
-            </Card>
-          </div>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Próximos Vencimentos</CardTitle>
-                <CardDescription>Parcelas a receber nos próximos 30 dias</CardDescription>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {paginatedBoletos.length === 0 ? (
-                <div className="py-8 text-center text-muted-foreground">
-                  Nenhum vencimento previsto para os próximos 30 dias.
+          {/* BLOCO 5 & INDICADORES CHAVE: Cards Financeiros Agregados */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {/* Total Captado de Investimentos */}
+            <Card className="relative overflow-hidden border-border/60 bg-card/70 backdrop-blur shadow-sm hover:shadow-md transition-all">
+              <div className="absolute top-0 left-0 h-1 w-full bg-blue-500" />
+              <CardHeader className="flex flex-row items-center justify-between pb-2 pt-4">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Total de Captações
+                </CardTitle>
+                <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600">
+                  <PiggyBank className="h-4 w-4" />
                 </div>
-              ) : (
-                <div className="space-y-4">
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold tracking-tight text-foreground">
+                  {formatCurrency(processed.totalCaptado)}
+                </div>
+                <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
+                  <span>{processed.investmentsCount} aportes ativos aprovados</span>
+                  <Link
+                    to="/admin/investments"
+                    className="text-primary hover:underline inline-flex items-center gap-0.5 text-[11px] font-medium"
+                  >
+                    Ver aportes <ArrowUpRight className="h-3 w-3" />
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Total de Recebíveis a Receber */}
+            <Card className="relative overflow-hidden border-border/60 bg-card/70 backdrop-blur shadow-sm hover:shadow-md transition-all">
+              <div className="absolute top-0 left-0 h-1 w-full bg-indigo-500" />
+              <CardHeader className="flex flex-row items-center justify-between pb-2 pt-4">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Recebíveis a Receber
+                </CardTitle>
+                <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-600">
+                  <Receipt className="h-4 w-4" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold tracking-tight text-foreground">
+                  {formatCurrency(processed.totalAReceber)}
+                </div>
+                <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
+                  <span>
+                    {processed.countPendentes +
+                      processed.countProrrogadas +
+                      processed.countVencidas}{' '}
+                    parcelas em aberto
+                  </span>
+                  <Link
+                    to="/admin/recebiveis-parcelados"
+                    className="text-primary hover:underline inline-flex items-center gap-0.5 text-[11px] font-medium"
+                  >
+                    Cronograma <ArrowUpRight className="h-3 w-3" />
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Total Já Recebido */}
+            <Card className="relative overflow-hidden border-border/60 bg-card/70 backdrop-blur shadow-sm hover:shadow-md transition-all">
+              <div className="absolute top-0 left-0 h-1 w-full bg-emerald-500" />
+              <CardHeader className="flex flex-row items-center justify-between pb-2 pt-4">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Total Já Recebido
+                </CardTitle>
+                <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600">
+                  <CheckCircle2 className="h-4 w-4" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
+                  {formatCurrency(processed.totalJaRecebido)}
+                </div>
+                <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
+                  <span>{processed.countPagas} parcelas liquidadas</span>
+                  <span className="text-[11px] text-emerald-600/80 font-medium">
+                    Baixa conciliada
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Alertas de Atraso (Resumo) */}
+            <Card
+              className={cn(
+                'relative overflow-hidden border-border/60 bg-card/70 backdrop-blur shadow-sm hover:shadow-md transition-all',
+                processed.countVencidas > 0 && 'border-rose-500/40 bg-rose-500/[0.03]',
+              )}
+            >
+              <div
+                className={cn(
+                  'absolute top-0 left-0 h-1 w-full',
+                  processed.countVencidas > 0 ? 'bg-rose-500 animate-pulse' : 'bg-muted',
+                )}
+              />
+              <CardHeader className="flex flex-row items-center justify-between pb-2 pt-4">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Recebíveis em Atraso
+                </CardTitle>
+                <div
+                  className={cn(
+                    'p-2 rounded-lg',
+                    processed.countVencidas > 0
+                      ? 'bg-rose-500/10 text-rose-600'
+                      : 'bg-muted text-muted-foreground',
+                  )}
+                >
+                  <AlertTriangle className="h-4 w-4" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div
+                  className={cn(
+                    'text-2xl font-bold tracking-tight',
+                    processed.countVencidas > 0
+                      ? 'text-rose-600 dark:text-rose-400'
+                      : 'text-foreground',
+                  )}
+                >
+                  {formatCurrency(processed.totalEmAtraso)}
+                </div>
+                <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
+                  <span>
+                    {processed.countVencidas === 0
+                      ? 'Nenhuma parcela em atraso'
+                      : `${processed.countVencidas} parcela(s) vencida(s)`}
+                  </span>
+                  {processed.countVencidas > 0 && (
+                    <Badge variant="destructive" className="h-4 px-1 text-[10px]">
+                      Ação necessária
+                    </Badge>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* BLOCO 1: Gráfico de Evolução Mensal de Captações de Investimentos */}
+          <Card className="border-border/60 bg-card/70 backdrop-blur shadow-sm">
+            <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-2">
+              <div>
+                <CardTitle className="text-base sm:text-lg font-semibold flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5 text-primary" />
+                  Evolução Mensal de Captações de Investimentos
+                </CardTitle>
+                <CardDescription>
+                  Volume histórico mensal de aportes aprovados nos últimos 12 meses (Total
+                  acumulado:{' '}
+                  <strong className="text-foreground">
+                    {formatCurrency(processed.totalCaptado)}
+                  </strong>
+                  )
+                </CardDescription>
+              </div>
+              <Button
+                asChild
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs gap-1 self-start sm:self-auto"
+              >
+                <Link to="/admin/investments">
+                  Gerenciar Aportes
+                  <ExternalLink className="h-3 w-3 ml-1" />
+                </Link>
+              </Button>
+            </CardHeader>
+            <CardContent className="pt-4">
+              <div className="h-[280px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={processed.monthlyChartData}
+                    margin={{ top: 10, right: 10, left: 0, bottom: 20 }}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      vertical={false}
+                      stroke="hsl(var(--border))"
+                      opacity={0.5}
+                    />
+                    <XAxis
+                      dataKey="label"
+                      tickLine={false}
+                      axisLine={{ stroke: 'hsl(var(--border))' }}
+                      tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                    />
+                    <YAxis
+                      tickFormatter={(val) =>
+                        val >= 1000000
+                          ? `R$ ${(val / 1000000).toFixed(1)}M`
+                          : val >= 1000
+                            ? `R$ ${(val / 1000).toFixed(0)}k`
+                            : `R$ ${val}`
+                      }
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                      width={70}
+                    />
+                    <Tooltip
+                      formatter={(val: any) => [formatCurrency(Number(val) || 0), 'Captação']}
+                      labelFormatter={(label) => `Mês de referência: ${label}`}
+                      contentStyle={{
+                        backgroundColor: 'hsl(var(--background))',
+                        borderColor: 'hsl(var(--border))',
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                        fontSize: '12px',
+                      }}
+                    />
+                    <Bar
+                      dataKey="total"
+                      name="Captação"
+                      fill="hsl(var(--primary))"
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={45}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* GRID COM BLOCO 3 (PEDIDOS DE RESGATE) E INDICADOR RESUMO */}
+          <div className="grid gap-6 lg:grid-cols-12">
+            {/* BLOCO 3: Pedidos de Resgate de Investimento (Fila Pendente) */}
+            <Card className="lg:col-span-12 border-border/60 bg-card/70 backdrop-blur shadow-sm">
+              <CardHeader className="flex flex-row items-center justify-between pb-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-base sm:text-lg font-semibold flex items-center gap-2">
+                      <ArrowDownLeft className="h-5 w-5 text-amber-500" />
+                      Pedidos de Resgate de Investimento
+                    </CardTitle>
+                    {processed.pendingRedemptions.length > 0 && (
+                      <Badge
+                        variant="outline"
+                        className="border-amber-500/40 text-amber-600 bg-amber-500/10"
+                      >
+                        {processed.pendingRedemptions.length} pendente(s)
+                      </Badge>
+                    )}
+                  </div>
+                  <CardDescription className="mt-1">
+                    Solicitações de liquidação de cotas aguardando conferência e liquidação pelo
+                    admin.
+                    {processed.pendingRedemptions.length > 0 && (
+                      <span className="ml-1 text-foreground font-medium">
+                        (Total solicitado: {formatCurrency(processed.totalPendingRedemptionsValue)})
+                      </span>
+                    )}
+                  </CardDescription>
+                </div>
+                <Button asChild variant="outline" size="sm" className="h-8 text-xs gap-1 shrink-0">
+                  <Link to="/admin/investments">
+                    Ir para Fila de Resgates
+                    <ChevronRight className="h-3 w-3" />
+                  </Link>
+                </Button>
+              </CardHeader>
+              <CardContent className="p-0">
+                {processed.pendingRedemptions.length === 0 ? (
+                  <div className="py-10 text-center flex flex-col items-center justify-center text-muted-foreground">
+                    <CheckCircle2 className="h-8 w-8 text-emerald-500/60 mb-2" />
+                    <p className="text-sm font-medium">Nenhum pedido de resgate pendente</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Todos os resgates solicitados pelos investidores foram processados.
+                    </p>
+                  </div>
+                ) : (
                   <Table>
                     <TableHeader>
-                      <TableRow>
-                        <TableHead>Data</TableHead>
-                        <TableHead>Emissor</TableHead>
-                        <TableHead>Valor</TableHead>
-                        <TableHead>Status</TableHead>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead className="pl-6">Data Solicitação</TableHead>
+                        <TableHead>Investidor</TableHead>
+                        <TableHead>Produto</TableHead>
+                        <TableHead className="text-center">Cotas</TableHead>
+                        <TableHead className="text-right">Valor Líquido</TableHead>
+                        <TableHead className="text-center">Status</TableHead>
+                        <TableHead className="text-right pr-6">Ação</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {paginatedBoletos.map((boleto) => (
-                        <TableRow key={boleto.id}>
-                          <TableCell className="font-medium">{boleto.date}</TableCell>
-                          <TableCell>{boleto.issuer}</TableCell>
-                          <TableCell className="font-mono">
-                            {formatCurrency(boleto.amount)}
+                      {processed.pendingRedemptions.slice(0, 5).map((red) => (
+                        <TableRow key={red.id} className="hover:bg-muted/40 transition-colors">
+                          <TableCell className="pl-6 font-mono text-xs text-muted-foreground">
+                            {formatDate(red.createdAt)}
                           </TableCell>
                           <TableCell>
-                            <Badge
-                              variant={
-                                boleto.status === 'Pago'
-                                  ? 'default'
-                                  : boleto.dateObj < new Date()
-                                    ? 'destructive'
-                                    : 'secondary'
-                              }
-                              className={boleto.status === 'Pago' ? 'bg-emerald-500' : ''}
-                            >
-                              {boleto.status}
+                            <div className="flex flex-col">
+                              <span className="font-medium text-sm text-foreground">
+                                {red.investorName}
+                              </span>
+                              <span className="text-[11px] text-muted-foreground">
+                                {red.investorDocument}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {red.productTitle}
+                          </TableCell>
+                          <TableCell className="text-center font-medium">
+                            <Badge variant="secondary" className="font-mono text-xs">
+                              {red.requestedQuotas}
                             </Badge>
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-semibold text-foreground">
+                            {formatCurrency(red.netValue)}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge
+                              variant="outline"
+                              className="border-amber-500/40 text-amber-600 bg-amber-500/10 text-xs"
+                            >
+                              Pendente
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right pr-6">
+                            <Button
+                              asChild
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-xs text-primary hover:text-primary"
+                            >
+                              <Link to="/admin/investments">
+                                Avaliar <ChevronRight className="h-3 w-3 ml-1" />
+                              </Link>
+                            </Button>
                           </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
-                  {totalPages > 1 && (
-                    <div className="flex items-center justify-end space-x-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                        disabled={currentPage === 1}
-                      >
-                        Anterior
-                      </Button>
-                      <span className="text-sm text-muted-foreground">
-                        Página {currentPage} de {totalPages}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                        disabled={currentPage === totalPages}
-                      >
-                        Próxima
-                      </Button>
-                    </div>
-                  )}
-                </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* GRID: BLOCO 4 (ALERTAS DE ATRASO) E BLOCO 2 (PRÓXIMOS DA COBRANÇA) */}
+          <div className="grid gap-6 lg:grid-cols-2">
+            {/* BLOCO 4: Alertas de Recebíveis em Atraso */}
+            <Card
+              className={cn(
+                'border-border/60 bg-card/70 backdrop-blur shadow-sm flex flex-col',
+                processed.overdueReceivables.length > 0 && 'border-rose-500/30',
               )}
-            </CardContent>
-          </Card>
+            >
+              <CardHeader className="flex flex-row items-center justify-between pb-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-base font-semibold flex items-center gap-2 text-rose-600 dark:text-rose-400">
+                      <CircleAlert className="h-5 w-5" />
+                      Alertas de Recebíveis em Atraso
+                    </CardTitle>
+                    {processed.overdueReceivables.length > 0 && (
+                      <Badge variant="destructive" className="h-5 px-1.5 text-[11px]">
+                        {processed.overdueReceivables.length}
+                      </Badge>
+                    )}
+                  </div>
+                  <CardDescription className="mt-1">
+                    Parcelas vencidas e não pagas que exigem cobrança ou prorrogação.
+                  </CardDescription>
+                </div>
+                <Button asChild variant="outline" size="sm" className="h-8 text-xs gap-1 shrink-0">
+                  <Link to="/admin/recebiveis-parcelados">
+                    Ver todos
+                    <ChevronRight className="h-3 w-3" />
+                  </Link>
+                </Button>
+              </CardHeader>
+              <CardContent className="p-0 flex-1">
+                {processed.overdueReceivables.length === 0 ? (
+                  <div className="py-12 text-center flex flex-col items-center justify-center text-muted-foreground px-4">
+                    <CheckCircle2 className="h-8 w-8 text-emerald-500 mb-2" />
+                    <p className="text-sm font-medium text-foreground">
+                      Inadimplência sob controle
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Não há nenhuma parcela vencida em aberto no momento.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border/50">
+                    {processed.overdueReceivables.slice(0, 6).map((item) => (
+                      <div
+                        key={item.id}
+                        className="p-3.5 hover:bg-rose-500/[0.04] transition-colors flex items-center justify-between gap-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-sm text-foreground truncate">
+                              {item.sacado}
+                            </span>
+                            <Badge variant="destructive" className="text-[10px] h-4 px-1">
+                              {item.daysLate}d atraso
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                            <span>Doc: {item.documentNumber}</span>
+                            <span>•</span>
+                            <span>
+                              Parc. {item.installmentNumber}/{item.totalInstallments}
+                            </span>
+                            <span>•</span>
+                            <span>Venc: {formatDate(item.dueDateStr)}</span>
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <div className="font-mono font-bold text-rose-600 dark:text-rose-400 text-sm">
+                            {formatCurrency(item.totalValue)}
+                          </div>
+                          <Button
+                            asChild
+                            variant="link"
+                            size="sm"
+                            className="p-0 h-auto text-[11px] text-primary font-medium hover:underline"
+                          >
+                            <Link to="/admin/recebiveis-parcelados">Cobrar / Tratar</Link>
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                    {processed.overdueReceivables.length > 6 && (
+                      <div className="p-3 text-center bg-muted/20">
+                        <Link
+                          to="/admin/recebiveis-parcelados"
+                          className="text-xs text-primary font-medium hover:underline inline-flex items-center gap-1"
+                        >
+                          Ver mais {processed.overdueReceivables.length - 6} parcela(s) em atraso
+                          <ChevronRight className="h-3 w-3" />
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* BLOCO 2: Recebíveis Próximos da Cobrança */}
+            <Card className="border-border/60 bg-card/70 backdrop-blur shadow-sm flex flex-col">
+              <CardHeader className="flex flex-row items-center justify-between pb-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-base font-semibold flex items-center gap-2">
+                      <Clock className="h-5 w-5 text-blue-500" />
+                      Recebíveis Próximos da Cobrança
+                    </CardTitle>
+                    {processed.upcomingReceivables.length > 0 && (
+                      <Badge
+                        variant="outline"
+                        className="border-blue-500/40 text-blue-600 bg-blue-500/10 h-5 px-1.5 text-[11px]"
+                      >
+                        {processed.upcomingReceivables.length}
+                      </Badge>
+                    )}
+                  </div>
+                  <CardDescription className="mt-1">
+                    Parcelas a vencer nos próximos 15 a 30 dias para régua de relacionamento e aviso
+                    prévio.
+                  </CardDescription>
+                </div>
+                <Button asChild variant="outline" size="sm" className="h-8 text-xs gap-1 shrink-0">
+                  <Link to="/admin/recebiveis-parcelados">
+                    Ver todos
+                    <ChevronRight className="h-3 w-3" />
+                  </Link>
+                </Button>
+              </CardHeader>
+              <CardContent className="p-0 flex-1">
+                {processed.upcomingReceivables.length === 0 ? (
+                  <div className="py-12 text-center flex flex-col items-center justify-center text-muted-foreground px-4">
+                    <Calendar className="h-8 w-8 text-blue-500/60 mb-2" />
+                    <p className="text-sm font-medium text-foreground">Nenhum vencimento próximo</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Não há recebíveis programados para cobrança nos próximos dias.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border/50">
+                    {processed.upcomingReceivables.slice(0, 6).map((item) => (
+                      <div
+                        key={item.id}
+                        className="p-3.5 hover:bg-muted/40 transition-colors flex items-center justify-between gap-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-sm text-foreground truncate">
+                              {item.sacado}
+                            </span>
+                            {item.daysDifference === 0 ? (
+                              <Badge className="text-[10px] h-4 px-1 bg-amber-500 text-white">
+                                Vence Hoje
+                              </Badge>
+                            ) : item.daysDifference === 1 ? (
+                              <Badge variant="secondary" className="text-[10px] h-4 px-1">
+                                Vence Amanhã
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] h-4 px-1 text-muted-foreground"
+                              >
+                                Em {item.daysDifference} dias
+                              </Badge>
+                            )}
+                            {item.isExtended && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] h-4 px-1 border-amber-500/30 text-amber-600 bg-amber-500/5"
+                              >
+                                Prorrogada
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                            <span>Doc: {item.documentNumber}</span>
+                            <span>•</span>
+                            <span>
+                              Parc. {item.installmentNumber}/{item.totalInstallments}
+                            </span>
+                            <span>•</span>
+                            <span className="font-medium text-foreground/80">
+                              Venc: {formatDate(item.dueDateStr)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <div className="font-mono font-bold text-foreground text-sm">
+                            {formatCurrency(item.totalValue)}
+                          </div>
+                          <Button
+                            asChild
+                            variant="link"
+                            size="sm"
+                            className="p-0 h-auto text-[11px] text-primary font-medium hover:underline"
+                          >
+                            <Link to="/admin/recebiveis-parcelados">Ver detalhes</Link>
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                    {processed.upcomingReceivables.length > 6 && (
+                      <div className="p-3 text-center bg-muted/20">
+                        <Link
+                          to="/admin/recebiveis-parcelados"
+                          className="text-xs text-primary font-medium hover:underline inline-flex items-center gap-1"
+                        >
+                          Ver mais {processed.overdueReceivables.length} parcela(s) no cronograma
+                          <ChevronRight className="h-3 w-3" />
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </>
       )}
     </div>
