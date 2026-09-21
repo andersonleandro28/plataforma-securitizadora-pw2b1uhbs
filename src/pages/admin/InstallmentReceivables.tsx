@@ -1074,14 +1074,18 @@ export function InstallmentReceivables() {
                           className={
                             hasLate
                               ? 'border-rose-500 text-rose-600 bg-rose-500/10'
-                              : paidCount === (insts.length || op.installments)
+                              : op.status === 'liquidado' ||
+                                  op.status === 'pago' ||
+                                  (paidCount > 0 && paidCount === (insts.length || op.installments))
                                 ? 'border-emerald-500 text-emerald-600 bg-emerald-500/10'
                                 : 'border-blue-500 text-blue-600 bg-blue-500/10'
                           }
                         >
                           {hasLate
                             ? 'Contém Atraso'
-                            : paidCount === (insts.length || op.installments)
+                            : op.status === 'liquidado' ||
+                                op.status === 'pago' ||
+                                (paidCount > 0 && paidCount === (insts.length || op.installments))
                               ? 'Liquidada'
                               : 'Em Aberto'}
                         </Badge>
