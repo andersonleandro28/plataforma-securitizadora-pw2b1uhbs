@@ -43,6 +43,7 @@ const formatCurrency = (val: number) =>
 export type DashboardInstallment = {
   id: string
   operationId: string
+  sourceType: 'antecipacao' | 'ccb'
   installmentNumber: number
   totalInstallments: number
   sacado: string
@@ -86,6 +87,7 @@ export default function Index() {
   const [refreshing, setRefreshing] = useState(false)
   const [investments, setInvestments] = useState<any[]>([])
   const [creditOperations, setCreditOperations] = useState<any[]>([])
+  const [ccbPurchases, setCcbPurchases] = useState<any[]>([])
   const [redemptions, setRedemptions] = useState<any[]>([])
   const { toast } = useToast()
   const fetchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -220,7 +222,7 @@ export default function Index() {
       else setRefreshing(true)
 
       try {
-        const [invRes, creditRes, redemptionsRes] = await Promise.all([
+        const [invRes, creditRes, ccbRes, redemptionsRes] = await Promise.all([
           supabase
             .from('investments')
             .select('id, total_value, status, transfer_date, created_at, quotas, unit_price')
@@ -228,50 +230,82 @@ export default function Index() {
           supabase
             .from('credit_operations')
             .select(`
-            id,
-            receivable_type,
-            cedente,
-            sacado,
-            document_number,
-            face_value,
-            requested_value,
-            issue_date,
-            due_date,
-            installments,
-            installments_data,
-            status,
-            liquidation_date,
-            liquidation_value,
-            created_at
-          `)
+              id,
+              receivable_type,
+              cedente,
+              sacado,
+              document_number,
+              face_value,
+              requested_value,
+              issue_date,
+              due_date,
+              installments,
+              installments_data,
+              status,
+              liquidation_date,
+              liquidation_value,
+              created_at
+            `)
             .order('issue_date', { ascending: false, nullsFirst: false }),
+          supabase
+            .from('recebiveis_ccb')
+            .select(`
+              id,
+              ccb_id,
+              tomador_id,
+              acquisition_value,
+              boleto_count,
+              boleto_unit_value,
+              gross_profit,
+              tir_effective,
+              provision_amount,
+              boletos,
+              status,
+              created_at,
+              ccb_solicitacoes (
+                id,
+                user_id,
+                requested_value,
+                term_months,
+                created_at,
+                profiles!ccb_solicitacoes_user_id_fkey (
+                  id,
+                  full_name,
+                  document_number,
+                  pj_company_name
+                )
+              )
+            `)
+            .order('created_at', { ascending: false }),
           supabase
             .from('investment_redemptions')
             .select(`
-            id,
-            investment_id,
-            user_id,
-            requested_quotas,
-            net_value,
-            gross_value,
-            status,
-            created_at,
-            profiles(full_name, document_number),
-            investments(
               id,
-              total_value,
-              investment_products(title, quota_value)
-            )
-          `)
+              investment_id,
+              user_id,
+              requested_quotas,
+              net_value,
+              gross_value,
+              status,
+              created_at,
+              profiles(full_name, document_number),
+              investments(
+                id,
+                total_value,
+                investment_products(title, quota_value)
+              )
+            `)
             .order('created_at', { ascending: false }),
         ])
 
         if (invRes.error) throw invRes.error
         if (creditRes.error) throw creditRes.error
+        if (ccbRes.error) throw ccbRes.error
         if (redemptionsRes.error) throw redemptionsRes.error
 
         setInvestments(invRes.data || [])
         setCreditOperations(creditRes.data || [])
+        setCcbPurchases(ccbRes.data || [])
         setRedemptions(redemptionsRes.data || [])
       } catch (error: any) {
         console.error('Erro ao carregar dados do dashboard:', error)
@@ -296,6 +330,9 @@ export default function Index() {
     const channel = supabase
       .channel('dashboard_admin_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'credit_operations' }, () =>
+        fetchData(true),
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'recebiveis_ccb' }, () =>
         fetchData(true),
       )
       .on('postgres_changes', { event: '*', schema: 'public', table: 'investments' }, () =>
@@ -412,8 +449,11 @@ export default function Index() {
       // Exibir os últimos 12 meses ordenados
       .slice(-12)
 
-    // 2. Extrair todas as parcelas normalizadas das credit_operations
+    // 2. Extrair todas as parcelas normalizadas:
+    // (A) Antecipações de Recebíveis (credit_operations)
+    // (B) Compras de CCBs (recebiveis_ccb e seus boletos)
     const allInstallments: DashboardInstallment[] = []
+
     let totalAReceber = 0
     let totalJaRecebido = 0
     let totalEmAtraso = 0
@@ -422,9 +462,23 @@ export default function Index() {
     let countProrrogadas = 0
     let countPagas = 0
 
+    // Métricas segregadas por fonte para exibição discriminada
+    let antecipacaoAReceber = 0
+    let antecipacaoJaRecebido = 0
+    let antecipacaoEmAtraso = 0
+    let antecipacaoCountPagas = 0
+    let antecipacaoCountAbertas = 0
+
+    let ccbAReceber = 0
+    let ccbJaRecebido = 0
+    let ccbEmAtraso = 0
+    let ccbCountPagas = 0
+    let ccbCountAbertas = 0
+
     const todayStr = new Date().toISOString().split('T')[0]
     const today = new Date(todayStr + 'T00:00:00')
 
+    // (A) Processar Operações de Crédito de Antecipação
     creditOperations.forEach((op) => {
       const arr = Array.isArray(op.installments_data) ? op.installments_data : []
       const isOpPaid =
@@ -468,8 +522,9 @@ export default function Index() {
         }
 
         const item: DashboardInstallment = {
-          id: `${op.id}-${idx}`,
+          id: `credit-${op.id}-${idx}`,
           operationId: op.id,
+          sourceType: 'antecipacao',
           installmentNumber: inst.number || idx + 1,
           totalInstallments: totalInstCount,
           sacado: op.sacado || 'Sacado não informado',
@@ -488,18 +543,154 @@ export default function Index() {
 
         allInstallments.push(item)
 
-        // Agregações financeiras
+        // Agregações financeiras de antecipações
         if (calc.status === 'paga') {
           countPagas++
-          totalJaRecebido += Number(inst.amount_paid || vals.totalValue)
+          antecipacaoCountPagas++
+          const paidVal = Number(inst.amount_paid || vals.totalValue)
+          totalJaRecebido += paidVal
+          antecipacaoJaRecebido += paidVal
         } else {
-          // Em aberto (a_vencer, prorrogada ou vencida) compõem o valor a receber da carteira
+          // Em aberto (a_vencer, prorrogada ou vencida)
           totalAReceber += vals.totalValue
+          antecipacaoAReceber += vals.totalValue
+          antecipacaoCountAbertas++
 
           if (calc.status === 'vencida') {
             countVencidas++
             totalEmAtraso += vals.totalValue
+            antecipacaoEmAtraso += vals.totalValue
           } else if (calc.status === 'prorrogada') {
+            countProrrogadas++
+          } else {
+            countPendentes++
+          }
+        }
+      })
+    })
+
+    // (B) Processar Compras de CCBs (recebiveis_ccb e boletos)
+    // Regra consolidada em /admin/ccb-purchases:
+    // - Parcela paga: status 'Pago'/'Liquidado' ou payment_date/data_pagamento preenchido
+    // - Parcela a receber: pendente/vencida/prorrogada em aberto
+    // - Data real de pagamento: b.payment_date || b.data_pagamento
+    ccbPurchases.forEach((purch) => {
+      const boletosList = Array.isArray(purch.boletos) ? purch.boletos : []
+      const ccbProfile =
+        purch.ccb_solicitacoes?.profiles?.full_name ||
+        purch.ccb_solicitacoes?.profiles?.pj_company_name ||
+        'Tomador CCB'
+      const ccbDoc = purch.ccb_solicitacoes?.profiles?.document_number || ''
+      const totalCount = Math.max(1, Number(purch.boleto_count || boletosList.length || 1))
+
+      boletosList.forEach((b: any, idx: number) => {
+        const rawStatus = String(b.status || '')
+          .trim()
+          .toLowerCase()
+        const effectivePaymentDate = b.payment_date || b.data_pagamento
+        const isPaid =
+          rawStatus === 'pago' || rawStatus === 'liquidado' || Boolean(effectivePaymentDate)
+
+        const unitVal = Number(b.unit_value ?? purch.boleto_unit_value ?? 0)
+        const interestApplied = Number(b.interest_applied || 0)
+        const penaltyApplied = Number(b.penalty_applied || 0)
+
+        const dueDateStr = b.due_date || ''
+        const isLate = Boolean(dueDateStr && dueDateStr < todayStr)
+        const diffDays = dueDateStr
+          ? Math.max(
+              0,
+              Math.round(
+                (new Date(todayStr).getTime() - new Date(dueDateStr).getTime()) /
+                  (1000 * 60 * 60 * 24),
+              ),
+            )
+          : 0
+
+        let daysDiff = 999
+        if (dueDateStr) {
+          const dObj = new Date(dueDateStr + 'T00:00:00')
+          daysDiff = Math.round((dObj.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+        }
+
+        let statusKey: 'paga' | 'vencida' | 'a_vencer' | 'prorrogada' = 'a_vencer'
+        let statusLabel = 'Pendente'
+        let statusColor = 'bg-blue-500/10 text-blue-600 border-blue-500/20'
+        let daysLate = 0
+
+        if (isPaid) {
+          statusKey = 'paga'
+          statusLabel = 'Paga'
+          statusColor = 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+          daysLate = 0
+        } else if (rawStatus === 'prorrogado' || rawStatus === 'prorrogada') {
+          if (isLate) {
+            statusKey = 'vencida'
+            statusLabel = `Prorrogada (Vencida há ${diffDays}d)`
+            statusColor = 'bg-rose-500/10 text-rose-600 border-rose-500/20'
+            daysLate = diffDays
+          } else {
+            statusKey = 'prorrogada'
+            statusLabel = 'Prorrogada'
+            statusColor = 'bg-amber-500/10 text-amber-600 border-amber-500/20'
+            daysLate = 0
+          }
+        } else if (isLate) {
+          statusKey = 'vencida'
+          statusLabel = `Vencida (${diffDays}d)`
+          statusColor = 'bg-rose-500/10 text-rose-600 border-rose-500/20'
+          daysLate = diffDays
+        } else {
+          statusKey = 'a_vencer'
+          statusLabel = 'Pendente'
+          statusColor = 'bg-blue-500/10 text-blue-600 border-blue-500/20'
+          daysLate = 0
+        }
+
+        const totalValue = isPaid ? unitVal + interestApplied + penaltyApplied : unitVal
+
+        const ccbCode = purch.ccb_id
+          ? purch.ccb_id.substring(0, 8).toUpperCase()
+          : purch.id.substring(0, 8).toUpperCase()
+
+        const item: DashboardInstallment = {
+          id: `ccb-${purch.id}-${idx}`,
+          operationId: purch.id,
+          sourceType: 'ccb',
+          installmentNumber: idx + 1,
+          totalInstallments: totalCount,
+          sacado: ccbProfile,
+          cedente: 'Nexum Securitizadora',
+          documentNumber: `CCB #${ccbCode}`,
+          dueDateStr,
+          daysDifference: daysDiff,
+          daysLate,
+          originalValue: unitVal,
+          totalValue,
+          isExtended: rawStatus === 'prorrogado' || rawStatus === 'prorrogada',
+          status: statusKey,
+          statusLabel,
+          statusColor,
+        }
+
+        allInstallments.push(item)
+
+        // Agregações financeiras de CCBs
+        if (isPaid) {
+          countPagas++
+          ccbCountPagas++
+          totalJaRecebido += totalValue
+          ccbJaRecebido += totalValue
+        } else {
+          totalAReceber += totalValue
+          ccbAReceber += totalValue
+          ccbCountAbertas++
+
+          if (statusKey === 'vencida') {
+            countVencidas++
+            totalEmAtraso += totalValue
+            ccbEmAtraso += totalValue
+          } else if (statusKey === 'prorrogada') {
             countProrrogadas++
           } else {
             countPendentes++
@@ -555,6 +746,7 @@ export default function Index() {
       totalCaptado,
       investmentsCount: investments.length,
       monthlyChartData,
+      // Totais consolidados
       totalAReceber,
       totalJaRecebido,
       totalEmAtraso,
@@ -563,6 +755,17 @@ export default function Index() {
       countProrrogadas,
       countPagas,
       totalParcelas: allInstallments.length,
+      // Detalhamento por fonte
+      antecipacaoAReceber,
+      antecipacaoJaRecebido,
+      antecipacaoEmAtraso,
+      antecipacaoCountPagas,
+      antecipacaoCountAbertas,
+      ccbAReceber,
+      ccbJaRecebido,
+      ccbEmAtraso,
+      ccbCountPagas,
+      ccbCountAbertas,
       upcomingReceivables,
       overdueReceivables,
       pendingRedemptions,
@@ -571,6 +774,7 @@ export default function Index() {
   }, [
     investments,
     creditOperations,
+    ccbPurchases,
     redemptions,
     getInstallmentValues,
     getInstallmentCalculatedStatus,
@@ -682,9 +886,12 @@ export default function Index() {
             <Card className="relative overflow-hidden border-border/60 bg-card/70 backdrop-blur shadow-sm hover:shadow-md transition-all">
               <div className="absolute top-0 left-0 h-1 w-full bg-indigo-500" />
               <CardHeader className="flex flex-row items-center justify-between pb-2 pt-4">
-                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Recebíveis a Receber
-                </CardTitle>
+                <div>
+                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Total de Recebíveis a Receber
+                  </CardTitle>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Antecipações + CCBs</p>
+                </div>
                 <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-600">
                   <Receipt className="h-4 w-4" />
                 </div>
@@ -693,16 +900,40 @@ export default function Index() {
                 <div className="text-2xl font-bold tracking-tight text-foreground">
                   {formatCurrency(processed.totalAReceber)}
                 </div>
-                <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
+
+                {/* Composição discriminada: Antecipações e CCBs */}
+                <div className="mt-2.5 pt-2.5 border-t border-border/50 space-y-1 text-xs">
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-indigo-500" />
+                      Antecipações:
+                    </span>
+                    <span className="font-semibold text-foreground font-mono">
+                      {formatCurrency(processed.antecipacaoAReceber)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-violet-500" />
+                      CCBs:
+                    </span>
+                    <span className="font-semibold text-foreground font-mono">
+                      {formatCurrency(processed.ccbAReceber)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-border/40 text-[11px] text-muted-foreground">
                   <span>
                     {processed.countPendentes +
                       processed.countProrrogadas +
                       processed.countVencidas}{' '}
-                    parcelas em aberto
+                    parc. em aberto ({processed.antecipacaoCountAbertas} Antecip. ·{' '}
+                    {processed.ccbCountAbertas} CCB)
                   </span>
                   <Link
                     to="/admin/recebiveis-parcelados"
-                    className="text-primary hover:underline inline-flex items-center gap-0.5 text-[11px] font-medium"
+                    className="text-primary hover:underline inline-flex items-center gap-0.5 font-medium shrink-0"
                   >
                     Cronograma <ArrowUpRight className="h-3 w-3" />
                   </Link>
@@ -714,9 +945,12 @@ export default function Index() {
             <Card className="relative overflow-hidden border-border/60 bg-card/70 backdrop-blur shadow-sm hover:shadow-md transition-all">
               <div className="absolute top-0 left-0 h-1 w-full bg-emerald-500" />
               <CardHeader className="flex flex-row items-center justify-between pb-2 pt-4">
-                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Total Já Recebido
-                </CardTitle>
+                <div>
+                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Total Já Recebido
+                  </CardTitle>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Antecipações + CCBs</p>
+                </div>
                 <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600">
                   <CheckCircle2 className="h-4 w-4" />
                 </div>
@@ -725,11 +959,40 @@ export default function Index() {
                 <div className="text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
                   {formatCurrency(processed.totalJaRecebido)}
                 </div>
-                <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
-                  <span>{processed.countPagas} parcelas liquidadas</span>
-                  <span className="text-[11px] text-emerald-600/80 font-medium">
-                    Baixa conciliada
+
+                {/* Composição discriminada: Antecipações e CCBs */}
+                <div className="mt-2.5 pt-2.5 border-t border-border/50 space-y-1 text-xs">
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                      Antecipações:
+                    </span>
+                    <span className="font-semibold text-emerald-700 dark:text-emerald-400 font-mono">
+                      {formatCurrency(processed.antecipacaoJaRecebido)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-teal-500" />
+                      CCBs:
+                    </span>
+                    <span className="font-semibold text-teal-700 dark:text-teal-400 font-mono">
+                      {formatCurrency(processed.ccbJaRecebido)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-border/40 text-[11px] text-muted-foreground">
+                  <span>
+                    {processed.countPagas} parcelas liquidadas ({processed.antecipacaoCountPagas}{' '}
+                    Antecip. · {processed.ccbCountPagas} CCB)
                   </span>
+                  <Link
+                    to="/admin/ccb-purchases"
+                    className="text-primary hover:underline inline-flex items-center gap-0.5 font-medium shrink-0"
+                  >
+                    CCBs <ArrowUpRight className="h-3 w-3" />
+                  </Link>
                 </div>
               </CardContent>
             </Card>
@@ -748,9 +1011,12 @@ export default function Index() {
                 )}
               />
               <CardHeader className="flex flex-row items-center justify-between pb-2 pt-4">
-                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Recebíveis em Atraso
-                </CardTitle>
+                <div>
+                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Recebíveis em Atraso
+                  </CardTitle>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Antecipações + CCBs</p>
+                </div>
                 <div
                   className={cn(
                     'p-2 rounded-lg',
@@ -773,7 +1039,30 @@ export default function Index() {
                 >
                   {formatCurrency(processed.totalEmAtraso)}
                 </div>
-                <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
+
+                {/* Composição de atraso discriminada quando houver */}
+                <div className="mt-2.5 pt-2.5 border-t border-border/50 space-y-1 text-xs">
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-rose-500" />
+                      Antecipações:
+                    </span>
+                    <span className="font-semibold text-rose-600 dark:text-rose-400 font-mono">
+                      {formatCurrency(processed.antecipacaoEmAtraso)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-amber-500" />
+                      CCBs:
+                    </span>
+                    <span className="font-semibold text-amber-600 dark:text-amber-400 font-mono">
+                      {formatCurrency(processed.ccbEmAtraso)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-border/40 text-[11px] text-muted-foreground">
                   <span>
                     {processed.countVencidas === 0
                       ? 'Nenhuma parcela em atraso'
@@ -1045,6 +1334,17 @@ export default function Index() {
                             <span className="font-semibold text-sm text-foreground truncate">
                               {item.sacado}
                             </span>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                'text-[10px] h-4 px-1 font-semibold uppercase',
+                                item.sourceType === 'ccb'
+                                  ? 'border-violet-500/40 text-violet-600 bg-violet-500/10'
+                                  : 'border-blue-500/40 text-blue-600 bg-blue-500/10',
+                              )}
+                            >
+                              {item.sourceType === 'ccb' ? 'CCB' : 'Antecipação'}
+                            </Badge>
                             <Badge variant="destructive" className="text-[10px] h-4 px-1">
                               {item.daysLate}d atraso
                             </Badge>
@@ -1070,7 +1370,15 @@ export default function Index() {
                             size="sm"
                             className="p-0 h-auto text-[11px] text-primary font-medium hover:underline"
                           >
-                            <Link to="/admin/recebiveis-parcelados">Cobrar / Tratar</Link>
+                            <Link
+                              to={
+                                item.sourceType === 'ccb'
+                                  ? '/admin/ccb-purchases'
+                                  : '/admin/recebiveis-parcelados'
+                              }
+                            >
+                              Cobrar / Tratar
+                            </Link>
                           </Button>
                         </div>
                       </div>
@@ -1142,6 +1450,17 @@ export default function Index() {
                             <span className="font-semibold text-sm text-foreground truncate">
                               {item.sacado}
                             </span>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                'text-[10px] h-4 px-1 font-semibold uppercase',
+                                item.sourceType === 'ccb'
+                                  ? 'border-violet-500/40 text-violet-600 bg-violet-500/10'
+                                  : 'border-blue-500/40 text-blue-600 bg-blue-500/10',
+                              )}
+                            >
+                              {item.sourceType === 'ccb' ? 'CCB' : 'Antecipação'}
+                            </Badge>
                             {item.daysDifference === 0 ? (
                               <Badge className="text-[10px] h-4 px-1 bg-amber-500 text-white">
                                 Vence Hoje
@@ -1190,7 +1509,15 @@ export default function Index() {
                             size="sm"
                             className="p-0 h-auto text-[11px] text-primary font-medium hover:underline"
                           >
-                            <Link to="/admin/recebiveis-parcelados">Ver detalhes</Link>
+                            <Link
+                              to={
+                                item.sourceType === 'ccb'
+                                  ? '/admin/ccb-purchases'
+                                  : '/admin/recebiveis-parcelados'
+                              }
+                            >
+                              Ver detalhes
+                            </Link>
                           </Button>
                         </div>
                       </div>
