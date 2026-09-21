@@ -71,13 +71,14 @@ export function AdminUserRiskDialog({ user, open, onOpenChange, onSaved }: any) 
         .select('id, requested_value, status')
         .eq('user_id', user.id)
 
+      // Regra de limite: 'pago' consome limite; apenas 'liquidado' (e cancelado/reprovado/excluido) libera limite
       const activeOps =
         ops?.filter(
-          (o) => !['liquidado', 'pago', 'reprovado', 'cancelado', 'excluido'].includes(o.status),
+          (o) => !['liquidado', 'reprovado', 'cancelado', 'excluido'].includes(o.status),
         ) || []
       const activeCcbs =
         ccbs?.filter(
-          (c) => !['liquidado', 'pago', 'reprovado', 'cancelado', 'excluido'].includes(c.status),
+          (c) => !['liquidado', 'reprovado', 'cancelado', 'excluido'].includes(c.status),
         ) || []
 
       const currentUsed =
@@ -86,7 +87,8 @@ export function AdminUserRiskDialog({ user, open, onOpenChange, onSaved }: any) 
 
       setUsed(currentUsed)
 
-      const liqOps = ops?.filter((o) => o.status === 'liquidado' || o.status === 'pago') || []
+      // Apenas operações com status 'liquidado' representam quitações que liberam limite
+      const liqOps = ops?.filter((o) => o.status === 'liquidado') || []
       setLiquidated(liqOps.reduce((acc, o) => acc + Number(o.requested_value), 0))
 
       const today = new Date()

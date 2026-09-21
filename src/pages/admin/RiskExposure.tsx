@@ -38,15 +38,16 @@ export default function RiskExposure() {
     setLoading(true)
     try {
       // Fetch all active operations to calculate total capital and outstanding balances
+      // Regra de limite e exposição: 'pago' consome limite e é capital ativo; apenas 'liquidado' libera
       const { data: ops } = await supabase
         .from('credit_operations')
         .select('borrower_id, requested_value, status, due_date')
-        .not('status', 'in', '("liquidado","pago","reprovado","cancelado","excluido")')
+        .not('status', 'in', '("liquidado","reprovado","cancelado","excluido")')
 
       const { data: ccbs } = await supabase
         .from('ccb_solicitacoes')
         .select('user_id, requested_value, status, created_at')
-        .not('status', 'in', '("liquidado","pago","reprovado","cancelado","excluido")')
+        .not('status', 'in', '("liquidado","reprovado","cancelado","excluido")')
 
       // Fetch profiles
       const { data: profiles } = await supabase

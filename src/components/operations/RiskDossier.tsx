@@ -54,11 +54,12 @@ export function RiskDossier({ operationId, sacadoDocument, onStatusChanged }: Ri
           .eq('id', opData.borrower_id)
           .single()
 
+        // Regra de limite: 'pago' consome limite; apenas 'liquidado' (e cancelado/reprovado/excluido) libera limite
         const { data: usedOps } = await supabase
           .from('credit_operations')
           .select('requested_value, id, status')
           .eq('borrower_id', opData.borrower_id)
-          .not('status', 'in', '("liquidado","pago","reprovado","cancelado","excluido")')
+          .not('status', 'in', '("liquidado","reprovado","cancelado","excluido")')
 
         let used = 0
         usedOps?.forEach((o) => {

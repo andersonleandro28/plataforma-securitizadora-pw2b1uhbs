@@ -118,8 +118,9 @@ export function BorrowerDashboard() {
   }
 
   const totalLimit = profile?.credit_limit || 100000
+  // Regra de limite: 'pago' consome limite; apenas 'liquidado' (e cancelado/reprovado/excluido) libera limite
   const activeOps = operations.filter(
-    (op) => !['pago', 'liquidado', 'cancelado', 'reprovado', 'excluido'].includes(op.status || ''),
+    (op) => !['liquidado', 'cancelado', 'reprovado', 'excluido'].includes(op.status || ''),
   )
   const usedAmount = activeOps.reduce((acc, curr) => acc + (Number(curr.requested_value) || 0), 0)
   const availableBalance = Math.max(0, totalLimit - usedAmount)
