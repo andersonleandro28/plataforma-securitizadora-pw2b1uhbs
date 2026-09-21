@@ -308,6 +308,9 @@ export default function Accounting() {
                 <SelectItem value="Aquisição de CCB">Aquisição de CCB</SelectItem>
                 <SelectItem value="Desembolso de Crédito">Desembolso de Crédito</SelectItem>
                 <SelectItem value="Resgate de Investimento">Resgate de Investimento</SelectItem>
+                <SelectItem value="Receita Avulsa">Receita Avulsa</SelectItem>
+                <SelectItem value="Crédito em Conta">Crédito em Conta</SelectItem>
+                <SelectItem value="Receitas Diversas">Receitas Diversas</SelectItem>
               </SelectContent>
             </Select>
           </div>

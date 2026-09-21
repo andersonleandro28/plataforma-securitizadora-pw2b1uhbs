@@ -35,6 +35,7 @@ import { toast } from 'sonner'
 import { exportToCSV } from '@/lib/export-utils'
 import { useDre, type DreCategoria } from '@/hooks/use-dre'
 import { AdminExpenseDialog } from '@/components/admin/AdminExpenseDialog'
+import { AdminCreditDialog } from '@/components/admin/AdminCreditDialog'
 import { cn } from '@/lib/utils'
 
 const MESES = [
@@ -60,6 +61,7 @@ export default function Dre() {
   const [inicio, setInicio] = useState('')
   const [fim, setFim] = useState('')
   const [expenseOpen, setExpenseOpen] = useState(false)
+  const [creditOpen, setCreditOpen] = useState(false)
 
   const { dados, loading, error, refetch } = useDre()
 
@@ -134,6 +136,12 @@ export default function Dre() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button
+            onClick={() => setCreditOpen(true)}
+            className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            <Plus className="w-4 h-4" /> Lançar Crédito na Conta
+          </Button>
           <Button onClick={() => setExpenseOpen(true)} className="gap-2">
             <Plus className="w-4 h-4" /> Lançar Despesa
           </Button>
@@ -142,6 +150,12 @@ export default function Dre() {
           </Button>
         </div>
       </div>
+
+      <AdminCreditDialog
+        open={creditOpen}
+        onOpenChange={setCreditOpen}
+        onSuccess={() => refetch(periodoInicio, periodoFim)}
+      />
 
       <AdminExpenseDialog
         open={expenseOpen}

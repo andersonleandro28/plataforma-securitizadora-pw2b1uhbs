@@ -94,18 +94,15 @@ export function useAccounting() {
             'id, tipo, categoria, descricao, valor, user_id, created_at, referencia_id, referencia_tipo, referencia_numero',
           ),
         // 8. Transações do Tesourário — Recebimentos e Saídas Não Sincronizadas
-        // O `treasury_transactions` contém recebimentos de parcelas de CCBs, parcelas de crédito, liquidações e resgates.
+        // O `treasury_transactions` contém recebimentos de parcelas de CCBs, parcelas de crédito, liquidações,
+        // resgates e créditos manuais/receitas avulsas na conta.
         // A deduplicação por `external_ref` evita somar duas vezes o mesmo boleto/parcela/operação/resgate.
         supabase
           .from('treasury_transactions')
           .select('id, type, category, amount, description, date, external_ref')
-          .in('category', [
-            'Recebimento de Parcelas - CCB',
-            'Recebimento de Parcelas - Operação',
-            'Liquidação de Recebível',
-            'Resgate de Investidor',
-            'Resgates e Rendimentos',
-          ]),
+          .or(
+            'category.in.("Recebimento de Parcelas - CCB","Recebimento de Parcelas - Operação","Liquidação de Recebível","Resgate de Investidor","Resgates e Rendimentos","Receita Avulsa","Crédito em Conta","Receitas Diversas","Aporte de Capital","Rendimento Financeiro","Reembolso"),external_ref.like.manual-credit-%',
+          ),
       ])
 
       // 1. Subscrições
