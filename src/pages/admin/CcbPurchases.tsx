@@ -803,9 +803,10 @@ export default function CcbPurchases() {
                           size="sm"
                           className="bg-emerald-600 hover:bg-emerald-700"
                           onClick={() => {
+                            const defaultDate = b.due_date || new Date().toISOString().split('T')[0]
                             setLiquidationForm({
                               idx: i,
-                              payment_date: new Date().toISOString().split('T')[0],
+                              payment_date: defaultDate,
                               interest: '',
                               penalty: '',
                             })
@@ -898,8 +899,13 @@ export default function CcbPurchases() {
               onClick={async () => {
                 const boletos = [...selectedPurchase.boletos]
                 const b = boletos[liquidationForm.idx]
+                const effectivePaymentDate =
+                  liquidationForm.payment_date ||
+                  b.due_date ||
+                  new Date().toISOString().split('T')[0]
                 b.status = 'Pago'
-                b.payment_date = liquidationForm.payment_date
+                b.payment_date = effectivePaymentDate
+                b.data_pagamento = effectivePaymentDate
                 b.interest_applied = Number(liquidationForm.interest || 0)
                 b.penalty_applied = Number(liquidationForm.penalty || 0)
 
