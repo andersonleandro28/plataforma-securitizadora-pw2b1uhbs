@@ -106,31 +106,39 @@ export default function InvestmentsReview() {
       }
     })
 
-    // Ordenação por proximidade da data de liberação para saque:
-    // 1º: A liberar no futuro ou liberando hoje (dias >= 0), ordenados ascendente (o mais próximo no topo)
-    // 2º: Já liberados no passado (dias < 0), ordenados do liberado mais recentemente para o mais antigo (releaseMs desc)
-    // 3º: Sem data de liberação / fallback (ordenados por created_at desc)
+    // Ordenação desejada pelo usuário:
+    // 1. TOPO: Aportes que JÁ PODEM ser sacados (carência já liberada ou sem carência)
+    //    - Ordenados do mais recentemente liberado para o mais antigo (releaseMs desc)
+    // 2. EM SEGUIDA: Aportes ainda em carência
+    //    - Ordenados pela proximidade da liberação (quem libera primeiro vem antes, releaseMs asc)
+    // 3. FINAL: Aportes que faltam mais tempo para liberar (mais distantes por último)
     return evaluated.sort((a, b) => {
-      const aRelease = a.releaseMs
-      const bRelease = b.releaseMs
+      // Grupo 1: Já liberados (isLiberado === true)
+      // Grupo 2: Ainda em carência (isLiberado === false)
+      if (a.isLiberado && !b.isLiberado) return -1
+      if (!a.isLiberado && b.isLiberado) return 1
 
-      const aIsFuture = aRelease !== null && aRelease >= todayMs
-      const bIsFuture = bRelease !== null && bRelease >= todayMs
+      // Se ambos já estão liberados:
+      // Mais recentemente liberados primeiro (releaseMs desc).
+      // Se não tiverem releaseDate (sem carência), usa created_at desc como fallback.
+      if (a.isLiberado && b.isLiberado) {
+        const aTime = a.releaseMs ?? new Date(a.investment.created_at || 0).getTime()
+        const bTime = b.releaseMs ?? new Date(b.investment.created_at || 0).getTime()
+        if (bTime !== aTime) return bTime - aTime
 
-      if (aIsFuture && bIsFuture) {
-        return (aRelease as number) - (bRelease as number)
+        const aCreated = new Date(a.investment.created_at || 0).getTime()
+        const bCreated = new Date(b.investment.created_at || 0).getTime()
+        return bCreated - aCreated
       }
-      if (aIsFuture && !bIsFuture) return -1
-      if (!aIsFuture && bIsFuture) return 1
 
-      const aIsPast = aRelease !== null && aRelease < todayMs
-      const bIsPast = bRelease !== null && bRelease < todayMs
-
-      if (aIsPast && bIsPast) {
-        return (bRelease as number) - (aRelease as number)
+      // Se ambos ainda estão em carência (não liberados):
+      // Quem libera primeiro vem antes (releaseMs asc, ou seja, menor data primeiro).
+      // Os que faltam mais tempo ficam no final da página.
+      const aRelease = a.releaseMs ?? Number.MAX_SAFE_INTEGER
+      const bRelease = b.releaseMs ?? Number.MAX_SAFE_INTEGER
+      if (aRelease !== bRelease) {
+        return aRelease - bRelease
       }
-      if (aIsPast && !bIsPast) return -1
-      if (!aIsPast && bIsPast) return 1
 
       const aCreated = new Date(a.investment.created_at || 0).getTime()
       const bCreated = new Date(b.investment.created_at || 0).getTime()
