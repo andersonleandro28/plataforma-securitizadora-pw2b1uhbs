@@ -457,6 +457,15 @@ export default function InvestmentsReview() {
     if (!selectedRedemption || !rejectionReason) return
     setProcessing(true)
     try {
+      // Se porventura um resgate pago for revertido/rejeitado, invoca RPC de reversão para estornar lançamentos
+      if (selectedRedemption.status === 'paid') {
+        const { error: revErr } = await (supabase.rpc as any)('revert_redemption_payment', {
+          p_redemption_id: selectedRedemption.id,
+          p_reason: rejectionReason.trim(),
+        })
+        if (revErr) throw revErr
+      }
+
       const { error } = await supabase
         .from('investment_redemptions')
         .update({
@@ -532,19 +541,50 @@ export default function InvestmentsReview() {
 
       if (updErr) throw updErr
 
-      if (selectedRedemption.status === 'paid' && netDifference !== 0) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('wallet_balance')
-          .eq('id', selectedRedemption.user_id)
-          .single()
-
-        if (profile) {
-          await supabase
+      if (selectedRedemption.status === 'paid') {
+        if (netDifference !== 0) {
+          const { data: profile } = await supabase
             .from('profiles')
-            .update({ wallet_balance: Number(profile.wallet_balance) + netDifference })
+            .select('wallet_balance')
             .eq('id', selectedRedemption.user_id)
+            .single()
+
+          if (profile) {
+            await supabase
+              .from('profiles')
+              .update({ wallet_balance: Number(profile.wallet_balance) + netDifference })
+              .eq('id', selectedRedemption.user_id)
+          }
         }
+
+        // Sincronizar tesouraria e livro caixa com o novo valor / data
+        const extRef = `redemption-${selectedRedemption.id}`
+        const effDate = editRedemptionForm.effective_date
+        const effDateTs = new Date(editRedemptionForm.effective_date + 'T12:00:00Z').toISOString()
+        const invName =
+          selectedRedemption.profiles?.full_name ||
+          selectedRedemption.profiles?.pj_company_name ||
+          'Investidor'
+        const desc = `Resgate de investimento — ${invName} — ${selectedRedemption.requested_quotas || 0} cotas`
+
+        await supabase
+          .from('treasury_transactions')
+          .update({
+            amount: newNet,
+            date: effDate,
+            description: desc,
+          })
+          .eq('external_ref', extRef)
+
+        await supabase
+          .from('movimentacoes_caixa')
+          .update({
+            valor: newNet,
+            descricao: desc,
+            created_at: effDateTs,
+          })
+          .eq('referencia_id', selectedRedemption.id)
+          .eq('referencia_tipo', 'resgate_investimento')
       }
 
       await supabase.from('audit_logs').insert({

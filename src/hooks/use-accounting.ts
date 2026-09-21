@@ -93,17 +93,18 @@ export function useAccounting() {
           .select(
             'id, tipo, categoria, descricao, valor, user_id, created_at, referencia_id, referencia_tipo, referencia_numero',
           ),
-        // 8. Transações do Tesourário — Recebimento de Parcelas e Liquidações de Operações
-        // O `treasury_transactions` contém recebimentos de parcelas de CCBs, parcelas de crédito e liquidação integral de operações.
-        // A deduplicação por `external_ref` evita somar duas vezes o mesmo boleto/parcela/operação.
+        // 8. Transações do Tesourário — Recebimentos e Saídas Não Sincronizadas
+        // O `treasury_transactions` contém recebimentos de parcelas de CCBs, parcelas de crédito, liquidações e resgates.
+        // A deduplicação por `external_ref` evita somar duas vezes o mesmo boleto/parcela/operação/resgate.
         supabase
           .from('treasury_transactions')
           .select('id, type, category, amount, description, date, external_ref')
-          .eq('type', 'in')
           .in('category', [
             'Recebimento de Parcelas - CCB',
             'Recebimento de Parcelas - Operação',
             'Liquidação de Recebível',
+            'Resgate de Investidor',
+            'Resgates e Rendimentos',
           ]),
       ])
 
@@ -173,27 +174,35 @@ export function useAccounting() {
 
       // Coleta referências já presentes em movimentações de caixa para evitar duplicação com treasury_transactions
       const movsExternalRefs = new Set<string>()
+      const redemptionsInMovs = new Set<string>()
       ;(movs || []).forEach((m: any) => {
         if (m.referencia_id) {
           movsExternalRefs.add(`op-liq-${m.referencia_id}`)
+          movsExternalRefs.add(`redemption-${m.referencia_id}`)
+          if (m.referencia_tipo === 'resgate_investimento') {
+            redemptionsInMovs.add(String(m.referencia_id))
+          }
           if (m.referencia_numero) {
             movsExternalRefs.add(`op-bol-${m.referencia_id}-${m.referencia_numero}`)
+            movsExternalRefs.add(String(m.referencia_numero))
           }
         }
       })
 
-      // 8. Transações do Tesourário — Recebimento de Parcelas e Liquidação de Operações
-      // Adiciona os recebimentos que não chegaram via JSONB (CCBs com boletos
-      // truncados pelo PostgREST) e liquidações não duplicadas no Livro Caixa.
+      // 8. Transações do Tesourário — Recebimento de Parcelas, Liquidação de Operações e Resgates
+      // Adiciona os eventos que não chegaram via outras fontes e não estão duplicados no Livro Caixa.
       ;(tt || []).forEach((tx: any) => {
         const ref = tx.external_ref ? String(tx.external_ref) : null
         if (ref && boletoExternalRefs.has(ref)) return
         if (ref && movsExternalRefs.has(ref)) return
         if (ref) boletoExternalRefs.add(ref)
+        const txType: 'in' | 'out' = tx.type === 'out' ? 'out' : 'in'
         transactions.push({
           id: `tt-${tx.id}`,
-          type: 'in' as const,
-          category: tx.category || 'Recebimento de Parcelas - CCB',
+          type: txType,
+          category:
+            tx.category ||
+            (txType === 'out' ? 'Resgate de Investidor' : 'Recebimento de Parcelas - CCB'),
           description: tx.description,
           value: Number(tx.amount || 0),
           date: normalizeAccountingDate(tx.date),
@@ -266,9 +275,14 @@ export function useAccounting() {
         }
       })
 
-      // 6. Resgates
+      // 6. Resgates (tabela investment_redemptions direta)
+      // DEDUP: se o resgate já possui movimentação lançada em movimentacoes_caixa ou treasury_transactions,
+      // ignora para não exibir dobrado na Contabilidade.
       ;(reds || []).forEach((red) => {
         if (red.status === 'paid') {
+          if (redemptionsInMovs.has(red.id) || boletoExternalRefs.has(`redemption-${red.id}`)) {
+            return
+          }
           const prof = Array.isArray(red.profiles) ? red.profiles[0] : red.profiles
           const investor = prof?.pj_company_name || prof?.full_name || 'Desconhecido'
           transactions.push({

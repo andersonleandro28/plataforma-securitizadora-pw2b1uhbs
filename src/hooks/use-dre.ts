@@ -51,6 +51,9 @@ const CATEGORIA_LABEL: Record<string, string> = {
   juros_entrada: 'Juros Recebidos',
   fornecedor: 'Pagamento Fornecedor',
   despesa: 'Despesa Operacional',
+  'resgate de investidor': 'Resgate de Investidor',
+  resgate_investimento: 'Resgate de Investidor',
+  'resgates e rendimentos': 'Resgate de Investidor',
 }
 
 function labelCategoria(categoria: string | null | undefined): string {
@@ -161,8 +164,10 @@ export function useDre() {
         }
         if (mov.referencia_id) {
           movsExternalRefs.add(`op-liq-${mov.referencia_id}`)
+          movsExternalRefs.add(`redemption-${mov.referencia_id}`)
           if (mov.referencia_numero) {
             movsExternalRefs.add(`op-bol-${mov.referencia_id}-${mov.referencia_numero}`)
+            movsExternalRefs.add(String(mov.referencia_numero))
           }
         }
         lancamentos.push({
