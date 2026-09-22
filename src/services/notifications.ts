@@ -36,6 +36,7 @@ export async function sendNotification({
   metadata = {},
 }: CreateNotificationParams): Promise<InAppNotification | null> {
   try {
+    // 1. Tentar inserção direta via PostgREST
     const { data, error } = await supabase
       .from('notifications')
       .insert({
@@ -49,14 +50,60 @@ export async function sendNotification({
       .select()
       .single()
 
+    if (!error && data) {
+      return data as InAppNotification
+    }
+
+    // Se houve erro de RLS/permissão (ex: 42501 ou 403) ou outro erro de inserção, acionar fallback RPC
+    const isPermissionError =
+      error?.code === '42501' ||
+      error?.message?.toLowerCase().includes('violates row-level security') ||
+      error?.message?.toLowerCase().includes('permission denied') ||
+      (error as any)?.status === 403
+
     if (error) {
-      console.error('Erro ao criar notificação:', error)
+      console.warn('Erro ao inserir notificação direta, tentando RPC send_notification_admin:', {
+        code: error.code,
+        message: error.message,
+        isPermissionError,
+      })
+    }
+
+    // 2. Fallback via RPC SECURITY DEFINER
+    const { data: rpcData, error: rpcError } = await (supabase.rpc as any)(
+      'send_notification_admin',
+      {
+        p_user_id: userId,
+        p_title: title,
+        p_message: message,
+        p_type: type,
+        p_link: link || null,
+        p_metadata: metadata || {},
+      },
+    )
+
+    if (rpcError) {
+      console.error('Erro no fallback RPC send_notification_admin:', rpcError)
       return null
     }
 
-    return data as InAppNotification
+    return rpcData as InAppNotification
   } catch (err) {
     console.error('Exceção ao enviar notificação:', err)
+    // Tentativa extrema de fallback no catch
+    try {
+      const { data: fallbackData } = await (supabase.rpc as any)('send_notification_admin', {
+        p_user_id: userId,
+        p_title: title,
+        p_message: message,
+        p_type: type,
+        p_link: link || null,
+        p_metadata: metadata || {},
+      })
+      if (fallbackData) return fallbackData as InAppNotification
+    } catch (fallbackErr) {
+      console.error('Falha no fallback final de notificação:', fallbackErr)
+    }
     return null
   }
 }

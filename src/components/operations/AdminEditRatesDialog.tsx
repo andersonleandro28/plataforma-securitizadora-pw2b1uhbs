@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
+import { sendNotification } from '@/services/notifications'
 import { toast } from 'sonner'
 import {
   Loader2,
@@ -217,8 +218,8 @@ export function AdminEditRatesDialog({
       // 2. Notifica tomador pelo app
       if (operation.borrower_id) {
         try {
-          await supabase.from('notifications').insert({
-            user_id: operation.borrower_id,
+          await sendNotification({
+            userId: operation.borrower_id,
             title: 'Proposta de Antecipação Atualizada',
             message: `As condições da sua antecipação (${operation.sacado} - ${formatCurrency(
               operation.face_value,
