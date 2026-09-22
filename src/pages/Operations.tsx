@@ -9,7 +9,19 @@ import {
   CheckCircle2,
   XCircle,
   PenTool,
+  Trash2,
 } from 'lucide-react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
@@ -47,6 +59,8 @@ export default function Operations() {
   const [selectedOpId, setSelectedOpId] = useState<string | null>(null)
   const [newOpOpen, setNewOpOpen] = useState(false)
   const [editingRatesOp, setEditingRatesOp] = useState<any | null>(null)
+  const [deleteTargetOp, setDeleteTargetOp] = useState<any | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   // Align permission criteria with RoleGuard and other admin screens
   const isSuperAdmin = user?.email === 'andersonleandro28@gmail.com'
@@ -108,6 +122,29 @@ export default function Operations() {
       (statusFilter === 'pago' && (op.status === 'pago' || op.status === 'liquidado'))
     return matchSearch && matchStatus
   })
+
+  const handleDeleteCancelled = async () => {
+    if (!deleteTargetOp || deleteTargetOp.status !== 'cancelado') return
+    setDeleting(true)
+    try {
+      const { error } = await (supabase.rpc as any)('delete_cancelled_credit_operation', {
+        p_operation_id: deleteTargetOp.id,
+      })
+
+      if (error) throw error
+
+      toast.success(
+        `Operação #${deleteTargetOp.id?.split('-')[0]?.toUpperCase()} (${deleteTargetOp.sacado || 'Sacado'}) excluída com sucesso.`,
+      )
+      setDeleteTargetOp(null)
+      fetchOperations()
+    } catch (err: any) {
+      console.error('Delete cancelled op error:', err)
+      toast.error(err.message || 'Erro ao excluir operação cancelada.')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   const getSignatureIcon = (status: string) => {
     switch (status) {
@@ -218,6 +255,7 @@ export default function Operations() {
                 <SelectItem value="aguardando_formalizacao">Formalizando</SelectItem>
                 <SelectItem value="pago">Pagos / Liquidados</SelectItem>
                 <SelectItem value="reprovado">Reprovados</SelectItem>
+                <SelectItem value="cancelado">Cancelados</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -253,7 +291,9 @@ export default function Operations() {
                     const calc = op.operation_calculations?.[0]
                     const isRatesEdited =
                       !!calc?.calculation_memory?.applied_params?.is_custom_admin_rate
-                    const canEditRates = op.status !== 'liquidado' && op.status !== 'pago'
+                    const canEditRates =
+                      op.status !== 'liquidado' && op.status !== 'pago' && op.status !== 'cancelado'
+                    const isCancelled = op.status === 'cancelado'
 
                     return (
                       <TableRow
@@ -306,17 +346,30 @@ export default function Operations() {
                           </div>
                         </TableCell>
                         <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                          {canEditRates && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs gap-1 border-primary/30 text-primary hover:bg-primary/10"
-                              onClick={() => setEditingRatesOp(op)}
-                              title="Alterar Taxas e Juros da Proposta"
-                            >
-                              <Percent className="w-3 h-3" /> Alterar Taxas
-                            </Button>
-                          )}
+                          <div className="flex items-center justify-end gap-1.5">
+                            {canEditRates && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs gap-1 border-primary/30 text-primary hover:bg-primary/10"
+                                onClick={() => setEditingRatesOp(op)}
+                                title="Alterar Taxas e Juros da Proposta"
+                              >
+                                <Percent className="w-3 h-3" /> Alterar Taxas
+                              </Button>
+                            )}
+                            {isCancelled && (canCreateOperation || isAdmin) && (
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                className="h-7 text-xs gap-1 bg-destructive/90 hover:bg-destructive text-destructive-foreground"
+                                onClick={() => setDeleteTargetOp(op)}
+                                title="Excluir Operação Cancelada"
+                              >
+                                <Trash2 className="w-3 h-3" /> Excluir
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     )
@@ -353,6 +406,59 @@ export default function Operations() {
           }}
         />
       )}
+
+      {/* Confirmação de exclusão rápida na linha da tabela */}
+      <AlertDialog
+        open={!!deleteTargetOp}
+        onOpenChange={(v) => {
+          if (!v && !deleting) setDeleteTargetOp(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="w-5 h-5" /> Excluir operação cancelada?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2 text-sm">
+              <span>
+                Você está prestes a excluir permanentemente a operação{' '}
+                <strong className="text-foreground">
+                  #{deleteTargetOp?.id?.split('-')[0]?.toUpperCase()}
+                </strong>{' '}
+                do sacado{' '}
+                <strong className="text-foreground">
+                  {deleteTargetOp?.sacado || 'Não informado'}
+                </strong>
+                {deleteTargetOp?.document_number ? ` (Doc: ${deleteTargetOp.document_number})` : ''}
+                .
+              </span>
+              <span className="block text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded border border-amber-200 dark:border-amber-800 text-xs">
+                Atenção: Esta ação é definitiva e removerá a operação e seus arquivos auxiliares. A
+                ação é registrada em auditoria e bloqueada caso haja histórico financeiro vinculado.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                handleDeleteCancelled()
+              }}
+              disabled={deleting}
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Excluindo...
+                </>
+              ) : (
+                'Excluir Permanentemente'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

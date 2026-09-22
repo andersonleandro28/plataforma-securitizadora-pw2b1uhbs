@@ -41,7 +41,18 @@ import {
   Calendar,
   CalendarDays,
   Percent,
+  Trash2,
 } from 'lucide-react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { getStatusBadge } from '../dashboard/BorrowerOperationsList'
 import { RiskDossier } from './RiskDossier'
 import { AdminEditRatesDialog } from './AdminEditRatesDialog'
@@ -72,6 +83,8 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
   })
 
   const [editRatesOpen, setEditRatesOpen] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (open && opId) fetchData()
@@ -318,6 +331,30 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
     }
   }
 
+  const handleDeleteCancelledOperation = async () => {
+    if (!op || op.status !== 'cancelado') return
+    setDeleting(true)
+    try {
+      const { data, error } = await (supabase.rpc as any)('delete_cancelled_credit_operation', {
+        p_operation_id: op.id,
+      })
+
+      if (error) throw error
+
+      toast.success(
+        `Operação #${op.id?.split('-')[0]?.toUpperCase()} (${op.sacado || 'Sacado'}) excluída com sucesso.`,
+      )
+      setDeleteDialogOpen(false)
+      onOpenChange(false)
+      if (onRefresh) onRefresh()
+    } catch (err: any) {
+      console.error('Delete cancelled op error:', err)
+      toast.error(err.message || 'Erro ao excluir operação cancelada.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const handleSaveDates = async () => {
     setActionLoading(true)
     try {
@@ -414,7 +451,12 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                   size="sm"
                   className="bg-emerald-600 hover:bg-emerald-700 text-white"
                   onClick={() => handleStatusChange('aprovado')}
-                  disabled={actionLoading || op.status === 'aprovado' || op.status === 'pago'}
+                  disabled={
+                    actionLoading ||
+                    op.status === 'aprovado' ||
+                    op.status === 'pago' ||
+                    op.status === 'cancelado'
+                  }
                 >
                   <CheckCircle2 className="w-4 h-4 mr-2" /> Aprovar
                 </Button>
@@ -422,7 +464,7 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                   size="sm"
                   variant="destructive"
                   onClick={() => handleStatusChange('reprovado')}
-                  disabled={actionLoading || op.status === 'reprovado'}
+                  disabled={actionLoading || op.status === 'reprovado' || op.status === 'cancelado'}
                 >
                   <XCircle className="w-4 h-4 mr-2" /> Reprovar
                 </Button>
@@ -430,7 +472,11 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                   size="sm"
                   className="bg-amber-500 hover:bg-amber-600 text-white"
                   onClick={() => handleStatusChange('pendencia_documental')}
-                  disabled={actionLoading || op.status === 'pendencia_documental'}
+                  disabled={
+                    actionLoading ||
+                    op.status === 'pendencia_documental' ||
+                    op.status === 'cancelado'
+                  }
                 >
                   <AlertCircle className="w-4 h-4 mr-2" /> Solicitar Documento
                 </Button>
@@ -440,7 +486,12 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                   variant="outline"
                   className="bg-primary/5 border-primary/30 text-primary hover:bg-primary/10"
                   onClick={() => setEditRatesOpen(true)}
-                  disabled={actionLoading || op.status === 'liquidado' || op.status === 'pago'}
+                  disabled={
+                    actionLoading ||
+                    op.status === 'liquidado' ||
+                    op.status === 'pago' ||
+                    op.status === 'cancelado'
+                  }
                 >
                   <Percent className="w-4 h-4 mr-2" /> Editar Taxas &amp; Juros
                 </Button>
@@ -453,6 +504,19 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                 >
                   <CalendarDays className="w-4 h-4 mr-2" /> Editar Datas
                 </Button>
+
+                {/* Ação Destrutiva: Excluir Operação Cancelada */}
+                {op.status === 'cancelado' && (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="bg-destructive/90 hover:bg-destructive text-destructive-foreground gap-1.5"
+                    onClick={() => setDeleteDialogOpen(true)}
+                    disabled={actionLoading || deleting}
+                  >
+                    <Trash2 className="w-4 h-4" /> Excluir Cancelada
+                  </Button>
+                )}
 
                 {/* Formalização Digital */}
                 {(op.status === 'aprovado' || op.status === 'aguardando_formalizacao') && (
@@ -1099,6 +1163,50 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
           if (onRefresh) onRefresh()
         }}
       />
+
+      {/* Confirmação Obrigatória de Exclusão de Operação Cancelada */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="w-5 h-5" /> Excluir operação cancelada?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2 text-sm">
+              <span>
+                Você está prestes a excluir permanentemente a operação{' '}
+                <strong className="text-foreground">#{op?.id?.split('-')[0]?.toUpperCase()}</strong>{' '}
+                do sacado{' '}
+                <strong className="text-foreground">{op?.sacado || 'Não informado'}</strong>
+                {op?.document_number ? ` (Doc: ${op.document_number})` : ''}.
+              </span>
+              <span className="block text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded border border-amber-200 dark:border-amber-800 text-xs">
+                Atenção: Esta ação é irreversível. O sistema verificará se não há lançamentos
+                contábeis (Tesouraria/Livro Caixa) vinculados e registrará a exclusão na trilha de
+                auditoria.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                handleDeleteCancelledOperation()
+              }}
+              disabled={deleting}
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Excluindo...
+                </>
+              ) : (
+                'Excluir Permanentemente'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }
