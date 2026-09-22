@@ -141,7 +141,7 @@ export default function AdminCcbRequests() {
 
   const fetchData = async () => {
     setLoading(true)
-    const [{ data: reqs }, { data: ops }, { data: cfg }] = await Promise.all([
+    const [{ data: reqs }, { data: ops }, { data: cfg }, { data: recs }] = await Promise.all([
       supabase
         .from('ccb_solicitacoes')
         .select('*, profiles(full_name, email)')
@@ -152,9 +152,78 @@ export default function AdminCcbRequests() {
         .select('*, ccb_solicitacoes(*, profiles(full_name, document_number))')
         .order('created_at', { ascending: false }),
       supabase.from('config_ccb').select('*').single(),
+      supabase.from('recebiveis_ccb').select('*'),
     ])
     if (reqs) setRequests(reqs)
-    if (ops) setActiveOps(ops)
+    if (ops) {
+      // Priorizar a verdade de recebiveis_ccb (boletos) sobre installments de operacoes_antecipacao
+      const recMap = new Map<string, any>()
+      ;(recs || []).forEach((r: any) => {
+        if (r.ccb_id) recMap.set(r.ccb_id, r)
+      })
+
+      const synchronizedOps = ops.map((op: any) => {
+        const matchingRec = recMap.get(op.ccb_id)
+        if (
+          !matchingRec ||
+          !Array.isArray(matchingRec.boletos) ||
+          matchingRec.boletos.length === 0
+        ) {
+          return op
+        }
+
+        // Casar parcela N da cópia com boleto N (pela ordem/índice), priorizando data real e status do boleto
+        const boletos = matchingRec.boletos
+        const baseInsts = Array.isArray(op.installments) ? op.installments : []
+
+        const unifiedInstallments = boletos.map((b: any, idx: number) => {
+          const oldInst = baseInsts[idx] || {}
+          const isPaid =
+            String(b.status || '').toLowerCase() === 'pago' ||
+            String(b.status || '').toLowerCase() === 'liquidado'
+          const isExtended = String(b.status || '')
+            .toLowerCase()
+            .includes('prorrog')
+          const isOverdue = String(b.status || '')
+            .toLowerCase()
+            .includes('vencid')
+
+          let status = 'aberta'
+          if (isPaid) status = 'paga'
+          else if (isExtended) status = 'prorrogada'
+          else if (isOverdue) status = 'vencida'
+
+          return {
+            ...oldInst,
+            id: oldInst.id || `inst-${matchingRec.id}-${idx}`,
+            number: idx + 1,
+            due_date: b.due_date || oldInst.due_date,
+            value: Number(b.unit_value ?? oldInst.value ?? 0),
+            status,
+            payment_date: isPaid
+              ? b.payment_date || b.data_pagamento || oldInst.payment_date
+              : undefined,
+            data_pagamento: isPaid
+              ? b.data_pagamento || b.payment_date || oldInst.data_pagamento
+              : undefined,
+            interest_applied: Number(b.interest_applied ?? oldInst.interest_applied ?? 0),
+            penalty_applied: Number(b.penalty_applied ?? oldInst.penalty_applied ?? 0),
+            file_url: b.file_url || oldInst.file_url,
+            receipt_url: oldInst.receipt_url,
+            _recebivel_id: matchingRec.id,
+            _boleto_idx: idx,
+          }
+        })
+
+        return {
+          ...op,
+          _recebivel_id: matchingRec.id,
+          installments: unifiedInstallments,
+        }
+      })
+
+      setActiveOps(synchronizedOps)
+    }
     if (cfg) setCcbConfig(cfg)
     setLoading(false)
   }
@@ -162,10 +231,20 @@ export default function AdminCcbRequests() {
   useEffect(() => {
     fetchData()
 
-    // Subscrição em tempo real para novas solicitações e atualizações em ccb_solicitacoes
+    // Subscrição em tempo real para solicitações, operacoes e recebíveis
     const channel = supabase
       .channel('ccb_solicitacoes_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ccb_solicitacoes' }, () => {
+        fetchData()
+      })
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'operacoes_antecipacao' },
+        () => {
+          fetchData()
+        },
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'recebiveis_ccb' }, () => {
         fetchData()
       })
       .subscribe()
@@ -290,67 +369,57 @@ export default function AdminCcbRequests() {
       } = await supabase.auth.getUser()
       if (!user) throw new Error('Não autenticado')
 
-      const { data: mapped } = await supabase
-        .from('mapeamento_movimentacoes')
-        .select('id')
-        .eq('origem_tabela', 'ccb')
-        .eq('origem_id', installment.id)
-        .maybeSingle()
-
-      if (mapped) {
-        toast.error('Esta operação já foi registrada no caixa')
-        setPayLoading(false)
-        return
-      }
-
       const opToUpdate = activeOps.find((o) => o.id === opId)
       if (!opToUpdate) throw new Error('Operação não encontrada')
 
-      const updatedInstallments = opToUpdate.installments.map((i: any) => {
-        if (i.id === installment.id) {
-          return { ...i, status: 'paga', payment_date: new Date().toISOString() }
-        }
-        return i
-      })
+      const todayStr = new Date().toISOString().split('T')[0]
 
-      const { error: updErr } = await supabase
-        .from('operacoes_antecipacao')
-        .update({ installments: updatedInstallments })
-        .eq('id', opId)
+      // Se houver recebivel vinculado, atualiza a fonte da verdade em recebiveis_ccb (o trigger espelhará e gerará tesouraria)
+      if (installment._recebivel_id && installment._boleto_idx !== undefined) {
+        const { data: recData, error: recFetchErr } = await supabase
+          .from('recebiveis_ccb')
+          .select('boletos')
+          .eq('id', installment._recebivel_id)
+          .single()
 
-      if (updErr) throw updErr
+        if (recFetchErr) throw recFetchErr
 
-      const { data: mov, error: movErr } = await supabase
-        .from('movimentacoes_caixa')
-        .insert({
-          tipo: 'entrada',
-          categoria: 'pagamento_ccb',
-          descricao: `Pagamento de parcela — ${opToUpdate.ccb_solicitacoes?.profiles?.full_name} — Parcela ${installment.number}`,
-          valor: Number(installment.value),
-          saldo_anterior: 0,
-          saldo_novo: 0,
-          referencia_id: opToUpdate.ccb_id,
-          referencia_tipo: 'ccb',
-          referencia_numero: opToUpdate.ccb_id?.split('-')[0]?.toUpperCase(),
-          user_id: user.id,
+        const boletos: any[] = Array.isArray(recData?.boletos) ? [...recData.boletos] : []
+        const targetBoleto = (boletos[installment._boleto_idx] || {}) as any
+        targetBoleto.status = 'Pago'
+        targetBoleto.payment_date = todayStr
+        targetBoleto.data_pagamento = todayStr
+        boletos[installment._boleto_idx] = targetBoleto
+
+        const { error: updRecErr } = await supabase
+          .from('recebiveis_ccb')
+          .update({ boletos })
+          .eq('id', installment._recebivel_id)
+
+        if (updRecErr) throw updRecErr
+      } else {
+        // Fallback: CCB puramente em operacoes_antecipacao sem recebivel
+        const updatedInstallments = opToUpdate.installments.map((i: any) => {
+          if (i.id === installment.id) {
+            return { ...i, status: 'paga', payment_date: todayStr, data_pagamento: todayStr }
+          }
+          return i
         })
-        .select()
-        .single()
 
-      if (movErr) throw movErr
+        const { error: updErr } = await supabase
+          .from('operacoes_antecipacao')
+          .update({ installments: updatedInstallments })
+          .eq('id', opId)
 
-      await supabase.from('mapeamento_movimentacoes').insert({
-        movimentacao_caixa_id: mov.id,
-        origem_tabela: 'ccb',
-        origem_id: installment.id,
-        sincronizado: true,
-        user_id: user.id,
-      })
+        if (updErr) throw updErr
+      }
 
-      toast.success('Pagamento de parcela registrado no caixa')
-
-      setManageOp({ ...manageOp, installments: updatedInstallments })
-      fetchData()
+      toast.success('Pagamento de parcela registrado com sucesso!')
+      await fetchData()
+      if (manageOp && manageOp.id === opId) {
+        const refreshed = activeOps.find((o) => o.id === opId)
+        if (refreshed) setManageOp(refreshed)
+      }
     } catch (err: any) {
       toast.error('Erro: ' + err.message)
     } finally {
@@ -361,7 +430,7 @@ export default function AdminCcbRequests() {
   const handleRevertAnticipationInstallment = async (opId: string, installment: any) => {
     if (
       !confirm(
-        `Deseja realmente reverter a baixa da Parcela ${installment.number}? O lançamento correspondente será estornado do caixa.`,
+        `Deseja realmente reverter a baixa da Parcela ${installment.number}? O lançamento correspondente será estornado do caixa e DRE.`,
       )
     ) {
       return
@@ -372,30 +441,39 @@ export default function AdminCcbRequests() {
       const opToUpdate = activeOps.find((o) => o.id === opId)
       if (!opToUpdate) throw new Error('Operação não encontrada')
 
-      const updatedInstallments = opToUpdate.installments.map((i: any) => {
-        if (i.id === installment.id) {
-          const { payment_date, ...rest } = i
-          return { ...rest, status: 'aberta' }
-        }
-        return i
-      })
+      // Se houver recebivel vinculado, utiliza a RPC oficial de reversão atômica de CCB
+      if (installment._recebivel_id && installment._boleto_idx !== undefined) {
+        const { error: rpcErr } = await supabase.rpc('revert_ccb_installment_liquidation', {
+          p_recebivel_id: installment._recebivel_id,
+          p_installment_idx: installment._boleto_idx,
+        })
 
-      // Atualiza a tabela operacoes_antecipacao (o trigger on_operacoes_antecipacao_change remove de treasury_transactions)
-      const { error: updErr } = await supabase
-        .from('operacoes_antecipacao')
-        .update({ installments: updatedInstallments })
-        .eq('id', opId)
+        if (rpcErr) throw rpcErr
+      } else {
+        // Fallback: CCB puramente em operacoes_antecipacao
+        const updatedInstallments = opToUpdate.installments.map((i: any) => {
+          if (i.id === installment.id) {
+            const { payment_date, data_pagamento, ...rest } = i
+            return { ...rest, status: 'aberta' }
+          }
+          return i
+        })
 
-      if (updErr) throw updErr
+        const { error: updErr } = await supabase
+          .from('operacoes_antecipacao')
+          .update({ installments: updatedInstallments })
+          .eq('id', opId)
 
-      // 1. Remover mapeamento de caixa
+        if (updErr) throw updErr
+      }
+
+      // Remover mapeamentos e movimentações de caixa se existirem
       await supabase
         .from('mapeamento_movimentacoes')
         .delete()
         .eq('origem_tabela', 'ccb')
         .eq('origem_id', installment.id)
 
-      // 2. Remover movimentação de caixa correspondente
       await supabase
         .from('movimentacoes_caixa')
         .delete()
@@ -405,8 +483,11 @@ export default function AdminCcbRequests() {
 
       toast.success(`Baixa da Parcela ${installment.number} revertida com sucesso!`)
 
-      setManageOp({ ...manageOp, installments: updatedInstallments })
-      fetchData()
+      await fetchData()
+      if (manageOp && manageOp.id === opId) {
+        const refreshed = activeOps.find((o) => o.id === opId)
+        if (refreshed) setManageOp(refreshed)
+      }
     } catch (err: any) {
       toast.error('Erro ao reverter baixa: ' + err.message)
     } finally {
@@ -634,8 +715,13 @@ export default function AdminCcbRequests() {
                       <TableCell>{op.ccb_solicitacoes?.profiles?.full_name}</TableCell>
                       <TableCell>R$ {Number(op.net_value).toLocaleString('pt-BR')}</TableCell>
                       <TableCell>
-                        <Button size="sm" onClick={() => setManageOp(op)}>
-                          Parcelas
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            setManageOp(op)
+                          }}
+                        >
+                          Parcelas ({op.installments?.length || 0})
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -932,8 +1018,31 @@ export default function AdminCcbRequests() {
                     <TableCell>{new Date(inst.due_date).toLocaleDateString('pt-BR')}</TableCell>
                     <TableCell>R$ {Number(inst.value).toLocaleString('pt-BR')}</TableCell>
                     <TableCell>
-                      <Badge variant={inst.status === 'paga' ? 'default' : 'outline'}>
-                        {inst.status}
+                      <Badge
+                        variant={
+                          inst.status === 'paga'
+                            ? 'default'
+                            : inst.status === 'prorrogada'
+                              ? 'secondary'
+                              : inst.status === 'vencida'
+                                ? 'destructive'
+                                : 'outline'
+                        }
+                        className={
+                          inst.status === 'paga'
+                            ? 'bg-emerald-600 text-white'
+                            : inst.status === 'prorrogada'
+                              ? 'bg-blue-600 text-white'
+                              : ''
+                        }
+                      >
+                        {inst.status === 'paga'
+                          ? 'Pago'
+                          : inst.status === 'prorrogada'
+                            ? 'Prorrogada'
+                            : inst.status === 'vencida'
+                              ? 'Vencida'
+                              : 'Em Aberto'}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">

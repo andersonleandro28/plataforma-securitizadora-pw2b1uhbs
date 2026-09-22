@@ -516,7 +516,9 @@ export default function CcbPurchases() {
             <TableBody>
               {purchases.map((p) => (
                 <TableRow key={p.id}>
-                  <TableCell className="pl-4">{formatDate(p.created_at)}</TableCell>
+                  <TableCell className="pl-4">
+                    {p.created_at ? formatDate(p.created_at) : '-'}
+                  </TableCell>
                   <TableCell className="font-medium">
                     {p.ccb_solicitacoes?.profiles?.full_name ||
                       p.ccb_solicitacoes?.profiles?.pj_company_name ||

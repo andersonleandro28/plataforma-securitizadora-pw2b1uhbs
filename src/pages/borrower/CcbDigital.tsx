@@ -46,7 +46,7 @@ export default function CcbDigital() {
 
   const fetchData = async () => {
     if (!user) return
-    const [{ data: reqs }, { data: ops }] = await Promise.all([
+    const [{ data: reqs }, { data: ops }, { data: recs }] = await Promise.all([
       supabase
         .from('ccb_solicitacoes')
         .select('*')
@@ -58,13 +58,96 @@ export default function CcbDigital() {
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false }),
+      supabase.from('recebiveis_ccb').select('*'),
     ])
     if (reqs) setRequests(reqs)
-    if (ops) setActiveOps(ops)
+    if (ops) {
+      const recMap = new Map<string, any>()
+      ;(recs || []).forEach((r: any) => {
+        if (r.ccb_id) recMap.set(r.ccb_id, r)
+      })
+
+      const synchronizedOps = ops.map((op: any) => {
+        const matchingRec = recMap.get(op.ccb_id)
+        if (
+          !matchingRec ||
+          !Array.isArray(matchingRec.boletos) ||
+          matchingRec.boletos.length === 0
+        ) {
+          return op
+        }
+
+        const boletos = matchingRec.boletos
+        const baseInsts = Array.isArray(op.installments) ? op.installments : []
+
+        const unifiedInstallments = boletos.map((b: any, idx: number) => {
+          const oldInst = baseInsts[idx] || {}
+          const isPaid =
+            String(b.status || '').toLowerCase() === 'pago' ||
+            String(b.status || '').toLowerCase() === 'liquidado'
+          const isExtended = String(b.status || '')
+            .toLowerCase()
+            .includes('prorrog')
+          const isOverdue = String(b.status || '')
+            .toLowerCase()
+            .includes('vencid')
+
+          let status = 'aberta'
+          if (isPaid) status = 'paga'
+          else if (isExtended) status = 'prorrogada'
+          else if (isOverdue) status = 'vencida'
+
+          return {
+            ...oldInst,
+            id: oldInst.id || `inst-${matchingRec.id}-${idx}`,
+            number: idx + 1,
+            due_date: b.due_date || oldInst.due_date,
+            value: Number(b.unit_value ?? oldInst.value ?? 0),
+            status,
+            payment_date: isPaid
+              ? b.payment_date || b.data_pagamento || oldInst.payment_date
+              : undefined,
+            data_pagamento: isPaid
+              ? b.data_pagamento || b.payment_date || oldInst.data_pagamento
+              : undefined,
+            boleto_url: b.file_url || oldInst.boleto_url,
+            receipt_url: oldInst.receipt_url,
+          }
+        })
+
+        return {
+          ...op,
+          installments: unifiedInstallments,
+        }
+      })
+
+      setActiveOps(synchronizedOps)
+    }
   }
 
   useEffect(() => {
     fetchData()
+
+    const channel = supabase
+      .channel('ccb_borrower_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ccb_solicitacoes' }, () => {
+        fetchData()
+      })
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'operacoes_antecipacao' },
+        () => {
+          fetchData()
+        },
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'recebiveis_ccb' }, () => {
+        fetchData()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [user])
 
   const getStatusBadge = (status: string) => {
@@ -342,23 +425,33 @@ export default function CcbDigital() {
                                     variant={
                                       inst.status === 'paga'
                                         ? 'default'
-                                        : inst.status === 'pendente_analise'
+                                        : inst.status === 'prorrogada'
                                           ? 'secondary'
-                                          : 'outline'
+                                          : inst.status === 'vencida'
+                                            ? 'destructive'
+                                            : inst.status === 'pendente_analise'
+                                              ? 'secondary'
+                                              : 'outline'
                                     }
                                     className={
                                       inst.status === 'paga'
                                         ? 'bg-emerald-500'
-                                        : inst.status === 'pendente_analise'
-                                          ? 'bg-amber-500'
-                                          : ''
+                                        : inst.status === 'prorrogada'
+                                          ? 'bg-blue-500 text-white'
+                                          : inst.status === 'pendente_analise'
+                                            ? 'bg-amber-500'
+                                            : ''
                                     }
                                   >
                                     {inst.status === 'paga'
                                       ? 'Mês Quitado'
-                                      : inst.status === 'pendente_analise'
-                                        ? 'Em Análise'
-                                        : 'Em Aberto'}
+                                      : inst.status === 'prorrogada'
+                                        ? 'Prorrogada'
+                                        : inst.status === 'vencida'
+                                          ? 'Vencida'
+                                          : inst.status === 'pendente_analise'
+                                            ? 'Em Análise'
+                                            : 'Em Aberto'}
                                   </Badge>
                                 </div>
                                 <p className="text-sm text-muted-foreground">
