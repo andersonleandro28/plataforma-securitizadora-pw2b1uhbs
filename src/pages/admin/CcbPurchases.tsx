@@ -216,12 +216,14 @@ export default function CcbPurchases() {
       if (mappedCheck) {
         return toast.error('Esta operação já foi registrada no caixa')
       }
-      const { data: saldo } = await (supabase as any)
-        .from('saldo_caixa')
-        .select('saldo_atual')
-        .limit(1)
-        .maybeSingle()
-      if ((saldo?.saldo_atual || 0) < acq) {
+      const { data: movs } = await supabase.from('movimentacoes_caixa').select('tipo, valor')
+      const saldoAtual = (movs || []).reduce((acc, m) => {
+        const v = Number(m.valor) || 0
+        return (m.tipo || '').toLowerCase() === 'saída' || (m.tipo || '').toLowerCase() === 'saida'
+          ? acc - v
+          : acc + v
+      }, 0)
+      if (saldoAtual < acq) {
         return toast.error('Saldo insuficiente para esta aquisição')
       }
     }

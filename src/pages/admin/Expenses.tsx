@@ -227,12 +227,14 @@ export default function Expenses() {
       return false
     }
 
-    const { data: saldo } = await (supabase as any)
-      .from('saldo_caixa')
-      .select('saldo_atual')
-      .limit(1)
-      .maybeSingle()
-    if ((saldo?.saldo_atual || 0) < Number(expense.amount)) {
+    const { data: movs } = await supabase.from('movimentacoes_caixa').select('tipo, valor')
+    const saldoAtual = (movs || []).reduce((acc, m) => {
+      const v = Number(m.valor) || 0
+      return (m.tipo || '').toLowerCase() === 'saída' || (m.tipo || '').toLowerCase() === 'saida'
+        ? acc - v
+        : acc + v
+    }, 0)
+    if (saldoAtual < Number(expense.amount)) {
       toast.error('Saldo insuficiente para este pagamento')
       return false
     }
@@ -282,12 +284,14 @@ export default function Expenses() {
 
   const handleSaveExpense = async () => {
     if (expForm.status === 'paid' && !expForm.id) {
-      const { data: saldo } = await (supabase as any)
-        .from('saldo_caixa')
-        .select('saldo_atual')
-        .limit(1)
-        .maybeSingle()
-      if ((saldo?.saldo_atual || 0) < Number(expForm.amount)) {
+      const { data: movs } = await supabase.from('movimentacoes_caixa').select('tipo, valor')
+      const saldoAtual = (movs || []).reduce((acc, m) => {
+        const v = Number(m.valor) || 0
+        return (m.tipo || '').toLowerCase() === 'saída' || (m.tipo || '').toLowerCase() === 'saida'
+          ? acc - v
+          : acc + v
+      }, 0)
+      if (saldoAtual < Number(expForm.amount)) {
         return toast.error('Saldo insuficiente para esta despesa')
       }
     }
@@ -374,12 +378,14 @@ export default function Expenses() {
     const expense = expenses.find((e) => e.id === id)
     if (!expense) return
 
-    const { data: saldo } = await (supabase as any)
-      .from('saldo_caixa')
-      .select('saldo_atual')
-      .limit(1)
-      .maybeSingle()
-    if ((saldo?.saldo_atual || 0) < expense.amount) {
+    const { data: movs } = await supabase.from('movimentacoes_caixa').select('tipo, valor')
+    const saldoAtual = (movs || []).reduce((acc, m) => {
+      const v = Number(m.valor) || 0
+      return (m.tipo || '').toLowerCase() === 'saída' || (m.tipo || '').toLowerCase() === 'saida'
+        ? acc - v
+        : acc + v
+    }, 0)
+    if (saldoAtual < expense.amount) {
       return toast.error('Saldo insuficiente para este pagamento')
     }
 
