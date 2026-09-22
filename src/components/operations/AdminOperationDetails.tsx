@@ -28,6 +28,7 @@ import { Label } from '@/components/ui/label'
 import { supabase } from '@/lib/supabase/client'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
+import { CompanyBankAccountSelect } from '@/components/admin/CompanyBankAccountSelect'
 import {
   Loader2,
   Download,
@@ -85,6 +86,13 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
   const [editRatesOpen, setEditRatesOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+
+  // Modal de Liquidação / Baixa da Mesa
+  const [liquidationDialogOpen, setLiquidationDialogOpen] = useState(false)
+  const [liquidationDate, setLiquidationDate] = useState(new Date().toISOString().split('T')[0])
+  const [liquidationAmount, setLiquidationAmount] = useState('')
+  const [liquidationBankAccountId, setLiquidationBankAccountId] = useState('')
+  const [liquidationNotes, setLiquidationNotes] = useState('')
 
   useEffect(() => {
     if (open && opId) fetchData()
@@ -207,48 +215,67 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
     }
   }
 
-  const handleStatusChange = async (newStatus: string) => {
+  const handleOpenLiquidationDialog = () => {
+    const defaultDate =
+      datesForm.liquidation_date || op.liquidation_date || new Date().toISOString().split('T')[0]
+    const defaultVal =
+      op.liquidation_value || op.face_value || calc?.net_value || op.requested_value || 0
+
+    setLiquidationDate(defaultDate)
+    setLiquidationAmount(String(defaultVal))
+    setLiquidationNotes('Baixa integral executada na Mesa de Operações')
+    setLiquidationBankAccountId('')
+    setLiquidationDialogOpen(true)
+  }
+
+  const handleConfirmFullLiquidation = async () => {
     setActionLoading(true)
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) throw new Error('Não autenticado')
 
-    if (newStatus === 'liquidado' && op.status !== 'liquidado') {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-        if (!user) throw new Error('Não autenticado')
+      const effectivePaymentDate = liquidationDate || new Date().toISOString().split('T')[0]
+      const effectiveAmount = Number(liquidationAmount) || 0
 
-        const effectivePaymentDate =
-          datesForm.liquidation_date ||
-          op.liquidation_date ||
-          new Date().toISOString().split('T')[0]
-        const effectiveAmount =
-          op.liquidation_value || op.face_value || calc?.net_value || op.requested_value || 0
-
-        // Chama a RPC atômica que sincroniza credit_operations, treasury_transactions,
-        // movimentacoes_caixa, mapeamento_movimentacoes e audit_logs de forma idempotente
-        const { error: rpcErr } = await (supabase.rpc as any)('liquidate_credit_operation_full', {
-          p_operation_id: op.id,
-          p_payment_date: effectivePaymentDate,
-          p_amount_paid: effectiveAmount,
-          p_notes: 'Baixa integral executada na Mesa de Operações',
-        })
-
-        if (rpcErr) throw rpcErr
-
-        toast.success(
-          `Operação liquidada com sucesso! Lançamento de R$ ${Number(effectiveAmount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} registrado na Contabilidade (Livro Caixa) e DRE.`,
-        )
-        fetchData()
-        if (onRefresh) onRefresh()
-        setActionLoading(false)
-        return
-      } catch (err: any) {
-        console.error(err)
-        toast.error('Erro ao liquidar operação no caixa/DRE: ' + err.message)
+      if (effectiveAmount <= 0) {
+        toast.error('Informe um valor válido para a liquidação.')
         setActionLoading(false)
         return
       }
+
+      const { error: rpcErr } = await (supabase.rpc as any)('liquidate_credit_operation_full', {
+        p_operation_id: op.id,
+        p_payment_date: effectivePaymentDate,
+        p_amount_paid: effectiveAmount,
+        p_notes: liquidationNotes || 'Baixa integral executada na Mesa de Operações',
+        p_bank_account_id: liquidationBankAccountId || null,
+      })
+
+      if (rpcErr) throw rpcErr
+
+      toast.success(
+        `Operação liquidada com sucesso! Lançamento de R$ ${Number(effectiveAmount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} registrado na Contabilidade (Livro Caixa) e DRE.`,
+      )
+      setLiquidationDialogOpen(false)
+      fetchData()
+      if (onRefresh) onRefresh()
+    } catch (err: any) {
+      console.error(err)
+      toast.error('Erro ao liquidar operação no caixa/DRE: ' + err.message)
+    } finally {
+      setActionLoading(false)
     }
+  }
+
+  const handleStatusChange = async (newStatus: string) => {
+    if (newStatus === 'liquidado' && op.status !== 'liquidado') {
+      handleOpenLiquidationDialog()
+      return
+    }
+
+    setActionLoading(true)
 
     // Reversão de liquidação: ao sair do status "liquidado" para qualquer outro,
     // estorna os registros de tesouraria, caixa e mapeamento de forma segura
@@ -559,7 +586,7 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                   <Button
                     size="sm"
                     className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
-                    onClick={() => handleStatusChange('liquidado')}
+                    onClick={() => handleOpenLiquidationDialog()}
                     disabled={actionLoading || op.status === 'liquidado'}
                   >
                     <CheckCircle2 className="w-4 h-4 mr-2" /> Baixar / Liquidar
@@ -1147,6 +1174,84 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
             <Button onClick={handleSaveDates} disabled={actionLoading}>
               {actionLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Salvar Datas
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Baixa / Liquidação Total da Mesa de Operações */}
+      <Dialog open={liquidationDialogOpen} onOpenChange={setLiquidationDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-emerald-600">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              Baixar e Liquidar Operação
+            </DialogTitle>
+            <DialogDescription>
+              A baixa total atualiza o status para Liquidado, liberando o limite de crédito do
+              tomador e gerando o recebimento na Tesouraria e Livro Caixa.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="liq_op_date">Data da Liquidação / Recebimento</Label>
+              <Input
+                id="liq_op_date"
+                type="date"
+                value={liquidationDate}
+                onChange={(e) => setLiquidationDate(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="liq_op_amount">Valor Recebido (R$)</Label>
+              <Input
+                id="liq_op_amount"
+                type="number"
+                step="0.01"
+                value={liquidationAmount}
+                onChange={(e) => setLiquidationAmount(e.target.value)}
+              />
+            </div>
+
+            <CompanyBankAccountSelect
+              value={liquidationBankAccountId}
+              onChange={setLiquidationBankAccountId}
+              label="Conta Bancária de Recebimento"
+              required
+            />
+
+            <div className="space-y-2">
+              <Label htmlFor="liq_op_notes">Observações</Label>
+              <Input
+                id="liq_op_notes"
+                placeholder="Ex.: Recebido via PIX mesa"
+                value={liquidationNotes}
+                onChange={(e) => setLiquidationNotes(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setLiquidationDialogOpen(false)}
+              disabled={actionLoading}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleConfirmFullLiquidation}
+              disabled={actionLoading}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
+            >
+              {actionLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4" />
+              )}
+              Confirmar Liquidação
             </Button>
           </DialogFooter>
         </DialogContent>

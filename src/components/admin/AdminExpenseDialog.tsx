@@ -20,6 +20,7 @@ import { Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { toast } from 'sonner'
+import { CompanyBankAccountSelect } from '@/components/admin/CompanyBankAccountSelect'
 
 const CATEGORIAS = [
   'Tarifa Bancária',
@@ -55,12 +56,14 @@ export function AdminExpenseDialog({
   const [valor, setValor] = useState('')
   const [data, setData] = useState(todayISO())
   const [categoria, setCategoria] = useState('')
+  const [bankAccountId, setBankAccountId] = useState('')
 
   const resetForm = () => {
     setDescricao('')
     setValor('')
     setData(todayISO())
     setCategoria('')
+    setBankAccountId('')
   }
 
   const handleClose = (v: boolean) => {
@@ -71,6 +74,11 @@ export function AdminExpenseDialog({
   const handleSave = async () => {
     if (!descricao.trim() || !valor || !data || !categoria) {
       toast.error('Preencha todos os campos.')
+      return
+    }
+
+    if (!bankAccountId) {
+      toast.error('Selecione a conta bancária da movimentação.')
       return
     }
 
@@ -91,6 +99,7 @@ export function AdminExpenseDialog({
       type: 'despesa_administrativa',
       status: 'paid',
       created_by: user?.id ?? null,
+      bank_account_id: bankAccountId,
     }
 
     const { error } = await supabase.from('expenses').insert(payload)
@@ -154,6 +163,12 @@ export function AdminExpenseDialog({
               </SelectContent>
             </Select>
           </div>
+          <CompanyBankAccountSelect
+            value={bankAccountId}
+            onChange={setBankAccountId}
+            label="Conta Bancária de Saída"
+            required
+          />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => handleClose(false)}>

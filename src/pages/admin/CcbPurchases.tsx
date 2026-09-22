@@ -29,6 +29,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { toast } from 'sonner'
+import { CompanyBankAccountSelect } from '@/components/admin/CompanyBankAccountSelect'
 import {
   Plus,
   Trash2,
@@ -67,6 +68,7 @@ export default function CcbPurchases() {
     payment_date: '',
     interest: '',
     penalty: '',
+    bank_account_id: '',
   })
 
   // Reversão de baixa de parcela
@@ -854,6 +856,15 @@ export default function CcbPurchases() {
                 }
               />
             </div>
+
+            <CompanyBankAccountSelect
+              value={liquidationForm.bank_account_id}
+              onChange={(accId) =>
+                setLiquidationForm((prev) => ({ ...prev, bank_account_id: accId }))
+              }
+              label="Conta Bancária de Recebimento"
+              required
+            />
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Juros Cobrados (R$)</Label>
@@ -910,6 +921,9 @@ export default function CcbPurchases() {
                 b.data_pagamento = effectivePaymentDate
                 b.interest_applied = Number(liquidationForm.interest || 0)
                 b.penalty_applied = Number(liquidationForm.penalty || 0)
+                if (liquidationForm.bank_account_id) {
+                  b.bank_account_id = liquidationForm.bank_account_id
+                }
 
                 const { error } = await supabase
                   .from('recebiveis_ccb')

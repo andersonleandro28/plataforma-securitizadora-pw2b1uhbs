@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import { CompanyBankAccountSelect } from '@/components/admin/CompanyBankAccountSelect'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -111,13 +112,13 @@ export function InstallmentReceivables() {
   const [liquidationOpen, setLiquidationOpen] = useState(false)
   const [activeInstallmentIdx, setActiveInstallmentIdx] = useState<number | null>(null)
   const [liquidationForm, setLiquidationForm] = useState({
-    payment_date: new Date().toISOString().split('T')[0],
+    payment_date: '',
     amount: '',
     interest: '0',
     penalty: '0',
     notes: '',
-  })
-  const [actionLoading, setActionLoading] = useState(false)
+    bank_account_id: '',
+  })  const [actionLoading, setActionLoading] = useState(false)
 
   // Prorrogação
   const [extensionOpen, setExtensionOpen] = useState(false)
@@ -617,15 +618,15 @@ export function InstallmentReceivables() {
     }
 
     setLiquidationForm({
-      payment_date: todayStr,
-      amount: String(baseAmount),
-      interest: String(suggestedInterest),
-      penalty: String(suggestedPenalty),
-      notes: instVals.isExtended
+      payment_date: new Date().toISOString().split('T')[0],
+      amount: String(instVals.originalValue),
+      interest: String(instVals.extensionInterest),
+      penalty: String(instVals.extensionPenalty),
+      notes: isProrrogada
         ? `Liquidação de parcela prorrogada (Nominal R$ ${instVals.originalValue.toFixed(2)} + Juros Prorr. R$ ${instVals.extensionInterest.toFixed(2)}${instVals.extensionPenalty > 0 ? ` + Multa R$ ${instVals.extensionPenalty.toFixed(2)}` : ''})`
         : '',
+      bank_account_id: (inst as any).bank_account_id || '',
     })
-
     setLiquidationOpen(true)
   }
 
@@ -650,6 +651,7 @@ export function InstallmentReceivables() {
           p_interest_applied: Number(liquidationForm.interest || 0),
           p_penalty_applied: Number(liquidationForm.penalty || 0),
           p_notes: liquidationForm.notes || null,
+          p_bank_account_id: liquidationForm.bank_account_id || null,
         },
       )
 
@@ -1609,6 +1611,13 @@ export function InstallmentReceivables() {
                 rows={2}
               />
             </div>
+
+            <CompanyBankAccountSelect
+              value={liquidationForm.bank_account_id}
+              onChange={(accId) => setLiquidationForm((prev) => ({ ...prev, bank_account_id: accId }))}
+              label="Conta Bancária de Recebimento"
+              required
+            />
 
             <div className="bg-muted p-3 rounded-lg border space-y-1.5 text-xs">
               <div className="flex justify-between text-muted-foreground">

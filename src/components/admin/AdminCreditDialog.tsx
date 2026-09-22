@@ -20,6 +20,7 @@ import { Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { toast } from 'sonner'
+import { CompanyBankAccountSelect } from '@/components/admin/CompanyBankAccountSelect'
 
 export const CATEGORIAS_CREDITO = [
   'Receita Avulsa',
@@ -56,12 +57,14 @@ export function AdminCreditDialog({
   const [valor, setValor] = useState('')
   const [data, setData] = useState(todayISO())
   const [categoria, setCategoria] = useState('')
+  const [bankAccountId, setBankAccountId] = useState('')
 
   const resetForm = () => {
     setDescricao('')
     setValor('')
     setData(todayISO())
     setCategoria('')
+    setBankAccountId('')
   }
 
   const handleClose = (v: boolean) => {
@@ -72,6 +75,11 @@ export function AdminCreditDialog({
   const handleSave = async () => {
     if (!descricao.trim() || !valor || !data || !categoria) {
       toast.error('Preencha todos os campos.')
+      return
+    }
+
+    if (!bankAccountId) {
+      toast.error('Selecione a conta bancária da movimentação.')
       return
     }
 
@@ -94,6 +102,7 @@ export function AdminCreditDialog({
         created_by: user?.id ?? null,
         is_escrow: false,
         external_ref: `manual-credit-${crypto.randomUUID()}`,
+        bank_account_id: bankAccountId,
       }
 
       const { error } = await supabase.from('treasury_transactions').insert(payload)
@@ -160,6 +169,12 @@ export function AdminCreditDialog({
               </SelectContent>
             </Select>
           </div>
+          <CompanyBankAccountSelect
+            value={bankAccountId}
+            onChange={setBankAccountId}
+            label="Conta Bancária de Destino"
+            required
+          />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => handleClose(false)}>

@@ -9,6 +9,12 @@ export type Transaction = {
   description: string
   value: number
   accumulated_balance: number
+  bank_account_id?: string | null
+  bank_account_info?: {
+    bank_name: string
+    branch?: string | null
+    account_number: string
+  } | null
 }
 
 /**
@@ -56,6 +62,7 @@ export function useAccounting() {
         { data: reds },
         { data: movs },
         { data: tt },
+        { data: companyBanks },
       ] = await Promise.all([
         supabase
           .from('debenture_subscriptions')
@@ -68,7 +75,7 @@ export function useAccounting() {
         supabase
           .from('expenses')
           .select(
-            'id, amount, description, payment_date, due_date, status, suppliers(company_name)',
+            'id, amount, description, payment_date, due_date, status, bank_account_id, suppliers(company_name)',
           ),
         supabase
           .from('credit_operations')
@@ -85,23 +92,69 @@ export function useAccounting() {
         supabase
           .from('movimentacoes_caixa')
           .select(
-            'id, tipo, categoria, descricao, valor, user_id, created_at, referencia_id, referencia_tipo, referencia_numero',
+            'id, tipo, categoria, descricao, valor, user_id, created_at, referencia_id, referencia_tipo, referencia_numero, bank_account_id',
           ),
         // Transações do Tesourário — Recebimentos e Saídas Não Sincronizadas
         // O `treasury_transactions` contém recebimentos de parcelas de CCBs, parcelas de crédito, liquidações,
         // resgates e créditos manuais/receitas avulsas na conta.
         supabase
           .from('treasury_transactions')
-          .select('id, type, category, amount, description, date, external_ref, expense_id')
+          .select(
+            'id, type, category, amount, description, date, external_ref, expense_id, bank_account_id',
+          )
           .or('status.eq.Confirmado,status.is.null')
           .or(
             'category.in.("Recebimento de Parcelas - CCB","Recebimento de Parcelas - Operação","Liquidação de Recebível","Resgate de Investidor","Resgates e Rendimentos","Receita Avulsa","Crédito em Conta","Receitas Diversas","Aporte de Capital","Rendimento Financeiro","Reembolso"),external_ref.like.manual-credit-%',
           ),
+        supabase
+          .from('company_bank_accounts')
+          .select('id, bank_name, branch, account_number, is_active'),
       ])
+
+      // Mapeamento de contas bancárias para lookup rápido e fallback de conta ativa
+      const bankMap = new Map<
+        string,
+        { bank_name: string; branch: string | null; account_number: string }
+      >()
+      let activeBankId: string | null = null
+      let activeBankInfo: {
+        bank_name: string
+        branch: string | null
+        account_number: string
+      } | null = null
+      ;(companyBanks || []).forEach((b: any) => {
+        const info = {
+          bank_name: b.bank_name,
+          branch: b.branch,
+          account_number: b.account_number,
+        }
+        bankMap.set(b.id, info)
+        if (b.is_active && !activeBankId) {
+          activeBankId = b.id
+          activeBankInfo = info
+        }
+      })
+      if (!activeBankInfo && companyBanks && companyBanks.length > 0) {
+        const first = companyBanks[0]
+        activeBankId = first.id
+        activeBankInfo = {
+          bank_name: first.bank_name,
+          branch: first.branch,
+          account_number: first.account_number,
+        }
+      }
+
+      const resolveBank = (id?: string | null) => {
+        if (id && bankMap.has(id)) {
+          return { id, info: bankMap.get(id)! }
+        }
+        return { id: activeBankId, info: activeBankInfo }
+      }
 
       // 1. Subscrições
       ;(subs || []).forEach((sub) => {
         if (sub.status !== 'Excluído' && sub.status !== 'Cancelado') {
+          const bInfo = resolveBank(null)
           transactions.push({
             id: `sub-${sub.id}`,
             date: normalizeAccountingDate(sub.subscription_date || sub.created_at),
@@ -109,6 +162,8 @@ export function useAccounting() {
             category: 'Subscrição de Debênture',
             description: `Subscrição — ${sub.investor_name}`,
             value: Number(sub.total_amount || 0),
+            bank_account_id: bInfo.id,
+            bank_account_info: bInfo.info,
           })
         }
       })
@@ -118,6 +173,7 @@ export function useAccounting() {
         const prof = Array.isArray(rec.profiles) ? rec.profiles[0] : rec.profiles
         const tomador = prof?.pj_company_name || prof?.full_name || 'Desconhecido'
         const valAcq = Number(rec.acquisition_value || 0)
+        const bInfo = resolveBank(null)
         transactions.push({
           id: `acq-${rec.id}`,
           date: normalizeAccountingDate(rec.created_at),
@@ -125,6 +181,8 @@ export function useAccounting() {
           category: 'Aquisição de CCB',
           description: `Aquisição de CCB — ${tomador} — R$ ${valAcq.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
           value: valAcq,
+          bank_account_id: bInfo.id,
+          bank_account_info: bInfo.info,
         })
       })
 
@@ -156,6 +214,7 @@ export function useAccounting() {
         if (ref) treasuryExternalRefs.add(ref)
 
         const txType: 'in' | 'out' = tx.type === 'out' ? 'out' : 'in'
+        const bInfo = resolveBank(tx.bank_account_id)
         transactions.push({
           id: `tt-${tx.id}`,
           type: txType,
@@ -165,6 +224,8 @@ export function useAccounting() {
           description: tx.description,
           value: Number(tx.amount || 0),
           date: normalizeAccountingDate(tx.date),
+          bank_account_id: bInfo.id,
+          bank_account_info: bInfo.info,
         })
       })
 
@@ -203,6 +264,7 @@ export function useAccounting() {
             Number(bol.penalty_applied || 0)
           if (!val) return
 
+          const bInfo = resolveBank(bol.bank_account_id)
           transactions.push({
             id: `ccb-bol-${rec.id}-${parcela}`,
             date: normalizeAccountingDate(pDate),
@@ -210,6 +272,8 @@ export function useAccounting() {
             category: 'Recebimento de Parcelas - CCB',
             description: `Recebimento Parcela ${bol.numero || bol.number || parcela} - CCB nº ${rec.ccb_id ? String(rec.ccb_id).substring(0, 8) : String(rec.id).substring(0, 8)} - Tomador: ${tomador}`,
             value: val,
+            bank_account_id: bInfo.id,
+            bank_account_info: bInfo.info,
           })
         })
       })
@@ -219,6 +283,7 @@ export function useAccounting() {
         if (exp.status === 'paid') {
           const sup = Array.isArray(exp.suppliers) ? exp.suppliers[0] : exp.suppliers
           const fornecedor = sup?.company_name
+          const bInfo = resolveBank(exp.bank_account_id)
           transactions.push({
             id: `exp-${exp.id}`,
             date: normalizeAccountingDate(exp.payment_date || exp.due_date),
@@ -226,6 +291,8 @@ export function useAccounting() {
             category: fornecedor ? 'Pagamento Fornecedor' : 'Despesa',
             description: fornecedor ? `Fornecedor — ${fornecedor}` : `Despesa — ${exp.description}`,
             value: Number(exp.amount || 0),
+            bank_account_id: bInfo.id,
+            bank_account_info: bInfo.info,
           })
         }
       })
@@ -237,6 +304,7 @@ export function useAccounting() {
             ? op.operation_calculations[0]
             : op.operation_calculations
           const val = calc?.net_value || op.requested_value
+          const bInfo = resolveBank(null)
           transactions.push({
             id: `op-out-${op.id}`,
             date: normalizeAccountingDate(op.issue_date || op.created_at),
@@ -244,6 +312,8 @@ export function useAccounting() {
             category: 'Desembolso de Crédito',
             description: `Operação de Crédito — Sacado: ${op.sacado}`,
             value: Number(val || 0),
+            bank_account_id: bInfo.id,
+            bank_account_info: bInfo.info,
           })
         }
       })
@@ -258,6 +328,7 @@ export function useAccounting() {
           }
           const prof = Array.isArray(red.profiles) ? red.profiles[0] : red.profiles
           const investor = prof?.pj_company_name || prof?.full_name || 'Desconhecido'
+          const bInfo = resolveBank(null)
           transactions.push({
             id: `red-${red.id}`,
             date: normalizeAccountingDate(red.updated_at),
@@ -265,6 +336,8 @@ export function useAccounting() {
             category: 'Resgate de Investimento',
             description: `Resgate — Investidor: ${investor}`,
             value: Number(red.net_value || 0),
+            bank_account_id: bInfo.id,
+            bank_account_info: bInfo.info,
           })
         }
       })
@@ -282,6 +355,7 @@ export function useAccounting() {
           categoriaLabel[(mov.categoria || '').toLowerCase()] ||
           mov.categoria ||
           'Movimentação de Caixa'
+        const bInfo = resolveBank(mov.bank_account_id)
         transactions.push({
           id: `mov-${mov.id}`,
           date: normalizeAccountingDate(mov.created_at),
@@ -289,6 +363,8 @@ export function useAccounting() {
           category,
           description: mov.descricao || category,
           value: Number(mov.valor || 0),
+          bank_account_id: bInfo.id,
+          bank_account_info: bInfo.info,
         })
       })
 
