@@ -42,8 +42,12 @@ import {
   Calculator,
   Edit,
   Info,
+  PlusCircle,
+  Search,
+  Filter,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
+import { AdminNewCcbDialog } from '@/components/admin/AdminNewCcbDialog'
 
 export default function AdminCcbRequests() {
   const { user } = useAuth()
@@ -72,6 +76,13 @@ export default function AdminCcbRequests() {
   const [adjCetAnnual, setAdjCetAnnual] = useState(0)
   const [annualLocked, setAnnualLocked] = useState(true)
   const [lastEdited, setLastEdited] = useState<'rate' | 'pmt' | null>(null)
+
+  // Modal de Nova Solicitação Interna de CCB
+  const [newCcbOpen, setNewCcbOpen] = useState(false)
+
+  // Filtros de busca e status na listagem
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filterStatus, setFilterStatus] = useState<string>('all')
 
   const calculateRate = (nper: number, pmt: number, pv: number) => {
     if (pmt * nper <= pv) return 0
@@ -150,7 +161,34 @@ export default function AdminCcbRequests() {
 
   useEffect(() => {
     fetchData()
+
+    // Subscrição em tempo real para novas solicitações e atualizações em ccb_solicitacoes
+    const channel = supabase
+      .channel('ccb_solicitacoes_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ccb_solicitacoes' }, () => {
+        fetchData()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [])
+
+  // Filtragem de solicitações por busca (nome, documento, email, ID) e status
+  const filteredRequests = requests.filter((req) => {
+    const matchesStatus = filterStatus === 'all' || req.status === filterStatus
+    if (!matchesStatus) return false
+
+    if (!searchTerm.trim()) return true
+    const term = searchTerm.toLowerCase()
+    const name = (req.borrower_data?.name || req.profiles?.full_name || '').toLowerCase()
+    const doc = (req.borrower_data?.document || '').toLowerCase()
+    const email = (req.profiles?.email || req.borrower_data?.email || '').toLowerCase()
+    const id = (req.id || '').toLowerCase()
+
+    return name.includes(term) || doc.includes(term) || email.includes(term) || id.includes(term)
+  })
 
   const downloadFile = async (
     path: string,
@@ -422,15 +460,71 @@ export default function AdminCcbRequests() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 animate-fade-in-up">
-      <div>
-        <h1 className="text-3xl font-bold">Gestão de CCB</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">Gestão de CCB</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Acompanhe solicitações, ajuste propostas e lance novas CCBs internamente pela mesa.
+          </p>
+        </div>
+        <Button
+          onClick={() => setNewCcbOpen(true)}
+          className="bg-[#00C2E0] hover:bg-[#00a9c4] text-white gap-2 h-11 px-5 shadow-sm font-semibold"
+        >
+          <PlusCircle className="h-5 w-5" /> Nova Solicitação de CCB
+        </Button>
       </div>
+
       <Tabs defaultValue="solicitacoes">
         <TabsList>
-          <TabsTrigger value="solicitacoes">Solicitações</TabsTrigger>
-          <TabsTrigger value="ativas">Ativas</TabsTrigger>
+          <TabsTrigger value="solicitacoes">Solicitações ({requests.length})</TabsTrigger>
+          <TabsTrigger value="ativas">Ativas ({activeOps.length})</TabsTrigger>
         </TabsList>
-        <TabsContent value="solicitacoes">
+        <TabsContent value="solicitacoes" className="space-y-4">
+          {/* Barra de Filtros e Busca */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                placeholder="Buscar por tomador, CPF/CNPJ ou ID..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9 h-10"
+              />
+            </div>
+            <div className="w-full sm:w-56">
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger className="h-10">
+                  <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
+                  <SelectValue placeholder="Filtrar por status" />
+                </SelectTrigger>
+                <SelectContent className="z-[9999]">
+                  <SelectItem value="all">Todos os status</SelectItem>
+                  <SelectItem value="pendente">Pendente</SelectItem>
+                  <SelectItem value="simulacao">Simulação</SelectItem>
+                  <SelectItem value="em_analise">Em Análise</SelectItem>
+                  <SelectItem value="proposta_ajustada">Proposta Ajustada</SelectItem>
+                  <SelectItem value="aceite_tomador">Aceite Tomador</SelectItem>
+                  <SelectItem value="aprovada">Aprovada</SelectItem>
+                  <SelectItem value="rejeitada">Rejeitada</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {searchTerm || filterStatus !== 'all' ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSearchTerm('')
+                  setFilterStatus('all')
+                }}
+                className="h-10"
+              >
+                Limpar filtros
+              </Button>
+            ) : null}
+          </div>
+
           <Card>
             <CardContent className="p-0">
               <Table>
@@ -444,64 +538,78 @@ export default function AdminCcbRequests() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {requests.map((req) => (
-                    <TableRow key={req.id}>
-                      <TableCell>
-                        {req.borrower_data?.name || req.profiles?.full_name}
-                        <p className="text-xs text-muted-foreground">
-                          {req.borrower_data?.document}
-                        </p>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">
-                          {req.borrower_data?.entityType === 'pj' ? 'PJ' : 'PF'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        R$ {Number(req.requested_value).toLocaleString('pt-BR')}
-                      </TableCell>
-                      <TableCell>
-                        <Badge>{req.status}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right space-x-2">
-                        <Button variant="outline" size="sm" onClick={() => setDocsModal(req)}>
-                          <FileText className="h-4 w-4 mr-1" /> Detalhes
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-blue-600 border-blue-600/30 hover:bg-blue-50"
-                          onClick={() => {
-                            setAdjustModal(req)
-                            const sim = req.operation_data?.simulation || {}
-                            setAdjRate(
-                              sim.interest_rate_monthly || ccbConfig?.interest_rate_monthly || '',
-                            )
-                            setAdjFee(sim.fixed_cost || ccbConfig?.fixed_emission_cost || 0)
-                            setAdjPmt(
-                              sim.installment_value || req.requested_value / req.term_months,
-                            )
-                            setAdjCet(sim.cet || 0)
-                            setLastEdited(null)
-                            setAnnualLocked(true)
-                          }}
-                        >
-                          <Edit className="h-4 w-4 mr-1" /> Ajustar
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => {
-                            setManageId(req.id)
-                            setStatusVal(req.status)
-                            setNotes(req.admin_notes || '')
-                          }}
-                        >
-                          <Settings className="h-4 w-4 mr-1" /> Gerir
-                        </Button>
+                  {filteredRequests.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
+                        {loading ? (
+                          <div className="flex items-center justify-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin" /> Carregando solicitações...
+                          </div>
+                        ) : (
+                          'Nenhuma solicitação encontrada.'
+                        )}
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ) : (
+                    filteredRequests.map((req) => (
+                      <TableRow key={req.id}>
+                        <TableCell>
+                          {req.borrower_data?.name || req.profiles?.full_name}
+                          <p className="text-xs text-muted-foreground">
+                            {req.borrower_data?.document}
+                          </p>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">
+                            {req.borrower_data?.entityType === 'pj' ? 'PJ' : 'PF'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          R$ {Number(req.requested_value).toLocaleString('pt-BR')}
+                        </TableCell>
+                        <TableCell>
+                          <Badge>{req.status}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right space-x-2">
+                          <Button variant="outline" size="sm" onClick={() => setDocsModal(req)}>
+                            <FileText className="h-4 w-4 mr-1" /> Detalhes
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-blue-600 border-blue-600/30 hover:bg-blue-50"
+                            onClick={() => {
+                              setAdjustModal(req)
+                              const sim = req.operation_data?.simulation || {}
+                              setAdjRate(
+                                sim.interest_rate_monthly || ccbConfig?.interest_rate_monthly || '',
+                              )
+                              setAdjFee(sim.fixed_cost || ccbConfig?.fixed_emission_cost || 0)
+                              setAdjPmt(
+                                sim.installment_value || req.requested_value / req.term_months,
+                              )
+                              setAdjCet(sim.cet || 0)
+                              setLastEdited(null)
+                              setAnnualLocked(true)
+                            }}
+                          >
+                            <Edit className="h-4 w-4 mr-1" /> Ajustar
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => {
+                              setManageId(req.id)
+                              setStatusVal(req.status)
+                              setNotes(req.admin_notes || '')
+                            }}
+                          >
+                            <Settings className="h-4 w-4 mr-1" /> Gerir
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -864,6 +972,15 @@ export default function AdminCcbRequests() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Nova Solicitação Interna de CCB */}
+      <AdminNewCcbDialog
+        open={newCcbOpen}
+        onOpenChange={setNewCcbOpen}
+        onSuccess={() => {
+          fetchData()
+        }}
+      />
     </div>
   )
 }
