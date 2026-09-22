@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   AlertTriangle,
   Calendar,
@@ -45,6 +45,52 @@ interface InvestorRedemptionDialogProps {
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0)
 
+/**
+ * Faz parsing flexível e robusto de valores numéricos em moeda/reais ou inteiros.
+ * Suporta formatos: "4000", "4000.00", "4.000,00", "4.000.00", "4000,50", etc.
+ */
+function parseFlexibleNumber(raw: string): number {
+  if (!raw) return 0
+  let clean = raw.trim().replace(/[^\d.,]/g, '')
+  if (!clean) return 0
+
+  const hasComma = clean.includes(',')
+  const hasDot = clean.includes('.')
+
+  if (hasComma && hasDot) {
+    const lastComma = clean.lastIndexOf(',')
+    const lastDot = clean.lastIndexOf('.')
+    if (lastComma > lastDot) {
+      // Ex: "4.000,00" ou "1.234.567,89" -> pontos são milhar, vírgula é decimal
+      clean = clean.replace(/\./g, '').replace(',', '.')
+    } else {
+      // Ex: "4,000.00" -> vírgulas são milhar, ponto é decimal
+      clean = clean.replace(/,/g, '')
+    }
+  } else if (hasComma) {
+    // Ex: "4000,00" -> substitui vírgula por ponto
+    clean = clean.replace(',', '.')
+  } else if (hasDot) {
+    // Ex: "4.000.00" ou "4.000" ou "4000.00"
+    const dotCount = (clean.match(/\./g) || []).length
+    if (dotCount > 1) {
+      // Múltiplos pontos ex: "4.000.00" -> tudo menos o último pode ser milhar ou separador
+      const parts = clean.split('.')
+      const lastPart = parts[parts.length - 1]
+      if (lastPart.length === 2) {
+        // Provável decimal no fim: junta os anteriores e coloca . antes do último
+        const intPart = parts.slice(0, -1).join('')
+        clean = `${intPart}.${lastPart}`
+      } else {
+        clean = parts.join('')
+      }
+    }
+  }
+
+  const num = parseFloat(clean)
+  return isNaN(num) || num < 0 ? 0 : num
+}
+
 export function InvestorRedemptionDialog({
   open,
   onOpenChange,
@@ -53,7 +99,7 @@ export function InvestorRedemptionDialog({
   pendingRequestedQuotas = 0,
   onSuccess,
 }: InvestorRedemptionDialogProps) {
-  const [quotasInput, setQuotasInput] = useState<string>('1')
+  const [quotasInput, setQuotasInput] = useState<string>('')
   const [amountInput, setAmountInput] = useState<string>('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -90,13 +136,35 @@ export function InvestorRedemptionDialog({
     return calculateRedemptionMetrics(investment, parsedQuotas, manualYieldEntries)
   }, [investment, parsedQuotas, manualYieldEntries])
 
-  // Reset input quando abre com novo investimento
+  // Inicializa os campos com o SALDO TOTAL DISPONÍVEL do investimento
+  const resetToTotalAvailable = useCallback(() => {
+    if (!investment) {
+      setQuotasInput('')
+      setAmountInput('')
+      return
+    }
+    const total = investment.quotas || 0
+    const redeemed = investment.redeemed_quotas || 0
+    const avail = Math.max(0, total - redeemed - pendingRequestedQuotas)
+    const uPrice = Number(
+      investment.unit_price || investment.investment_products?.quota_value || 1000,
+    )
+
+    setQuotasInput(String(avail))
+    setAmountInput(avail > 0 ? String(avail * uPrice) : '0')
+  }, [investment, pendingRequestedQuotas])
+
+  // Sincronização obrigatória quando o dialog abre ou quando o investimento selecionado / cotas pendentes mudam
+  useEffect(() => {
+    if (open && investment) {
+      resetToTotalAvailable()
+    }
+  }, [open, investment?.id, resetToTotalAvailable])
+
+  // Reset input quando abre/fecha
   const handleOpenChange = (nextOpen: boolean) => {
     if (nextOpen && investment) {
-      const initial = Math.min(1, Math.max(0, availableQuotas))
-      const initQ = initial > 0 ? initial : 1
-      setQuotasInput(String(initQ))
-      setAmountInput(String(initQ * unitPrice))
+      resetToTotalAvailable()
     }
     onOpenChange(nextOpen)
   }
@@ -104,23 +172,26 @@ export function InvestorRedemptionDialog({
   // Mudança pela quantidade de cotas
   const handleQuotasChange = (val: string) => {
     setQuotasInput(val)
-    const q = parseInt(val, 10)
-    if (!isNaN(q) && q > 0) {
-      setAmountInput(String(q * unitPrice))
-    } else {
-      setAmountInput('')
+    const cleanDigits = val.replace(/\D/g, '')
+    if (cleanDigits !== '') {
+      const q = parseInt(cleanDigits, 10)
+      if (!isNaN(q) && q > 0) {
+        setAmountInput(String(q * unitPrice))
+        return
+      }
     }
+    setAmountInput('')
   }
 
-  // Mudança pelo valor em reais (bidirecional)
+  // Mudança pelo valor em reais (bidirecional com parsing robusto)
   const handleAmountChange = (val: string) => {
     setAmountInput(val)
-    const num = parseFloat(val.replace(',', '.'))
-    if (!isNaN(num) && num > 0 && unitPrice > 0) {
+    const num = parseFlexibleNumber(val)
+    if (num > 0 && unitPrice > 0) {
       const calculatedQuotas = Math.floor(num / unitPrice)
-      setQuotasInput(calculatedQuotas > 0 ? String(calculatedQuotas) : '1')
+      setQuotasInput(calculatedQuotas > 0 ? String(calculatedQuotas) : '0')
     } else {
-      setQuotasInput('1')
+      setQuotasInput('0')
     }
   }
 
@@ -328,10 +399,8 @@ export function InvestorRedemptionDialog({
                     </span>
                     <Input
                       id="amount"
-                      type="number"
-                      min={unitPrice}
-                      max={availableAmount}
-                      step={unitPrice}
+                      type="text"
+                      inputMode="decimal"
                       placeholder="0,00"
                       value={amountInput}
                       onChange={(e) => handleAmountChange(e.target.value)}
