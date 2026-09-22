@@ -307,12 +307,21 @@ export default function InvestorsPortfolio() {
         inv?.investment_products ??
         (raw.series_id ? (productsBySeries[raw.series_id] ?? null) : null)
 
-      // "Considerar apenas subscrições com status approved ou pending_transfer".
-      // Subscrições sem vínculo de investment (investment_id nulo) são mantidas
-      // pois carregam dados próprios (investor_name, document_number, total_amount)
-      // e o produto é resolvido via series_id.
-      if (inv && !ELIGIBLE_INVESTMENT_STATUSES.includes(inv.status || '')) {
+      // Descartar subscrições com raw.status encerradas, canceladas ou resgatadas
+      const rawStatusLower = (raw.status || '').toLowerCase()
+      const DISCARD_RAW_STATUSES = ['encerrado', 'resgatado', 'excluído', 'cancelled']
+      if (DISCARD_RAW_STATUSES.includes(rawStatusLower)) {
         continue
+      }
+
+      // Se houver inv vinculado, aceitar apenas 'approved' e 'pending_transfer', e descartar 'resgatado'
+      if (inv) {
+        if (!ELIGIBLE_INVESTMENT_STATUSES.includes(inv.status || '')) {
+          continue
+        }
+        if (inv.status === 'resgatado') {
+          continue
+        }
       }
 
       // Se a subscrição tiver uma data específica, usa ela; se for vazia mas o investimento vinculado tiver transfer_date, usa este
@@ -322,18 +331,16 @@ export default function InvestorsPortfolio() {
       const termMonths = product ? parseProductTerm(product.term) : null
       const maturityDate = startDate && termMonths ? addMonths(startDate, termMonths) : null
 
-      // Considera valor ativo remanescente se vinculado a investimento
-      let totalAmountVal = Number(raw.total_amount || 0)
-      if (inv) {
-        const invUnitPrice = Number(inv.unit_price || product?.quota_value || 1000)
-        const invRemainingQuotas = Math.max(
-          0,
-          Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0),
-        )
-        const activeInvVal = invRemainingQuotas * invUnitPrice
-        const totalVal = Number(inv.total_value)
-        totalAmountVal =
-          !isNaN(totalVal) && totalVal >= 0 && totalVal <= activeInvVal ? totalVal : activeInvVal
+      // Calcular o valor estritamente com base em cotas remanescentes e unit_price
+      const quotas = Number(inv?.quotas ?? 0)
+      const redeemedQuotas = Number(inv?.redeemed_quotas ?? 0)
+      const remainingQuotas = Math.max(0, quotas - redeemedQuotas)
+      const unitPrice = Number(inv?.unit_price || product?.quota_value || 100)
+      const totalAmountVal = inv ? remainingQuotas * unitPrice : Number(raw.total_amount || 0)
+
+      // Registros com totalAmountVal <= 0 e status encerrado/resgatado não somam nem aparecem como ativos
+      if (totalAmountVal <= 0) {
+        continue
       }
 
       const enriched: EnrichedSubscription = {

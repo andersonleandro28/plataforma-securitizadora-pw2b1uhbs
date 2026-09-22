@@ -76,7 +76,7 @@ export default function InvestmentsReview() {
   const [deleteInvOpen, setDeleteInvOpen] = useState(false)
   const [invToDelete, setInvToDelete] = useState<any>(null)
   const [invStatusFilter, setInvStatusFilter] = useState<
-    'pending' | 'all' | 'rejected' | 'approved'
+    'pending' | 'all' | 'rejected' | 'approved' | 'resgatado'
   >('pending')
 
   // Aportes avaliados com data de liberação para saque e ordenados por proximidade da liberação
@@ -623,7 +623,9 @@ export default function InvestmentsReview() {
           if (profile && Number(profile.wallet_balance) > 0) {
             await supabase
               .from('profiles')
-              .update({ wallet_balance: Math.max(0, Number(profile.wallet_balance) + netDifference) })
+              .update({
+                wallet_balance: Math.max(0, Number(profile.wallet_balance) + netDifference),
+              })
               .eq('id', selectedRedemption.user_id)
           }
         }
@@ -856,7 +858,11 @@ export default function InvestmentsReview() {
                                 </span>
                               ) : Number(inv.redeemed_quotas || 0) > 0 ? (
                                 <span>
-                                  {Math.max(0, Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0))} cota(s) ativa(s) ({inv.redeemed_quotas} resgatada(s)) a R${' '}
+                                  {Math.max(
+                                    0,
+                                    Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0),
+                                  )}{' '}
+                                  cota(s) ativa(s) ({inv.redeemed_quotas} resgatada(s)) a R${' '}
                                   {Number(inv.unit_price || 0).toLocaleString('pt-BR')}
                                 </span>
                               ) : (
@@ -865,7 +871,8 @@ export default function InvestmentsReview() {
                                   {Number(inv.unit_price || 0).toLocaleString('pt-BR')}
                                 </span>
                               )}
-                            </div>                          </TableCell>
+                            </div>{' '}
+                          </TableCell>
                           <TableCell>{formatDate(inv.transfer_date)}</TableCell>
                           <TableCell>
                             {releaseDate ? (
@@ -947,7 +954,10 @@ export default function InvestmentsReview() {
                               </div>
                             )}
                             {inv.status === 'resgatado' && (
-                              <Badge variant="secondary" className="bg-slate-100 text-slate-700 border-slate-300">
+                              <Badge
+                                variant="secondary"
+                                className="bg-slate-100 text-slate-700 border-slate-300"
+                              >
                                 Resgatado
                               </Badge>
                             )}
@@ -955,7 +965,9 @@ export default function InvestmentsReview() {
                               !isAwaitingReview &&
                               !isPendingTransfer &&
                               !isRejected &&
-                              inv.status !== 'resgatado' && <Badge variant="outline">{inv.status}</Badge>}
+                              inv.status !== 'resgatado' && (
+                                <Badge variant="outline">{inv.status}</Badge>
+                              )}
                           </TableCell>
                           <TableCell className="text-right space-x-1.5 whitespace-nowrap">
                             {/* Ver Comprovante (visível quando o aporte possui anexo) */}

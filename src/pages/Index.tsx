@@ -225,7 +225,9 @@ export default function Index() {
         const [invRes, creditRes, ccbRes, redemptionsRes] = await Promise.all([
           supabase
             .from('investments')
-            .select('id, total_value, status, transfer_date, created_at, quotas, unit_price')
+            .select(
+              'id, total_value, status, transfer_date, created_at, quotas, redeemed_quotas, unit_price',
+            )
             .in('status', ['approved', 'Ativo']),
           supabase
             .from('credit_operations')
@@ -381,18 +383,14 @@ export default function Index() {
     }
 
     investments.forEach((inv) => {
-      // Valor ativo considerando cotas remanescentes
-      const unitPrice = Number(inv.unit_price || 1000)
+      if (inv.status === 'resgatado') return
+      const unitPrice = Number(inv.unit_price || 100)
       const remainingQuotas = Math.max(
         0,
         Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0),
       )
-      const calculatedActive = remainingQuotas * unitPrice
-      const totalVal = Number(inv.total_value)
-      const val =
-        !isNaN(totalVal) && totalVal >= 0 && totalVal <= calculatedActive
-          ? totalVal
-          : calculatedActive
+      if (remainingQuotas <= 0) return
+      const val = remainingQuotas * unitPrice
 
       totalCaptado += val
 
@@ -407,21 +405,6 @@ export default function Index() {
             monthlyMap[key].count += 1
           } else {
             // Se estiver fora da janela inicial de 12 meses mas recente
-            const monthNames = [
-              'Jan',
-              'Fev',
-              'Mar',
-              'Abr',
-              'Mai',
-              'Jun',
-              'Jul',
-              'Ago',
-              'Set',
-              'Out',
-              'Nov',
-              'Dez',
-            ]
-            const shortYear = String(d.getFullYear()).slice(-2)
             monthlyMap[key] = {
               total: val,
               count: 1,

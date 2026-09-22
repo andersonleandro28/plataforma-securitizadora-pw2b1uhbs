@@ -386,25 +386,19 @@ export function InvestorDashboard() {
     setRedeemModalOpen(true)
   }
 
-  // Saldo de caixa / carteira livre: apenas trocos de reinvestimento
-  const walletBalance = profile?.wallet_balance || 0
   const activeInvestments = investments.filter((inv) => {
     if (inv.status !== 'approved' && inv.status !== 'pending_transfer') return false
     const remainingQuotas = Math.max(0, Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0))
-    const totalVal = Number(inv.total_value)
-    // Se cotas remanescentes zeraram ou total_value zerou, já foi resgatado
-    if (remainingQuotas === 0 || totalVal === 0) return false
-    return true
+    return remainingQuotas > 0
   })
 
-  // Aportes resgatados: status 'resgatado' ou cotas/valor remanescente zerados por resgate
+  // Aportes resgatados: status 'resgatado' ou cotas remanescentes zeradas com resgate registrado
   const redeemedInvestments = investments.filter((inv) => {
     if (inv.status === 'resgatado') return true
     const remainingQuotas = Math.max(0, Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0))
-    const totalVal = Number(inv.total_value)
     return (
       (inv.status === 'approved' || inv.status === 'pending_transfer') &&
-      (remainingQuotas === 0 || totalVal === 0) &&
+      remainingQuotas === 0 &&
       Number(inv.redeemed_quotas || 0) > 0
     )
   })
@@ -416,23 +410,16 @@ export function InvestorDashboard() {
   const totalInvestedValue = activeInvestments
     .filter((inv) => inv.status === 'approved')
     .reduce((acc, inv) => {
-      const unitPrice = Number(inv.unit_price || inv.investment_products?.quota_value || 1000)
       const remainingQuotas = Math.max(
         0,
         Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0),
       )
-      const calculatedActive = remainingQuotas * unitPrice
-      const totalVal = Number(inv.total_value)
-      // Se total_value já está decrementado ou válido, usa o menor entre total_value e calculatedActive se houver resgates
-      const activeValue =
-        !isNaN(totalVal) && totalVal >= 0 && totalVal <= calculatedActive
-          ? totalVal
-          : calculatedActive
-      return acc + activeValue
+      const unitPrice = Number(inv.unit_price || inv.investment_products?.quota_value || 100)
+      return acc + remainingQuotas * unitPrice
     }, 0)
 
-  // Saldo Total do investidor reflete o capital efetivamente investido ativo (+ saldo em conta se houver troco)
-  const totalBalance = walletBalance + totalInvestedValue
+  // Saldo Total do investidor: exibe totalInvestedValue diretamente sem somar wallet_balance
+  const totalBalance = totalInvestedValue
 
   const accumulatedYield = useMemo(() => {
     const fixedYield = calculateTotalAccruedYield(
@@ -450,12 +437,12 @@ export function InvestorDashboard() {
           : inv.created_at
             ? new Date(inv.created_at)
             : null
-        const unitPrice = Number(inv.unit_price || inv.investment_products?.quota_value || 1000)
+        const unitPrice = Number(inv.unit_price || inv.investment_products?.quota_value || 100)
         const remainingQuotas = Math.max(
           0,
           Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0),
         )
-        const baseValue = Math.min(Number(inv.total_value || 0), remainingQuotas * unitPrice)
+        const baseValue = remainingQuotas * unitPrice
         return sum + calculateManualYieldAmount(baseValue, entries, startDate)
       }, 0)
 
@@ -494,12 +481,12 @@ export function InvestorDashboard() {
         : inv.created_at
           ? new Date(inv.created_at)
           : null
-      const unitPrice = Number(inv.unit_price || inv.investment_products?.quota_value || 1000)
+      const unitPrice = Number(inv.unit_price || inv.investment_products?.quota_value || 100)
       const remainingQuotas = Math.max(
         0,
         Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0),
       )
-      const baseValue = Math.min(Number(inv.total_value || 0), remainingQuotas * unitPrice)
+      const baseValue = remainingQuotas * unitPrice
       return generateManualYieldChartData(baseValue, entries, startDate)
     })
 
@@ -573,9 +560,7 @@ export function InvestorDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(totalBalance)}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Caixa livre + Investimentos aprovados
-            </p>
+            <p className="text-xs text-muted-foreground mt-1">Investimentos aprovados</p>
           </CardContent>
         </Card>
 
