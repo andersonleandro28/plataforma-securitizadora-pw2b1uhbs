@@ -386,12 +386,29 @@ export function InvestorDashboard() {
     setRedeemModalOpen(true)
   }
 
+  // Saldo de caixa / carteira livre: apenas trocos de reinvestimento
   const walletBalance = profile?.wallet_balance || 0
+  const activeInvestments = investments.filter((inv) => {
+    if (inv.status !== 'approved' && inv.status !== 'pending_transfer') return false
+    const remainingQuotas = Math.max(0, Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0))
+    const totalVal = Number(inv.total_value)
+    // Se cotas remanescentes zeraram ou total_value zerou, já foi resgatado
+    if (remainingQuotas === 0 || totalVal === 0) return false
+    return true
+  })
 
-  const activeInvestments = investments.filter(
-    (inv) => inv.status === 'approved' || inv.status === 'pending_transfer',
-  )
-  const redeemedInvestments = investments.filter((inv) => inv.status === 'resgatado')
+  // Aportes resgatados: status 'resgatado' ou cotas/valor remanescente zerados por resgate
+  const redeemedInvestments = investments.filter((inv) => {
+    if (inv.status === 'resgatado') return true
+    const remainingQuotas = Math.max(0, Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0))
+    const totalVal = Number(inv.total_value)
+    return (
+      (inv.status === 'approved' || inv.status === 'pending_transfer') &&
+      (remainingQuotas === 0 || totalVal === 0) &&
+      Number(inv.redeemed_quotas || 0) > 0
+    )
+  })
+
   const cancelledInvestments = investments.filter(
     (inv) => inv.status === 'Excluído' || inv.status === 'cancelled' || inv.status === 'rejected',
   )
@@ -414,6 +431,7 @@ export function InvestorDashboard() {
       return acc + activeValue
     }, 0)
 
+  // Saldo Total do investidor reflete o capital efetivamente investido ativo (+ saldo em conta se houver troco)
   const totalBalance = walletBalance + totalInvestedValue
 
   const accumulatedYield = useMemo(() => {

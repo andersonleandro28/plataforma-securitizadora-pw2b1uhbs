@@ -612,17 +612,18 @@ export default function InvestmentsReview() {
       if (updErr) throw updErr
 
       if (selectedRedemption.status === 'paid') {
-        if (netDifference !== 0) {
+        // Se for reinvestimento com troco, ajusta wallet_balance do investidor proporcionalmente
+        if (selectedRedemption.is_reinvestment && netDifference !== 0) {
           const { data: profile } = await supabase
             .from('profiles')
             .select('wallet_balance')
             .eq('id', selectedRedemption.user_id)
             .single()
 
-          if (profile) {
+          if (profile && Number(profile.wallet_balance) > 0) {
             await supabase
               .from('profiles')
-              .update({ wallet_balance: Number(profile.wallet_balance) + netDifference })
+              .update({ wallet_balance: Math.max(0, Number(profile.wallet_balance) + netDifference) })
               .eq('id', selectedRedemption.user_id)
           }
         }
@@ -808,6 +809,9 @@ export default function InvestmentsReview() {
                       if (invStatusFilter === 'rejected') {
                         return inv.status === 'rejected'
                       }
+                      if (invStatusFilter === 'resgatado') {
+                        return inv.status === 'resgatado'
+                      }
                       return true
                     })
                     .map((item) => {
@@ -846,10 +850,22 @@ export default function InvestmentsReview() {
                               })}
                             </div>
                             <div className="text-xs text-muted-foreground">
-                              {inv.quotas} cota(s) a R${' '}
-                              {Number(inv.unit_price || 0).toLocaleString('pt-BR')}
-                            </div>
-                          </TableCell>
+                              {inv.status === 'resgatado' || Number(inv.total_value) === 0 ? (
+                                <span className="text-muted-foreground italic">
+                                  Resgatado ({Number(inv.redeemed_quotas || inv.quotas)} cotas)
+                                </span>
+                              ) : Number(inv.redeemed_quotas || 0) > 0 ? (
+                                <span>
+                                  {Math.max(0, Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0))} cota(s) ativa(s) ({inv.redeemed_quotas} resgatada(s)) a R${' '}
+                                  {Number(inv.unit_price || 0).toLocaleString('pt-BR')}
+                                </span>
+                              ) : (
+                                <span>
+                                  {inv.quotas} cota(s) a R${' '}
+                                  {Number(inv.unit_price || 0).toLocaleString('pt-BR')}
+                                </span>
+                              )}
+                            </div>                          </TableCell>
                           <TableCell>{formatDate(inv.transfer_date)}</TableCell>
                           <TableCell>
                             {releaseDate ? (
@@ -930,10 +946,16 @@ export default function InvestmentsReview() {
                                 )}
                               </div>
                             )}
+                            {inv.status === 'resgatado' && (
+                              <Badge variant="secondary" className="bg-slate-100 text-slate-700 border-slate-300">
+                                Resgatado
+                              </Badge>
+                            )}
                             {!isApproved &&
                               !isAwaitingReview &&
                               !isPendingTransfer &&
-                              !isRejected && <Badge variant="outline">{inv.status}</Badge>}
+                              !isRejected &&
+                              inv.status !== 'resgatado' && <Badge variant="outline">{inv.status}</Badge>}
                           </TableCell>
                           <TableCell className="text-right space-x-1.5 whitespace-nowrap">
                             {/* Ver Comprovante (visível quando o aporte possui anexo) */}
