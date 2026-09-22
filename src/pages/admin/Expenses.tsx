@@ -41,6 +41,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { cn, formatDate } from '@/lib/utils'
+import { onlyDigits, maskCpf, maskCnpj, validateCpf, validateCnpj } from '@/lib/cpf-cnpj'
 import { CompanyBankAccountSelect } from '@/components/admin/CompanyBankAccountSelect'
 import { useCompanyBankAccounts } from '@/hooks/use-company-bank-accounts'
 
@@ -60,6 +61,7 @@ export default function Expenses() {
   const [expenseToDelete, setExpenseToDelete] = useState<any>(null)
   const [saving, setSaving] = useState(false)
 
+  const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null)
   const [supForm, setSupForm] = useState({
     company_name: '',
     document_number: '',
@@ -130,14 +132,101 @@ export default function Expenses() {
     setLoading(false)
   }
 
+  const handleNewSupplier = () => {
+    setEditingSupplierId(null)
+    setSupForm({
+      company_name: '',
+      document_number: '',
+      contact_name: '',
+      email: '',
+      phone: '',
+      category: '',
+    })
+    setSupplierOpen(true)
+  }
+
+  const handleEditSupplier = (s: any) => {
+    if (isReadOnly) return
+    setEditingSupplierId(s.id)
+    setSupForm({
+      company_name: s.company_name || '',
+      document_number: s.document_number || '',
+      contact_name: s.contact_name || '',
+      email: s.email || '',
+      phone: s.phone || '',
+      category: s.category || '',
+    })
+    setSupplierOpen(true)
+  }
+
   const handleSaveSupplier = async () => {
+    if (!supForm.company_name?.trim()) {
+      toast.error('Informe a Razão Social do fornecedor.')
+      return
+    }
+
+    const docDigits = onlyDigits(supForm.document_number)
+    if (docDigits.length > 0 && docDigits.length !== 11 && docDigits.length !== 14) {
+      toast.error('Documento deve ser um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.')
+      return
+    }
+    if (docDigits.length === 11 && !validateCpf(docDigits)) {
+      toast.error('CPF inválido. Verifique os dígitos.')
+      return
+    }
+    if (docDigits.length === 14 && !validateCnpj(docDigits)) {
+      toast.error('CNPJ inválido. Verifique os dígitos.')
+      return
+    }
+
     setSaving(true)
-    const { error } = await supabase.from('suppliers').insert(supForm)
-    if (error) toast.error(error.message)
-    else {
-      toast.success('Fornecedor cadastrado.')
-      setSupplierOpen(false)
-      fetchData()
+    if (editingSupplierId) {
+      const { error } = await supabase
+        .from('suppliers')
+        .update({
+          company_name: supForm.company_name.trim(),
+          document_number: supForm.document_number.trim(),
+          contact_name: supForm.contact_name?.trim() || null,
+          email: supForm.email?.trim() || null,
+          phone: supForm.phone?.trim() || null,
+          category: supForm.category?.trim() || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', editingSupplierId)
+
+      if (error) {
+        if (error.code === '23505') {
+          toast.error('Já existe um fornecedor cadastrado com este documento.')
+        } else {
+          toast.error('Erro ao atualizar fornecedor: ' + error.message)
+        }
+      } else {
+        toast.success('Fornecedor atualizado com sucesso.')
+        setSupplierOpen(false)
+        setEditingSupplierId(null)
+        fetchData()
+      }
+    } else {
+      const { error } = await supabase.from('suppliers').insert({
+        company_name: supForm.company_name.trim(),
+        document_number: supForm.document_number.trim(),
+        contact_name: supForm.contact_name?.trim() || null,
+        email: supForm.email?.trim() || null,
+        phone: supForm.phone?.trim() || null,
+        category: supForm.category?.trim() || null,
+      })
+
+      if (error) {
+        if (error.code === '23505') {
+          toast.error('Já existe um fornecedor cadastrado com este documento.')
+        } else {
+          toast.error('Erro ao cadastrar fornecedor: ' + error.message)
+        }
+      } else {
+        toast.success('Fornecedor cadastrado com sucesso.')
+        setSupplierOpen(false)
+        fetchData()
+      }
     }
     setSaving(false)
   }
@@ -581,7 +670,7 @@ export default function Expenses() {
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Fornecedores Homologados</CardTitle>
               {!isReadOnly && (
-                <Button onClick={() => setSupplierOpen(true)}>
+                <Button onClick={handleNewSupplier}>
                   <Plus className="w-4 h-4 mr-2" /> Novo Fornecedor
                 </Button>
               )}
@@ -591,25 +680,50 @@ export default function Expenses() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Razão Social</TableHead>
-                    <TableHead>CNPJ</TableHead>
+                    <TableHead>CNPJ / CPF</TableHead>
                     <TableHead>Categoria</TableHead>
                     <TableHead>Contato</TableHead>
                     <TableHead>Email</TableHead>
+                    <TableHead>Telefone</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {suppliers.map((s) => (
                     <TableRow key={s.id}>
                       <TableCell className="font-medium">{s.company_name}</TableCell>
-                      <TableCell>{s.document_number}</TableCell>
-                      <TableCell>{s.category}</TableCell>
-                      <TableCell>{s.contact_name}</TableCell>
-                      <TableCell>{s.email}</TableCell>
+                      <TableCell>
+                        {(() => {
+                          const doc = onlyDigits(s.document_number)
+                          if (doc.length === 11) return maskCpf(doc)
+                          if (doc.length === 14) return maskCnpj(doc)
+                          return s.document_number || '-'
+                        })()}
+                      </TableCell>
+                      <TableCell>{s.category || '-'}</TableCell>
+                      <TableCell>{s.contact_name || '-'}</TableCell>
+                      <TableCell>{s.email || '-'}</TableCell>
+                      <TableCell>{s.phone || '-'}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          {!isReadOnly && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEditSupplier(s)}
+                              className="px-2 text-blue-600 hover:text-blue-700"
+                              title="Editar Fornecedor"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
                   {suppliers.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                         Nenhum fornecedor cadastrado.
                       </TableCell>
                     </TableRow>
@@ -621,24 +735,52 @@ export default function Expenses() {
         </TabsContent>
       </Tabs>
 
-      <Dialog open={supplierOpen} onOpenChange={setSupplierOpen}>
+      <Dialog
+        open={supplierOpen}
+        onOpenChange={(open) => {
+          setSupplierOpen(open)
+          if (!open) setEditingSupplierId(null)
+        }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Cadastrar Fornecedor</DialogTitle>
+            <DialogTitle>
+              {editingSupplierId ? 'Editar Fornecedor' : 'Cadastrar Fornecedor'}
+            </DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
-              <Label>Razão Social</Label>
+              <Label>Razão Social *</Label>
               <Input
                 value={supForm.company_name}
                 onChange={(e) => setSupForm({ ...supForm, company_name: e.target.value })}
+                placeholder="Nome da empresa ou fornecedor"
               />
             </div>
             <div className="space-y-2">
-              <Label>CNPJ</Label>
+              <Label>CNPJ / CPF</Label>
               <Input
                 value={supForm.document_number}
-                onChange={(e) => setSupForm({ ...supForm, document_number: e.target.value })}
+                onChange={(e) => {
+                  const val = e.target.value
+                  const digits = onlyDigits(val)
+                  let formatted = val
+                  if (digits.length <= 11) {
+                    formatted = maskCpf(digits)
+                  } else {
+                    formatted = maskCnpj(digits)
+                  }
+                  setSupForm({ ...supForm, document_number: formatted })
+                }}
+                placeholder="00.000.000/0000-00 ou 000.000.000-00"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Contato / Responsável</Label>
+              <Input
+                placeholder="Nome do contato ou responsável"
+                value={supForm.contact_name}
+                onChange={(e) => setSupForm({ ...supForm, contact_name: e.target.value })}
               />
             </div>
             <div className="space-y-2">
@@ -653,8 +795,10 @@ export default function Expenses() {
               <div className="space-y-2">
                 <Label>Email</Label>
                 <Input
+                  type="email"
                   value={supForm.email}
                   onChange={(e) => setSupForm({ ...supForm, email: e.target.value })}
+                  placeholder="contato@empresa.com"
                 />
               </div>
               <div className="space-y-2">
@@ -662,13 +806,24 @@ export default function Expenses() {
                 <Input
                   value={supForm.phone}
                   onChange={(e) => setSupForm({ ...supForm, phone: e.target.value })}
+                  placeholder="(00) 00000-0000"
                 />
               </div>
             </div>
           </div>
           <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSupplierOpen(false)
+                setEditingSupplierId(null)
+              }}
+            >
+              Cancelar
+            </Button>
             <Button onClick={handleSaveSupplier} disabled={saving}>
-              {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Salvar Fornecedor
+              {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {editingSupplierId ? 'Salvar Alterações' : 'Salvar Fornecedor'}
             </Button>
           </DialogFooter>
         </DialogContent>
