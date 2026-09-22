@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import {
   Table,
@@ -124,6 +125,22 @@ export default function Dre() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up pb-10">
+      {/* Abas Superiores DRE / DFC */}
+      <div className="flex border-b border-border/80 pb-2 gap-2">
+        <Link
+          to="/admin/dre"
+          className="px-4 py-2 text-sm font-semibold rounded-md transition-colors bg-primary/10 text-primary border border-primary/20"
+        >
+          DRE (Resultado)
+        </Link>
+        <Link
+          to="/admin/dfc"
+          className="px-4 py-2 text-sm font-medium rounded-md transition-colors text-muted-foreground hover:text-foreground hover:bg-muted/50"
+        >
+          DFC (Fluxo de Caixa - FASB 95)
+        </Link>
+      </div>
+
       {/* Cabeçalho */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div>

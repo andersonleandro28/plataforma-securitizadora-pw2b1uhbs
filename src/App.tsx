@@ -30,6 +30,7 @@ import DataMigration from './pages/admin/DataMigration'
 import RiskExposure from './pages/admin/RiskExposure'
 import Reports from './pages/admin/Reports'
 import Dre from './pages/admin/Dre'
+import Dfc from './pages/admin/Dfc'
 import InvestorsPortfolio from './pages/admin/InvestorsPortfolio'
 import KycOnboarding from './pages/KycOnboarding'
 import CcbDigital from './pages/borrower/CcbDigital'
@@ -456,6 +457,14 @@ const App = () => (
               element={
                 <RoleGuard allowedRoles={['admin', 'staff']}>
                   <Dre />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/admin/dfc"
+              element={
+                <RoleGuard allowedRoles={['admin', 'staff']}>
+                  <Dfc />
                 </RoleGuard>
               }
             />

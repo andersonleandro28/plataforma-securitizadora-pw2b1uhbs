@@ -154,6 +154,12 @@ const allNavItems = [
     roles: ['admin', 'staff'],
   },
   {
+    title: 'DFC',
+    path: '/admin/dfc',
+    icon: TrendingUp,
+    roles: ['admin', 'staff'],
+  },
+  {
     title: 'Migração de Dados',
     path: '/admin/migracao-dados',
     icon: Database,
