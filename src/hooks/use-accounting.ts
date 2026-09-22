@@ -51,7 +51,6 @@ export function useAccounting() {
       const [
         { data: subs },
         { data: recs },
-        { data: ants },
         { data: exps },
         { data: ops },
         { data: reds },
@@ -65,11 +64,6 @@ export function useAccounting() {
           .from('recebiveis_ccb')
           .select(
             'id, acquisition_value, created_at, boletos, ccb_id, profiles!recebiveis_ccb_tomador_id_fkey(full_name, pj_company_name)',
-          ),
-        supabase
-          .from('operacoes_antecipacao')
-          .select(
-            'id, net_value, created_at, updated_at, installments, ccb_id, ccb_solicitacoes(profiles(full_name, pj_company_name))',
           ),
         supabase
           .from('expenses')
@@ -86,20 +80,20 @@ export function useAccounting() {
           .select(
             'id, net_value, updated_at, status, profiles!investment_redemptions_user_id_fkey(full_name, pj_company_name)',
           ),
-        // 7. Movimentações de Caixa (liquidações, juros, etc.)
+        // Movimentações de Caixa (liquidações, juros, etc.)
         // RLS já garante que admins veem tudo e usuários comuns só os próprios registros.
         supabase
           .from('movimentacoes_caixa')
           .select(
             'id, tipo, categoria, descricao, valor, user_id, created_at, referencia_id, referencia_tipo, referencia_numero',
           ),
-        // 8. Transações do Tesourário — Recebimentos e Saídas Não Sincronizadas
+        // Transações do Tesourário — Recebimentos e Saídas Não Sincronizadas
         // O `treasury_transactions` contém recebimentos de parcelas de CCBs, parcelas de crédito, liquidações,
         // resgates e créditos manuais/receitas avulsas na conta.
-        // A deduplicação por `external_ref` evita somar duas vezes o mesmo boleto/parcela/operação/resgate.
         supabase
           .from('treasury_transactions')
-          .select('id, type, category, amount, description, date, external_ref')
+          .select('id, type, category, amount, description, date, external_ref, expense_id')
+          .or('status.eq.Confirmado,status.is.null')
           .or(
             'category.in.("Recebimento de Parcelas - CCB","Recebimento de Parcelas - Operação","Liquidação de Recebível","Resgate de Investidor","Resgates e Rendimentos","Receita Avulsa","Crédito em Conta","Receitas Diversas","Aporte de Capital","Rendimento Financeiro","Reembolso"),external_ref.like.manual-credit-%',
           ),
@@ -119,14 +113,10 @@ export function useAccounting() {
         }
       })
 
-      // 2. Recebíveis CCB
-      // Coleta os `external_ref` dos boletos que chegaram via JSONB para evitar
-      // duplicidade com os registros vindos do `treasury_transactions`.
-      const boletoExternalRefs = new Set<string>()
+      // 2. Aquisições de CCB (Desembolsos)
       ;(recs || []).forEach((rec) => {
         const prof = Array.isArray(rec.profiles) ? rec.profiles[0] : rec.profiles
         const tomador = prof?.pj_company_name || prof?.full_name || 'Desconhecido'
-
         const valAcq = Number(rec.acquisition_value || 0)
         transactions.push({
           id: `acq-${rec.id}`,
@@ -135,37 +125,6 @@ export function useAccounting() {
           category: 'Aquisição de CCB',
           description: `Aquisição de CCB — ${tomador} — R$ ${valAcq.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
           value: valAcq,
-        })
-
-        const boletos = Array.isArray(rec.boletos) ? rec.boletos : []
-        boletos.forEach((bol: any, i: number) => {
-          const pDate =
-            bol.data_pagamento ||
-            bol.payment_date ||
-            bol.data_liquidacao ||
-            bol.data_vencimento ||
-            bol.due_date
-          if (
-            (bol.status === 'Pago' || bol.status === 'pago' || bol.status === 'liquidado') &&
-            pDate
-          ) {
-            const val =
-              Number(bol.valor || bol.unit_value || 0) +
-              Number(bol.interest_applied || 0) +
-              Number(bol.penalty_applied || 0)
-            // Registra o `external_ref` deste boleto (mesmo formato usado pelo
-            // trigger que popula `treasury_transactions`) para deduplicação.
-            if (bol.external_ref) boletoExternalRefs.add(String(bol.external_ref))
-            else if (rec.id) boletoExternalRefs.add(`ccb-bol-${rec.id}-${i + 1}`)
-            transactions.push({
-              id: `bol-${rec.id}-${i}`,
-              date: normalizeAccountingDate(pDate),
-              type: 'in',
-              category: 'Liquidação de Recebível',
-              description: `Recebível liquidado — Boleto ${bol.numero || bol.number || i + 1} - Tomador: ${tomador}`,
-              value: val,
-            })
-          }
         })
       })
 
@@ -186,13 +145,16 @@ export function useAccounting() {
         }
       })
 
-      // 8. Transações do Tesourário — Recebimento de Parcelas, Liquidação de Operações e Resgates
-      // Adiciona os eventos que não chegaram via outras fontes e não estão duplicados no Livro Caixa.
+      // 3. Transações do Tesourário (incluindo Recebimento de Parcelas - CCB com external_ref ccb-bol-...)
+      // Segue o padrão do DRE: treasury_transactions é a fonte prioritária para recebimentos de CCB.
+      // Coleta os external_ref processados para posterior deduplicação com os boletos pagos de recebiveis_ccb.
+      const treasuryExternalRefs = new Set<string>()
       ;(tt || []).forEach((tx: any) => {
         const ref = tx.external_ref ? String(tx.external_ref) : null
-        if (ref && boletoExternalRefs.has(ref)) return
         if (ref && movsExternalRefs.has(ref)) return
-        if (ref) boletoExternalRefs.add(ref)
+        if (ref && treasuryExternalRefs.has(ref)) return
+        if (ref) treasuryExternalRefs.add(ref)
+
         const txType: 'in' | 'out' = tx.type === 'out' ? 'out' : 'in'
         transactions.push({
           id: `tt-${tx.id}`,
@@ -206,35 +168,49 @@ export function useAccounting() {
         })
       })
 
-      // 3. Antecipações CCB
-      ;(ants || []).forEach((ant: any) => {
-        const ccb = Array.isArray(ant.ccb_solicitacoes)
-          ? ant.ccb_solicitacoes[0]
-          : ant.ccb_solicitacoes
-        const prof = ccb?.profiles
-          ? Array.isArray(ccb.profiles)
-            ? ccb.profiles[0]
-            : ccb.profiles
-          : null
+      // 4. Recebíveis CCB (boletos pagos via JSONB de recebiveis_ccb)
+      // Fonte secundária de segurança: boletos que possam não ter sido sincronizados para treasury_transactions.
+      // DEDUP PADRÃO DRE: se o external_ref já existe em treasuryExternalRefs, o boleto NÃO é adicionado,
+      // garantindo que cada recebimento de parcela de CCB apareça EXATAMENTE UMA VEZ.
+      ;(recs || []).forEach((rec: any) => {
+        const prof = Array.isArray(rec.profiles) ? rec.profiles[0] : rec.profiles
         const tomador = prof?.pj_company_name || prof?.full_name || 'Desconhecido'
 
-        const installments = Array.isArray(ant.installments) ? ant.installments : []
-        installments.forEach((inst: any, i: number) => {
+        const boletos = Array.isArray(rec.boletos) ? rec.boletos : []
+        boletos.forEach((bol: any, i: number) => {
+          const bolStatus = (bol.status || '').toLowerCase()
+          if (bolStatus !== 'pago' && bolStatus !== 'liquidado') return
+
           const pDate =
-            inst.data_pagamento || inst.payment_date || inst.data_vencimento || inst.due_date
-          if (
-            (inst.status === 'paga' || inst.status === 'Pago' || inst.status === 'pago') &&
-            pDate
-          ) {
-            transactions.push({
-              id: `inst-${ant.id}-${i}`,
-              date: normalizeAccountingDate(pDate),
-              type: 'in',
-              category: 'Pagamento de Parcela CCB',
-              description: `Parcela ${inst.numero || inst.number || i + 1} — ${tomador} — CCB ${ant.ccb_id ? ant.ccb_id.substring(0, 8) : ant.id.substring(0, 8)}`,
-              value: Number(inst.valor || inst.value || 0),
-            })
-          }
+            bol.data_pagamento ||
+            bol.payment_date ||
+            bol.data_liquidacao ||
+            bol.data_vencimento ||
+            bol.due_date
+          if (!pDate) return
+
+          const parcela = i + 1
+          const extRef = bol.external_ref
+            ? String(bol.external_ref)
+            : `ccb-bol-${rec.id}-${parcela}`
+
+          if (treasuryExternalRefs.has(extRef)) return
+          treasuryExternalRefs.add(extRef)
+
+          const val =
+            Number(bol.valor || bol.unit_value || 0) +
+            Number(bol.interest_applied || 0) +
+            Number(bol.penalty_applied || 0)
+          if (!val) return
+
+          transactions.push({
+            id: `ccb-bol-${rec.id}-${parcela}`,
+            date: normalizeAccountingDate(pDate),
+            type: 'in',
+            category: 'Recebimento de Parcelas - CCB',
+            description: `Recebimento Parcela ${bol.numero || bol.number || parcela} - CCB nº ${rec.ccb_id ? String(rec.ccb_id).substring(0, 8) : String(rec.id).substring(0, 8)} - Tomador: ${tomador}`,
+            value: val,
+          })
         })
       })
 
@@ -277,7 +253,7 @@ export function useAccounting() {
       // ignora para não exibir dobrado na Contabilidade.
       ;(reds || []).forEach((red) => {
         if (red.status === 'paid') {
-          if (redemptionsInMovs.has(red.id) || boletoExternalRefs.has(`redemption-${red.id}`)) {
+          if (redemptionsInMovs.has(red.id) || treasuryExternalRefs.has(`redemption-${red.id}`)) {
             return
           }
           const prof = Array.isArray(red.profiles) ? red.profiles[0] : red.profiles

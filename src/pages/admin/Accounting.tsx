@@ -300,8 +300,13 @@ export default function Accounting() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="todas">Todas</SelectItem>
-                <SelectItem value="Pagamento de Parcela CCB">Pagamento de Parcela CCB</SelectItem>
+                <SelectItem value="Recebimento de Parcelas - CCB">
+                  Recebimento de Parcelas - CCB
+                </SelectItem>
                 <SelectItem value="Liquidação de Recebível">Liquidação de Recebível</SelectItem>
+                <SelectItem value="Recebimento de Parcelas - Operação">
+                  Recebimento de Parcelas - Operação
+                </SelectItem>
                 <SelectItem value="Subscrição de Debênture">Subscrição de Debênture</SelectItem>
                 <SelectItem value="Despesa">Despesa</SelectItem>
                 <SelectItem value="Pagamento Fornecedor">Pagamento Fornecedor</SelectItem>
