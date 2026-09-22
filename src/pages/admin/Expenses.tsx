@@ -41,11 +41,14 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { cn, formatDate } from '@/lib/utils'
+import { CompanyBankAccountSelect } from '@/components/admin/CompanyBankAccountSelect'
+import { useCompanyBankAccounts } from '@/hooks/use-company-bank-accounts'
 
 export default function Expenses() {
   const { activeRole } = useAuth()
   const isReadOnly = activeRole === 'accountant'
   const isAdmin = activeRole === 'admin'
+  const { activeAccount, accounts } = useCompanyBankAccounts()
 
   const [loading, setLoading] = useState(true)
   const [suppliers, setSuppliers] = useState<any[]>([])
@@ -74,6 +77,7 @@ export default function Expenses() {
     due_date: '',
     payment_date: '',
     status: 'pending',
+    bank_account_id: '',
   })
   const [file, setFile] = useState<File | null>(null)
   const [categoryHighlight, setCategoryHighlight] = useState(false)
@@ -86,7 +90,11 @@ export default function Expenses() {
     setLoading(true)
     const [supRes, expRes] = await Promise.all([
       supabase.from('suppliers').select('*').order('company_name', { ascending: true }),
-      supabase.from('expenses').select('*, suppliers(company_name)'),
+      supabase
+        .from('expenses')
+        .select(
+          '*, suppliers(company_name), company_bank_accounts(id, bank_name, branch, account_number, is_active)',
+        ),
     ])
 
     console.log('Fornecedores retornados da API:', supRes.data)
@@ -144,6 +152,7 @@ export default function Expenses() {
       due_date: '',
       payment_date: '',
       status: 'pending',
+      bank_account_id: activeAccount?.id || '',
     })
     setFile(null)
     setCategoryHighlight(false)
@@ -161,6 +170,7 @@ export default function Expenses() {
       due_date: e.due_date || '',
       payment_date: e.payment_date || '',
       status: e.status || 'pending',
+      bank_account_id: e.bank_account_id || activeAccount?.id || '',
     })
     setFile(null)
     setCategoryHighlight(false)
@@ -231,6 +241,8 @@ export default function Expenses() {
     const supplierName =
       suppliers.find((s) => s.id === expense.supplier_id)?.company_name || 'Desconhecido'
 
+    const resolvedBankId = expense.bank_account_id || activeAccount?.id || null
+
     const { data: mov, error: movErr } = await supabase
       .from('movimentacoes_caixa')
       .insert({
@@ -246,6 +258,7 @@ export default function Expenses() {
         referencia_tipo: isSupplier ? 'fornecedor' : 'despesa',
         referencia_numero: expense.invoice_file_path ? 'NF' : null,
         user_id: userId,
+        bank_account_id: resolvedBankId,
       })
       .select()
       .single()
@@ -296,6 +309,8 @@ export default function Expenses() {
       filePath = data.path
     }
 
+    const finalBankAccountId = expForm.bank_account_id || activeAccount?.id || null
+
     const payload: any = {
       supplier_id: expForm.supplier_id,
       description: expForm.description,
@@ -303,6 +318,7 @@ export default function Expenses() {
       amount: Number(expForm.amount),
       due_date: expForm.due_date,
       status: expForm.status,
+      bank_account_id: finalBankAccountId,
     }
 
     if (expForm.status === 'paid') {
@@ -320,7 +336,12 @@ export default function Expenses() {
       if (error) toast.error(error.message)
       else {
         if (expForm.status === 'paid') {
-          const expense = { ...expForm, id: expForm.id, amount: Number(expForm.amount) }
+          const expense = {
+            ...expForm,
+            id: expForm.id,
+            amount: Number(expForm.amount),
+            bank_account_id: finalBankAccountId,
+          }
           await registerTreasuryOutflow(expense, false)
         }
         toast.success('Despesa atualizada com sucesso.')
@@ -331,7 +352,9 @@ export default function Expenses() {
       const { data: newExp, error } = await supabase
         .from('expenses')
         .insert(payload)
-        .select()
+        .select(
+          '*, suppliers(company_name), company_bank_accounts(id, bank_name, branch, account_number, is_active)',
+        )
         .single()
       if (error) toast.error(error.message)
       else {
@@ -369,15 +392,20 @@ export default function Expenses() {
       return toast.error('Esta operação já foi registrada no caixa')
     }
 
+    const resolvedBankId = expense.bank_account_id || activeAccount?.id || null
     const { error } = await supabase
       .from('expenses')
-      .update({ status: 'paid', payment_date: new Date().toISOString().split('T')[0] })
+      .update({
+        status: 'paid',
+        payment_date: new Date().toISOString().split('T')[0],
+        bank_account_id: resolvedBankId,
+      })
       .eq('id', id)
 
     if (error) {
       toast.error(error.message)
     } else {
-      await registerTreasuryOutflow(expense, false)
+      await registerTreasuryOutflow({ ...expense, bank_account_id: resolvedBankId }, false)
       toast.success('Despesa marcada como paga.')
       fetchData()
     }
@@ -425,6 +453,7 @@ export default function Expenses() {
                   <TableRow>
                     <TableHead>Descrição</TableHead>
                     <TableHead>Fornecedor</TableHead>
+                    <TableHead>Conta Bancária</TableHead>
                     <TableHead>Categoria</TableHead>
                     <TableHead>Vencimento</TableHead>
                     <TableHead>Valor</TableHead>
@@ -437,6 +466,30 @@ export default function Expenses() {
                     <TableRow key={e.id}>
                       <TableCell className="font-medium">{e.description}</TableCell>
                       <TableCell>{e.suppliers?.company_name}</TableCell>
+                      <TableCell className="whitespace-nowrap text-xs">
+                        {e.company_bank_accounts ? (
+                          <div className="flex flex-col">
+                            <span className="font-medium text-foreground">
+                              {e.company_bank_accounts.bank_name}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground font-mono">
+                              {e.company_bank_accounts.branch
+                                ? `${e.company_bank_accounts.branch} / `
+                                : ''}
+                              {e.company_bank_accounts.account_number}
+                              {e.company_bank_accounts.is_active && (
+                                <span className="ml-1 text-[10px] text-emerald-600 font-semibold">
+                                  (Principal)
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground italic text-xs">
+                            Conta Principal
+                          </span>
+                        )}
+                      </TableCell>
                       <TableCell>{e.category}</TableCell>
                       <TableCell>{formatDate(e.due_date)}</TableCell>
                       <TableCell>
@@ -506,7 +559,7 @@ export default function Expenses() {
                   ))}
                   {expenses.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                         Nenhuma despesa lançada.
                       </TableCell>
                     </TableRow>
@@ -713,8 +766,16 @@ export default function Expenses() {
               <Label>Anexar Nota Fiscal (PDF/XML)</Label>
               <Input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
             </div>
+
+            <CompanyBankAccountSelect
+              value={expForm.bank_account_id}
+              onChange={(bankId) => setExpForm((prev) => ({ ...prev, bank_account_id: bankId }))}
+              label="Conta Bancária de Saída"
+              required={accounts.length > 0}
+            />
           </div>
           <DialogFooter>
+            {' '}
             <Button
               onClick={handleSaveExpense}
               disabled={saving || !expForm.supplier_id || !expForm.amount || !expForm.due_date}
