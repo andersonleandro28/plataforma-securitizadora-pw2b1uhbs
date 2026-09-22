@@ -147,9 +147,14 @@ function InvestmentList({
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm bg-muted/10 p-3 rounded-md">
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
-                    Valor Total
+                    Valor Ativo
                   </p>
-                  <p className="font-semibold text-foreground">{formatCurrency(inv.total_value)}</p>
+                  <p className="font-semibold text-foreground">
+                    {formatCurrency(
+                      Math.max(0, Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0)) *
+                        Number(inv.unit_price || inv.investment_products?.quota_value || 1000),
+                    )}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
@@ -393,7 +398,21 @@ export function InvestorDashboard() {
 
   const totalInvestedValue = activeInvestments
     .filter((inv) => inv.status === 'approved')
-    .reduce((acc, inv) => acc + (inv.total_value || 0), 0)
+    .reduce((acc, inv) => {
+      const unitPrice = Number(inv.unit_price || inv.investment_products?.quota_value || 1000)
+      const remainingQuotas = Math.max(
+        0,
+        Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0),
+      )
+      const calculatedActive = remainingQuotas * unitPrice
+      const totalVal = Number(inv.total_value)
+      // Se total_value já está decrementado ou válido, usa o menor entre total_value e calculatedActive se houver resgates
+      const activeValue =
+        !isNaN(totalVal) && totalVal >= 0 && totalVal <= calculatedActive
+          ? totalVal
+          : calculatedActive
+      return acc + activeValue
+    }, 0)
 
   const totalBalance = walletBalance + totalInvestedValue
 
@@ -413,7 +432,13 @@ export function InvestorDashboard() {
           : inv.created_at
             ? new Date(inv.created_at)
             : null
-        return sum + calculateManualYieldAmount(inv.total_value || 0, entries, startDate)
+        const unitPrice = Number(inv.unit_price || inv.investment_products?.quota_value || 1000)
+        const remainingQuotas = Math.max(
+          0,
+          Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0),
+        )
+        const baseValue = Math.min(Number(inv.total_value || 0), remainingQuotas * unitPrice)
+        return sum + calculateManualYieldAmount(baseValue, entries, startDate)
       }, 0)
 
     return fixedYield + manualYield
@@ -451,7 +476,13 @@ export function InvestorDashboard() {
         : inv.created_at
           ? new Date(inv.created_at)
           : null
-      return generateManualYieldChartData(inv.total_value || 0, entries, startDate)
+      const unitPrice = Number(inv.unit_price || inv.investment_products?.quota_value || 1000)
+      const remainingQuotas = Math.max(
+        0,
+        Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0),
+      )
+      const baseValue = Math.min(Number(inv.total_value || 0), remainingQuotas * unitPrice)
+      return generateManualYieldChartData(baseValue, entries, startDate)
     })
 
     if (fixedChartData.length === 0 && manualChartData.length === 0) return []

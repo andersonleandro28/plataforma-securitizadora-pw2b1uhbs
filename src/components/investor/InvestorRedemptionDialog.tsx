@@ -54,7 +54,13 @@ export function InvestorRedemptionDialog({
   onSuccess,
 }: InvestorRedemptionDialogProps) {
   const [quotasInput, setQuotasInput] = useState<string>('1')
+  const [amountInput, setAmountInput] = useState<string>('')
   const [submitting, setSubmitting] = useState(false)
+
+  const unitPrice = useMemo(() => {
+    if (!investment) return 1000
+    return Number(investment.unit_price || investment.investment_products?.quota_value || 1000)
+  }, [investment])
 
   // Cotas disponíveis: quotas totais - cotas já resgatadas - cotas já em solicitação pendente
   const availableQuotas = useMemo(() => {
@@ -63,6 +69,10 @@ export function InvestorRedemptionDialog({
     const redeemed = investment.redeemed_quotas || 0
     return Math.max(0, total - redeemed - pendingRequestedQuotas)
   }, [investment, pendingRequestedQuotas])
+
+  const availableAmount = useMemo(() => {
+    return availableQuotas * unitPrice
+  }, [availableQuotas, unitPrice])
 
   const graceEval = useMemo(() => {
     if (!investment) return null
@@ -84,13 +94,40 @@ export function InvestorRedemptionDialog({
   const handleOpenChange = (nextOpen: boolean) => {
     if (nextOpen && investment) {
       const initial = Math.min(1, Math.max(0, availableQuotas))
-      setQuotasInput(initial > 0 ? String(initial) : '1')
+      const initQ = initial > 0 ? initial : 1
+      setQuotasInput(String(initQ))
+      setAmountInput(String(initQ * unitPrice))
     }
     onOpenChange(nextOpen)
   }
 
-  const handleSetMaxQuotas = () => {
+  // Mudança pela quantidade de cotas
+  const handleQuotasChange = (val: string) => {
+    setQuotasInput(val)
+    const q = parseInt(val, 10)
+    if (!isNaN(q) && q > 0) {
+      setAmountInput(String(q * unitPrice))
+    } else {
+      setAmountInput('')
+    }
+  }
+
+  // Mudança pelo valor em reais (bidirecional)
+  const handleAmountChange = (val: string) => {
+    setAmountInput(val)
+    const num = parseFloat(val.replace(',', '.'))
+    if (!isNaN(num) && num > 0 && unitPrice > 0) {
+      const calculatedQuotas = Math.floor(num / unitPrice)
+      setQuotasInput(calculatedQuotas > 0 ? String(calculatedQuotas) : '1')
+    } else {
+      setQuotasInput('1')
+    }
+  }
+
+  // Resgatar valor total disponível
+  const handleSetMax = () => {
     setQuotasInput(String(availableQuotas))
+    setAmountInput(String(availableQuotas * unitPrice))
   }
 
   const handleConfirmSubmit = async () => {
@@ -253,41 +290,94 @@ export function InvestorRedemptionDialog({
             </div>
           </div>
 
-          {/* Input de Cotas se não estiver totalmente bloqueado */}
+          {/* Entradas Bidirecionais: Valor em Reais e Quantidade de Cotas */}
           {!isBlockedByGrace && (
-            <div className="space-y-2 pt-2">
+            <div className="space-y-3 pt-2 bg-slate-50 dark:bg-slate-900/40 p-3.5 rounded-lg border border-slate-200 dark:border-slate-800">
               <div className="flex items-center justify-between">
-                <Label htmlFor="quotas" className="text-sm font-medium">
-                  Quantidade de Cotas para Saque
-                </Label>
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                  Definir Resgate
+                </span>
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
-                  className="h-6 text-xs text-primary hover:text-primary/80"
-                  onClick={handleSetMaxQuotas}
-                  disabled={availableQuotas <= 0}
+                  className="h-7 text-xs font-medium border-primary/30 text-primary hover:bg-primary/10"
+                  onClick={handleSetMax}
+                  disabled={availableQuotas <= 0 || submitting}
                 >
-                  Resgatar Máximo ({availableQuotas})
+                  Resgatar Valor Total (R${' '}
+                  {availableAmount.toLocaleString('pt-BR', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                  )
                 </Button>
               </div>
-              <div className="flex gap-2">
-                <Input
-                  id="quotas"
-                  type="number"
-                  min="1"
-                  max={availableQuotas}
-                  step="1"
-                  value={quotasInput}
-                  onChange={(e) => setQuotasInput(e.target.value)}
-                  disabled={submitting || availableQuotas <= 0}
-                  className="font-mono text-base"
-                />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="amount"
+                    className="text-xs font-medium text-slate-600 dark:text-slate-400"
+                  >
+                    Valor em Reais (R$)
+                  </Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">
+                      R$
+                    </span>
+                    <Input
+                      id="amount"
+                      type="number"
+                      min={unitPrice}
+                      max={availableAmount}
+                      step={unitPrice}
+                      placeholder="0,00"
+                      value={amountInput}
+                      onChange={(e) => handleAmountChange(e.target.value)}
+                      disabled={submitting || availableQuotas <= 0}
+                      className="pl-9 font-mono font-semibold"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Disponível: R${' '}
+                    {availableAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label
+                      htmlFor="quotas"
+                      className="text-xs font-medium text-slate-600 dark:text-slate-400"
+                    >
+                      Quantidade de Cotas
+                    </Label>
+                    <span className="text-[11px] text-slate-500">Máx: {availableQuotas}</span>
+                  </div>
+                  <Input
+                    id="quotas"
+                    type="number"
+                    min="1"
+                    max={availableQuotas}
+                    step="1"
+                    value={quotasInput}
+                    onChange={(e) => handleQuotasChange(e.target.value)}
+                    disabled={submitting || availableQuotas <= 0}
+                    className="font-mono font-semibold"
+                  />
+                  <p className="text-[11px] text-slate-500">
+                    1 cota = R$ {unitPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </p>
+                </div>
               </div>
+
               {parsedQuotas > availableQuotas && (
                 <p className="text-xs text-rose-600 font-medium">
-                  A quantidade solicitada ({parsedQuotas}) é maior que o saldo de cotas disponível (
-                  {availableQuotas}).
+                  A quantidade solicitada ({parsedQuotas} cotas / R${' '}
+                  {(parsedQuotas * unitPrice).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  ) é maior que o saldo de cotas disponível ({availableQuotas} cota
+                  {availableQuotas > 1 ? 's' : ''}).
                 </p>
               )}
             </div>

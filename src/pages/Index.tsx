@@ -381,7 +381,19 @@ export default function Index() {
     }
 
     investments.forEach((inv) => {
-      const val = Number(inv.total_value) || 0
+      // Valor ativo considerando cotas remanescentes
+      const unitPrice = Number(inv.unit_price || 1000)
+      const remainingQuotas = Math.max(
+        0,
+        Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0),
+      )
+      const calculatedActive = remainingQuotas * unitPrice
+      const totalVal = Number(inv.total_value)
+      const val =
+        !isNaN(totalVal) && totalVal >= 0 && totalVal <= calculatedActive
+          ? totalVal
+          : calculatedActive
+
       totalCaptado += val
 
       // Usar transfer_date ou created_at

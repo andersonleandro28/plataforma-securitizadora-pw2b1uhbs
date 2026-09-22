@@ -6,6 +6,8 @@ export interface InvestmentWithProduct {
   transfer_date: string | null
   created_at: string | null
   unit_price?: number | null
+  quotas?: number | null
+  redeemed_quotas?: number | null
   investment_products?: {
     id: string
     title: string
@@ -104,7 +106,15 @@ export function calculateAccruedYield(
   inv: InvestmentWithProduct,
   referenceDate: Date = new Date(),
 ): number {
-  if (!inv.investment_products || !inv.total_value) return 0
+  if (!inv.investment_products) return 0
+
+  // Calcula valor base considerando cotas ativas restantes
+  const unitPrice = Number(inv.unit_price || inv.investment_products.quota_value || 1000)
+  const remainingQuotas = Math.max(0, Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0))
+  const calculatedActive = remainingQuotas * unitPrice
+  const baseValue = Math.min(Number(inv.total_value || 0), calculatedActive)
+
+  if (baseValue <= 0) return 0
 
   const annualRate = parseProductRate(inv.investment_products.rate)
   if (annualRate === null) return 0
@@ -118,7 +128,7 @@ export function calculateAccruedYield(
   if (daysDiff <= 0) return 0
 
   return computeInterestYield(
-    inv.total_value,
+    baseValue,
     annualRate,
     daysDiff,
     inv.investment_products.interest_type,
@@ -139,7 +149,8 @@ export function generateYieldChartData(
   const eligible = investments.filter((inv) => {
     const startDate = getInvestmentStartDate(inv)
     const annualRate = parseProductRate(inv.investment_products?.rate)
-    return startDate && annualRate !== null && inv.total_value
+    const remainingQuotas = Math.max(0, Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0))
+    return startDate && annualRate !== null && (inv.total_value || 0) > 0 && remainingQuotas > 0
   })
 
   if (eligible.length === 0) return []

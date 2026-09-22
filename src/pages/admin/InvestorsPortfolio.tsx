@@ -56,6 +56,7 @@ interface ProductInfo {
   rate: string
   term: string
   yield_split_pct: number
+  quota_value?: number | null
   interest_type?: string | null
 }
 
@@ -68,8 +69,12 @@ interface ProfileInfo {
 interface LinkedInvestment {
   status: string | null
   user_id: string
+  quotas?: number | null
+  redeemed_quotas?: number | null
+  unit_price?: number | null
+  total_value?: number | null
   profiles: ProfileInfo | null
-  investment_products: ProductInfo | null
+  investment_products: (ProductInfo & { quota_value?: number | null }) | null
 }
 
 interface RawSubscription {
@@ -185,9 +190,9 @@ export default function InvestorsPortfolio() {
           id, investor_name, document_number, total_amount, subscription_date,
           created_at, status, investment_id, series_id,
           investments (
-            status, user_id,
+            status, user_id, quotas, redeemed_quotas, unit_price, total_value,
             profiles ( id, full_name, document_number ),
-            investment_products ( id, title, type, rate, term, yield_split_pct, interest_type )
+            investment_products ( id, title, type, rate, term, yield_split_pct, interest_type, quota_value )
           )
           `,
         )
@@ -317,7 +322,19 @@ export default function InvestorsPortfolio() {
       const termMonths = product ? parseProductTerm(product.term) : null
       const maturityDate = startDate && termMonths ? addMonths(startDate, termMonths) : null
 
-      const totalAmountVal = Number(raw.total_amount || (inv as any)?.total_value || 0)
+      // Considera valor ativo remanescente se vinculado a investimento
+      let totalAmountVal = Number(raw.total_amount || 0)
+      if (inv) {
+        const invUnitPrice = Number(inv.unit_price || product?.quota_value || 1000)
+        const invRemainingQuotas = Math.max(
+          0,
+          Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0),
+        )
+        const activeInvVal = invRemainingQuotas * invUnitPrice
+        const totalVal = Number(inv.total_value)
+        totalAmountVal =
+          !isNaN(totalVal) && totalVal >= 0 && totalVal <= activeInvVal ? totalVal : activeInvVal
+      }
 
       const enriched: EnrichedSubscription = {
         id: raw.id,
