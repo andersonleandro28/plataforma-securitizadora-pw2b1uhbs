@@ -813,6 +813,7 @@ export default function CcbPurchases() {
                               payment_date: defaultDate,
                               interest: '',
                               penalty: '',
+                              bank_account_id: b.bank_account_id || '',
                             })
                             setLiquidationOpen(true)
                           }}

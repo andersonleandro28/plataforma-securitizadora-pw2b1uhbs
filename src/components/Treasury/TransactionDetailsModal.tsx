@@ -24,7 +24,13 @@ export function TransactionDetailsModal({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <span className="text-muted-foreground block text-xs mb-1">Data da Transação</span>
-              <span className="font-medium">{new Date(tx.date).toLocaleString('pt-BR')}</span>
+              <span className="font-medium">
+                {tx.date
+                  ? tx.date.length === 10
+                    ? tx.date.split('-').reverse().join('/')
+                    : new Date(tx.date).toLocaleString('pt-BR')
+                  : '-'}
+              </span>
             </div>
             <div>
               <span className="text-muted-foreground block text-xs mb-1">Tipo</span>
@@ -58,6 +64,22 @@ export function TransactionDetailsModal({
               <span className="font-medium text-xs truncate max-w-[200px] block" title={tx.id}>
                 {tx.id}
               </span>
+            </div>
+            <div className="col-span-2 bg-muted/40 p-2.5 rounded-md border border-border/50">
+              <span className="text-muted-foreground block text-xs mb-1">Conta Bancária</span>
+              {tx.bank_account_info ? (
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-foreground">
+                    {tx.bank_account_info.bank_name}
+                  </span>
+                  <span className="text-xs text-muted-foreground font-mono">
+                    {tx.bank_account_info.branch ? `Ag. ${tx.bank_account_info.branch} • ` : ''}
+                    CC {tx.bank_account_info.account_number}
+                  </span>
+                </div>
+              ) : (
+                <span className="text-xs text-muted-foreground italic">Não vinculada</span>
+              )}
             </div>
           </div>
           <div>

@@ -34,6 +34,7 @@ import { exportToCSV } from '@/lib/export-utils'
 import { ReconcileModal } from '@/components/Treasury/ReconcileModal'
 import { useAccounting } from '@/hooks/use-accounting'
 import { TransactionDetailsModal } from '@/components/Treasury/TransactionDetailsModal'
+import { useCompanyBankAccounts } from '@/hooks/use-company-bank-accounts'
 
 function formatDisplayDate(dateStr: string): string {
   if (!dateStr || dateStr.length < 10) return dateStr
@@ -52,16 +53,20 @@ export default function Accounting() {
   const [periodoFim, setPeriodoFim] = useState(endOfMonth)
   const [filtroTipo, setFiltroTipo] = useState('todas')
   const [filtroCategoria, setFiltroCategoria] = useState('todas')
+  const [filtroConta, setFiltroConta] = useState('todas')
   const [busca, setBusca] = useState('')
   const [page, setPage] = useState(1)
   const [isReconcileOpen, setIsReconcileOpen] = useState(false)
   const [selectedTx, setSelectedTx] = useState<any>(null)
+
+  const { accounts: bankAccounts } = useCompanyBankAccounts()
 
   const [activeFiltros, setActiveFiltros] = useState({
     inicio: startOfMonth,
     fim: endOfMonth,
     tipo: 'todas',
     categoria: 'todas',
+    conta: 'todas',
     busca: '',
   })
 
@@ -80,6 +85,7 @@ export default function Accounting() {
       fim: periodoFim,
       tipo: filtroTipo,
       categoria: filtroCategoria,
+      conta: filtroConta,
       busca,
     })
     setPage(1)
@@ -98,6 +104,8 @@ export default function Accounting() {
       if (activeFiltros.fim && dateStr > activeFiltros.fim) match = false
       if (activeFiltros.tipo !== 'todas' && t.type !== activeFiltros.tipo) match = false
       if (activeFiltros.categoria !== 'todas' && t.category !== activeFiltros.categoria)
+        match = false
+      if (activeFiltros.conta !== 'todas' && t.bank_account_id !== activeFiltros.conta)
         match = false
       if (activeFiltros.busca) {
         const b = activeFiltros.busca.toLowerCase()
@@ -138,6 +146,9 @@ export default function Accounting() {
       Data: formatDisplayDate(t.date),
       Tipo: t.type === 'in' ? 'Entrada' : 'Saída',
       Categoria: t.category,
+      Conta: t.bank_account_info
+        ? `${t.bank_account_info.bank_name} ${t.bank_account_info.account_number}`
+        : 'Principal',
       Descrição: t.description,
       Valor: t.value,
       'Saldo Acumulado': t.accumulated_balance,
@@ -295,7 +306,7 @@ export default function Accounting() {
           <div className="grid gap-1">
             <span className="text-xs font-medium text-muted-foreground">Categoria</span>
             <Select value={filtroCategoria} onValueChange={setFiltroCategoria}>
-              <SelectTrigger className="w-[200px]">
+              <SelectTrigger className="w-[180px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -319,6 +330,22 @@ export default function Accounting() {
               </SelectContent>
             </Select>
           </div>
+          <div className="grid gap-1">
+            <span className="text-xs font-medium text-muted-foreground">Conta Bancária</span>
+            <Select value={filtroConta} onValueChange={setFiltroConta}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Todas as contas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas as contas</SelectItem>
+                {bankAccounts.map((acc) => (
+                  <SelectItem key={acc.id} value={acc.id}>
+                    {acc.bank_name} {acc.account_number} {acc.is_active ? '(Principal)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <Button onClick={handleApplyFilters}>Aplicar Filtros</Button>
         </CardContent>
       </Card>
@@ -331,6 +358,7 @@ export default function Accounting() {
                 <TableRow>
                   <TableHead className="whitespace-nowrap">Data</TableHead>
                   <TableHead>Tipo</TableHead>
+                  <TableHead>Conta Bancária</TableHead>
                   <TableHead>Categoria</TableHead>
                   <TableHead>Descrição</TableHead>
                   <TableHead className="text-right whitespace-nowrap">Valor</TableHead>
@@ -348,6 +376,9 @@ export default function Accounting() {
                         <Skeleton className="h-4 w-16" />
                       </TableCell>
                       <TableCell>
+                        <Skeleton className="h-4 w-24" />
+                      </TableCell>
+                      <TableCell>
                         <Skeleton className="h-4 w-32" />
                       </TableCell>
                       <TableCell>
@@ -363,7 +394,7 @@ export default function Accounting() {
                   ))
                 ) : paginatedData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
                       <div className="flex flex-col items-center justify-center space-y-3">
                         <PackageOpen className="w-12 h-12 text-muted-foreground/50" />
                         <p>Nenhuma movimentação encontrada para os filtros selecionados.</p>
@@ -386,6 +417,21 @@ export default function Accounting() {
                         >
                           {t.type === 'in' ? 'ENTRADA' : 'SAÍDA'}
                         </span>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-xs">
+                        {t.bank_account_info ? (
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-foreground">
+                              {t.bank_account_info.bank_name}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground font-mono">
+                              {t.bank_account_info.branch ? `${t.bank_account_info.branch} / ` : ''}
+                              {t.bank_account_info.account_number}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground italic">-</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-sm font-medium">{t.category}</TableCell>
                       <TableCell

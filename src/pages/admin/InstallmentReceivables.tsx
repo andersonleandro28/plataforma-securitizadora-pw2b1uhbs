@@ -118,7 +118,8 @@ export function InstallmentReceivables() {
     penalty: '0',
     notes: '',
     bank_account_id: '',
-  })  const [actionLoading, setActionLoading] = useState(false)
+  })
+  const [actionLoading, setActionLoading] = useState(false)
 
   // Prorrogação
   const [extensionOpen, setExtensionOpen] = useState(false)
@@ -616,6 +617,8 @@ export function InstallmentReceivables() {
       suggestedInterest = Number((baseAmount * (monthlyRate / 100 / 30) * daysLate).toFixed(2))
       suggestedPenalty = Number((baseAmount * (penaltyRate / 100)).toFixed(2))
     }
+
+    const isProrrogada = instVals.isExtended
 
     setLiquidationForm({
       payment_date: new Date().toISOString().split('T')[0],
@@ -1614,7 +1617,9 @@ export function InstallmentReceivables() {
 
             <CompanyBankAccountSelect
               value={liquidationForm.bank_account_id}
-              onChange={(accId) => setLiquidationForm((prev) => ({ ...prev, bank_account_id: accId }))}
+              onChange={(accId) =>
+                setLiquidationForm((prev) => ({ ...prev, bank_account_id: accId }))
+              }
               label="Conta Bancária de Recebimento"
               required
             />
