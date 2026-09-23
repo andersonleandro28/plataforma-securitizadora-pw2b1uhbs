@@ -183,7 +183,7 @@ export function useDfc() {
           supabase
             .from('expenses')
             .select(
-              'id, amount, description, payment_date, due_date, status, suppliers(company_name), category',
+              'id, amount, description, payment_date, due_date, status, suppliers(company_name), category, supplier_id',
             ),
           supabase
             .from('credit_operations')
@@ -193,7 +193,7 @@ export function useDfc() {
           supabase
             .from('investment_redemptions')
             .select(
-              'id, net_value, updated_at, status, profiles!investment_redemptions_user_id_fkey(full_name, pj_company_name)',
+              'id, net_value, updated_at, created_at, status, profiles!investment_redemptions_user_id_fkey(full_name, pj_company_name)',
             ),
           supabase
             .from('movimentacoes_caixa')
@@ -209,7 +209,7 @@ export function useDfc() {
           supabase
             .from('mapeamento_movimentacoes')
             .select('movimentacao_caixa_id, origem_tabela, origem_id')
-            .in('origem_tabela', ['fornecedores', 'despesas']),
+            .in('origem_tabela', ['fornecedores', 'despesas', 'investment_redemptions']),
         ])
 
       type ItemBruto = {
@@ -224,25 +224,50 @@ export function useDfc() {
 
       const rawItems: ItemBruto[] = []
 
-      // --- Deduplicações padrão DRE / Livro Caixa ---
+      // --- Deduplicações e Dicionários padrão DRE / Livro Caixa ---
+      const expenseMap = new Map<
+        string,
+        { payment_date: string | null; due_date: string | null; status: string }
+      >()
+      ;(expsRes.data || []).forEach((e: any) => {
+        expenseMap.set(e.id, {
+          payment_date: e.payment_date,
+          due_date: e.due_date,
+          status: e.status,
+        })
+      })
+
+      const redemptionMap = new Map<
+        string,
+        { updated_at: string; created_at: string; status: string }
+      >()
+      ;(redsRes.data || []).forEach((r: any) => {
+        redemptionMap.set(r.id, {
+          updated_at: r.updated_at,
+          created_at: r.created_at,
+          status: r.status,
+        })
+      })
+
+      const movIdToExpenseId = new Map<string, string>()
+      const expenseIdToMovId = new Map<string, string>()
+      ;(mapRes.data || []).forEach((m: any) => {
+        if (m.movimentacao_caixa_id && m.origem_id) {
+          if (m.origem_tabela === 'fornecedores' || m.origem_tabela === 'despesas') {
+            movIdToExpenseId.set(m.movimentacao_caixa_id, m.origem_id)
+            expenseIdToMovId.set(m.origem_id, m.movimentacao_caixa_id)
+          }
+        }
+      })
+
       const creditOpIdsNoCaixa = new Set<string>()
       const movsExternalRefs = new Set<string>()
       const redemptionsInMovs = new Set<string>()
 
-      // Mapeamento de movimentacoes_caixa para despesas oficiais (expenses)
-      const movIdToExpenseId = new Map<string, string>()
-      ;(mapRes.data || []).forEach((m: any) => {
-        if (m.movimentacao_caixa_id && m.origem_id) {
-          movIdToExpenseId.set(m.movimentacao_caixa_id, m.origem_id)
-        }
-      })
-      const paidExpenseIds = new Set(
-        (expsRes.data || []).filter((e: any) => e.status === 'paid').map((e: any) => e.id),
-      )
-
       ;(movsRes.data || []).forEach((mov: any) => {
         // Normalização fail-safe: SOMENTE 'entrada' normalizado vira 'entrada'; qualquer outro vira 'saida'
         const sinal: 'entrada' | 'saida' = classifyMovimentacaoCaixaDfc(mov.tipo)
+        const catLower = (mov.categoria || '').toLowerCase()
         const refTipo = (mov.referencia_tipo || '').toLowerCase()
 
         if (
@@ -256,7 +281,7 @@ export function useDfc() {
         if (mov.referencia_id) {
           movsExternalRefs.add(`op-liq-${mov.referencia_id}`)
           movsExternalRefs.add(`redemption-${mov.referencia_id}`)
-          if (mov.referencia_tipo === 'resgate_investimento') {
+          if (refTipo === 'resgate_investimento') {
             redemptionsInMovs.add(String(mov.referencia_id))
           }
           if (mov.referencia_numero) {
@@ -265,28 +290,47 @@ export function useDfc() {
           }
         }
 
-        // Deduplicação: se a despesa está vinculada a uma despesa oficial em expenses,
-        // ignora a duplicata do caixa, pois a tabela `expenses` é a fonte oficial
-        // com data correta de pagamento/vencimento.
+        // Deduplicação exclusiva de Despesas/Fornecedores:
+        // Se a movimentação do caixa estiver vinculada a uma despesa em `expenses`
+        // (seja via mapeamento_movimentacoes ou refTipo 'despesa') OU for de categoria fornecedor/despesa,
+        // a tabela `expenses` é a fonte exclusiva da verdade (passo 3).
         const linkedExpenseId =
           movIdToExpenseId.get(mov.id) || (refTipo === 'despesa' ? mov.referencia_id : null)
-        if (linkedExpenseId) {
+        if (linkedExpenseId && expenseMap.has(linkedExpenseId)) {
           return
         }
+        if (catLower === 'fornecedor' || catLower === 'despesa') {
+          // Se houver despesa vinculada no mapa de mapeamentos ou se referencia_id apontar para expense
+          if (linkedExpenseId || (mov.referencia_id && expenseMap.has(mov.referencia_id))) {
+            return
+          }
+        }
 
-        // Se for resgate já processado via investment_redemptions ou treasury_transactions, ignora
+        // Se for resgate já processado via investment_redemptions (passo 7), ignora para
+        // que o resgate seja processado por investment_redemptions com sua data real correta.
         if (refTipo === 'resgate_investimento' && mov.referencia_id) {
           const redId = String(mov.referencia_id)
-          const redMatch = (redsRes.data || []).find((r: any) => r.id === redId)
+          const redMatch = redemptionMap.get(redId)
           if (redMatch && redMatch.status === 'paid') {
             return
           }
         }
 
+        // Determina data efetiva real da movimentação
+        let effectiveDate = normalizeDate(mov.created_at)
+        if (
+          refTipo === 'resgate_investimento' &&
+          mov.referencia_id &&
+          redemptionMap.has(mov.referencia_id)
+        ) {
+          const red = redemptionMap.get(mov.referencia_id)!
+          effectiveDate = normalizeDate(red.updated_at || red.created_at)
+        }
+
         const catOriginal = mov.categoria || 'Outros'
         rawItems.push({
           id: `mov-${mov.id}`,
-          date: normalizeDate(mov.created_at),
+          date: effectiveDate,
           sinal,
           categoriaOriginal: catOriginal,
           descricao: mov.descricao || labelCategoriaDfc(catOriginal),
@@ -339,17 +383,20 @@ export function useDfc() {
         })
       })
 
-      // 3. Despesas pagas (expenses)
+      // 3. Despesas pagas (expenses) - Fonte exclusiva da verdade para despesas
       const expenseIdsInCaixa = new Set<string>()
-      ;(expsRes.data || []).forEach((exp) => {
+      ;(expsRes.data || []).forEach((exp: any) => {
         if (exp.status !== 'paid') return
         expenseIdsInCaixa.add(exp.id)
         const sup = Array.isArray(exp.suppliers) ? exp.suppliers[0] : exp.suppliers
         const fornecedor = sup?.company_name
-        const cat = exp.category || 'Despesa Operacional'
+        const cat = fornecedor
+          ? `Pagamento Fornecedor — ${fornecedor}`
+          : labelCategoriaDfc(exp.category) || 'Despesa Operacional'
+        const dataEfetiva = normalizeDate(exp.payment_date || exp.due_date)
         rawItems.push({
           id: `exp-${exp.id}`,
-          date: normalizeDate(exp.payment_date || exp.due_date),
+          date: dataEfetiva,
           sinal: 'saida',
           categoriaOriginal: cat,
           descricao:
@@ -373,7 +420,7 @@ export function useDfc() {
 
         rawItems.push({
           id: `cre-${op.id}`,
-          date: normalizeDate(op.issue_date || op.created_at),
+          date: normalizeDate(op.issue_date),
           sinal: 'saida',
           categoriaOriginal: 'Desembolso de Crédito',
           descricao: `Desembolso de Crédito — ${op.sacado || 'Sacado'}`,
@@ -453,16 +500,16 @@ export function useDfc() {
       })
 
       // 7. Resgates de Investidores via tabela investment_redemptions (Financiamento - Saída)
-      ;(redsRes.data || []).forEach((red) => {
+      ;(redsRes.data || []).forEach((red: any) => {
         if (red.status === 'paid') {
-          if (redemptionsInMovs.has(red.id) || treasuryExternalRefs.has(`redemption-${red.id}`)) {
+          if (treasuryExternalRefs.has(`redemption-${red.id}`)) {
             return
           }
           const prof = Array.isArray(red.profiles) ? red.profiles[0] : red.profiles
           const investor = prof?.pj_company_name || prof?.full_name || 'Desconhecido'
           rawItems.push({
             id: `red-${red.id}`,
-            date: normalizeDate(red.updated_at),
+            date: normalizeDate(red.updated_at || red.created_at),
             sinal: 'saida',
             categoriaOriginal: 'Resgate de Investidor',
             descricao: `Resgate — Investidor: ${investor}`,
@@ -496,8 +543,8 @@ export function useDfc() {
       })
 
       // Calcula saldos acumulados:
-      // Saldo inicial: acumulado de tudo com date < inicio
-      // Saldo final: acumulado de tudo com date <= fim
+      // Saldo inicial: acumulado de tudo com date < inicio (usando datas reais)
+      // Saldo final: acumulado de tudo com date <= fim (usando datas reais)
       allClassified.forEach((item) => {
         const delta = item.sinal === 'entrada' ? item.valor : -item.valor
         if (item.date < inicio) {
@@ -509,7 +556,7 @@ export function useDfc() {
         saldoAcumulado += delta
       })
 
-      // Filtra os lançamentos do período selecionado
+      // Filtra os lançamentos ESTRITAMENTE do período selecionado: nenhum lançamento fora do período vaza
       const lancamentosPeriodo = allClassified.filter((l) => l.date >= inicio && l.date <= fim)
 
       // Monta as 3 seções do FASB 95

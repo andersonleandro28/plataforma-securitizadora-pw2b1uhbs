@@ -79,7 +79,7 @@ export function useAccounting() {
         supabase
           .from('expenses')
           .select(
-            'id, amount, description, payment_date, due_date, status, bank_account_id, suppliers(company_name)',
+            'id, amount, description, payment_date, due_date, status, bank_account_id, suppliers(company_name), supplier_id, category',
           ),
         supabase
           .from('credit_operations')
@@ -89,7 +89,7 @@ export function useAccounting() {
         supabase
           .from('investment_redemptions')
           .select(
-            'id, net_value, updated_at, status, profiles!investment_redemptions_user_id_fkey(full_name, pj_company_name)',
+            'id, net_value, updated_at, created_at, status, profiles!investment_redemptions_user_id_fkey(full_name, pj_company_name)',
           ),
         // Movimentações de Caixa (liquidações, juros, etc.)
         // RLS já garante que admins veem tudo e usuários comuns só os próprios registros.
@@ -117,14 +117,42 @@ export function useAccounting() {
         supabase
           .from('mapeamento_movimentacoes')
           .select('movimentacao_caixa_id, origem_tabela, origem_id')
-          .in('origem_tabela', ['fornecedores', 'despesas']),
+          .in('origem_tabela', ['fornecedores', 'despesas', 'investment_redemptions']),
       ])
+
+      // Dicionário de despesas
+      const expenseMap = new Map<
+        string,
+        { payment_date: string | null; due_date: string | null; status: string }
+      >()
+      ;(exps || []).forEach((e: any) => {
+        expenseMap.set(e.id, {
+          payment_date: e.payment_date,
+          due_date: e.due_date,
+          status: e.status,
+        })
+      })
+
+      // Dicionário de resgates
+      const redemptionMap = new Map<
+        string,
+        { updated_at: string; created_at: string; status: string }
+      >()
+      ;(reds || []).forEach((r: any) => {
+        redemptionMap.set(r.id, {
+          updated_at: r.updated_at,
+          created_at: r.created_at,
+          status: r.status,
+        })
+      })
 
       // Mapeamento de movimentacoes_caixa para despesas oficiais (expenses)
       const movIdToExpenseId = new Map<string, string>()
       ;(mapMovs || []).forEach((m: any) => {
         if (m.movimentacao_caixa_id && m.origem_id) {
-          movIdToExpenseId.set(m.movimentacao_caixa_id, m.origem_id)
+          if (m.origem_tabela === 'fornecedores' || m.origem_tabela === 'despesas') {
+            movIdToExpenseId.set(m.movimentacao_caixa_id, m.origem_id)
+          }
         }
       })
 
@@ -349,7 +377,7 @@ export function useAccounting() {
           const bInfo = resolveBank(null)
           transactions.push({
             id: `op-out-${op.id}`,
-            date: normalizeAccountingDate(op.issue_date || op.created_at),
+            date: normalizeAccountingDate(op.issue_date),
             type: 'out',
             category: 'Desembolso de Crédito',
             description: `Operação de Crédito — Sacado: ${op.sacado}`,
@@ -361,11 +389,10 @@ export function useAccounting() {
       })
 
       // 6. Resgates (tabela investment_redemptions direta)
-      // DEDUP: se o resgate já possui movimentação lançada em movimentacoes_caixa ou treasury_transactions,
-      // ignora para não exibir dobrado na Contabilidade.
+      // Tabela oficial para resgates de investidores.
       ;(reds || []).forEach((red) => {
         if (red.status === 'paid') {
-          if (redemptionsInMovs.has(red.id) || treasuryExternalRefs.has(`redemption-${red.id}`)) {
+          if (treasuryExternalRefs.has(`redemption-${red.id}`)) {
             return
           }
           const prof = Array.isArray(red.profiles) ? red.profiles[0] : red.profiles
@@ -373,7 +400,7 @@ export function useAccounting() {
           const bInfo = resolveBank(null)
           transactions.push({
             id: `red-${red.id}`,
-            date: normalizeAccountingDate(red.updated_at),
+            date: normalizeAccountingDate(red.updated_at || red.created_at),
             type: 'out',
             category: 'Resgate de Investimento',
             description: `Resgate — Investidor: ${investor}`,
@@ -397,27 +424,43 @@ export function useAccounting() {
       // Se um pagamento de fornecedor já existe no Livro Caixa e também foi lançado
       // via tabela `expenses` (status 'paid'), prioriza a tabela `expenses` (que contém
       // os dados detalhados e fornecedor vinculado) e evita duplicar no Livro Caixa.
-      const paidExpenseIds = new Set(
-        (exps || []).filter((e: any) => e.status === 'paid').map((e: any) => e.id),
-      )
 
       ;(movs || []).forEach((mov) => {
+        const catLower = (mov.categoria || '').toLowerCase()
+        const refTipo = (mov.referencia_tipo || '').toLowerCase()
+
         // Deduplicação: se vinculada a uma despesa existente em expenses, ignora a duplicata do caixa
         // pois a despesa oficial em expenses é quem fornece a data real de competência e detalhes.
-        const refTipo = (mov.referencia_tipo || '').toLowerCase()
         const linkedExpenseId =
           movIdToExpenseId.get(mov.id) || (refTipo === 'despesa' ? mov.referencia_id : null)
-        if (linkedExpenseId) {
+        if (linkedExpenseId && expenseMap.has(linkedExpenseId)) {
           return
         }
+        if (catLower === 'fornecedor' || catLower === 'despesa') {
+          if (linkedExpenseId || (mov.referencia_id && expenseMap.has(mov.referencia_id))) {
+            return
+          }
+        }
 
-        // Se for resgate já computado via investment_redemptions ou treasury_transactions, ignora
+        // Se for resgate, ignora no caixa pois a tabela oficial investment_redemptions (passo 6)
+        // já processa com a data real
         if (refTipo === 'resgate_investimento' && mov.referencia_id) {
           const redId = String(mov.referencia_id)
-          const redMatch = (reds || []).find((r: any) => r.id === redId)
+          const redMatch = redemptionMap.get(redId)
           if (redMatch && redMatch.status === 'paid') {
             return
           }
+        }
+
+        // Determina data real
+        let effectiveDate = normalizeAccountingDate(mov.created_at)
+        if (
+          refTipo === 'resgate_investimento' &&
+          mov.referencia_id &&
+          redemptionMap.has(mov.referencia_id)
+        ) {
+          const red = redemptionMap.get(mov.referencia_id)!
+          effectiveDate = normalizeAccountingDate(red.updated_at || red.created_at)
         }
 
         // Classificação à prova de falha: somente 'entrada' normalizado vira 'in';
@@ -430,7 +473,7 @@ export function useAccounting() {
         const bInfo = resolveBank(mov.bank_account_id)
         transactions.push({
           id: `mov-${mov.id}`,
-          date: normalizeAccountingDate(mov.created_at),
+          date: effectiveDate,
           type,
           category,
           description: mov.descricao || category,
