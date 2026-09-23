@@ -68,7 +68,9 @@ export function useAccounting() {
       ] = await Promise.all([
         supabase
           .from('debenture_subscriptions')
-          .select('id, investor_name, total_amount, subscription_date, created_at, status'),
+          .select(
+            'id, investor_name, total_amount, unit_price, quantity, subscription_date, created_at, status, investments(quotas, redeemed_quotas, unit_price, transfer_value, transfer_date, status)',
+          ),
         supabase
           .from('recebiveis_ccb')
           .select(
@@ -167,20 +169,45 @@ export function useAccounting() {
       }
 
       // 1. Subscrições
-      ;(subs || []).forEach((sub) => {
-        if (sub.status !== 'Excluído' && sub.status !== 'Cancelado') {
-          const bInfo = resolveBank(null)
-          transactions.push({
-            id: `sub-${sub.id}`,
-            date: normalizeAccountingDate(sub.subscription_date || sub.created_at),
-            type: 'in',
-            category: 'Subscrição de Debênture',
-            description: `Subscrição — ${sub.investor_name}`,
-            value: Number(sub.total_amount || 0),
-            bank_account_id: bInfo.id,
-            bank_account_info: bInfo.info,
-          })
+      ;(subs || []).forEach((sub: any) => {
+        const st = (sub.status || '').toLowerCase()
+        if (st === 'excluído' || st === 'excluido' || st === 'cancelado') return
+
+        const inv = Array.isArray(sub.investments) ? sub.investments[0] : sub.investments
+        const invStatus = (inv?.status || '').toLowerCase()
+        if (invStatus === 'cancelado' || invStatus === 'rejeitado' || invStatus === 'rejected')
+          return
+
+        const subTotal = Number(sub.total_amount || 0)
+        const transferVal = Number(inv?.transfer_value || 0)
+        const unitP = Number(inv?.unit_price || sub.unit_price || 100)
+        const totalQuotas = Number(inv?.quotas || 0) + Number(inv?.redeemed_quotas || 0)
+        const calculatedByQuotas = totalQuotas * unitP
+
+        let valorHistorico = 0
+        if (subTotal > 0) {
+          valorHistorico = subTotal
+        } else if (transferVal > 0) {
+          valorHistorico = transferVal
+        } else if (calculatedByQuotas > 0) {
+          valorHistorico = calculatedByQuotas
         }
+
+        if (valorHistorico <= 0) return
+
+        const dataCaptacao = sub.subscription_date || inv?.transfer_date || sub.created_at
+
+        const bInfo = resolveBank(null)
+        transactions.push({
+          id: `sub-${sub.id}`,
+          date: normalizeAccountingDate(dataCaptacao),
+          type: 'in',
+          category: 'Subscrição de Debênture',
+          description: `Subscrição — ${sub.investor_name}`,
+          value: valorHistorico,
+          bank_account_id: bInfo.id,
+          bank_account_info: bInfo.info,
+        })
       })
 
       // 2. Aquisições de CCB (Desembolsos)

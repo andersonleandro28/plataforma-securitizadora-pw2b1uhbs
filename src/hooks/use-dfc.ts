@@ -172,7 +172,9 @@ export function useDfc() {
         await Promise.all([
           supabase
             .from('debenture_subscriptions')
-            .select('id, investor_name, total_amount, subscription_date, created_at, status'),
+            .select(
+              'id, investor_name, total_amount, unit_price, quantity, subscription_date, created_at, status, investments(quotas, redeemed_quotas, unit_price, transfer_value, transfer_date, status)',
+            ),
           supabase
             .from('recebiveis_ccb')
             .select(
@@ -284,18 +286,45 @@ export function useDfc() {
       })
 
       // 2. Subscrições de Debêntures (Aportes de Investidores - Financiamento)
-      ;(subsRes.data || []).forEach((sub) => {
+      ;(subsRes.data || []).forEach((sub: any) => {
         const st = (sub.status || '').toLowerCase()
-        if (st === 'excluído' || st === 'cancelado') return
-        // No DRE considera 'approved' ou 'ativo'
-        if (st !== 'approved' && st !== 'ativo' && st !== 'confirmado') return
+        // Descartar SOMENTE status 'excluído'/'cancelado' — NÃO descartar 'Encerrado' nem investimentos 'resgatado'
+        if (st === 'excluído' || st === 'excluido' || st === 'cancelado') return
+
+        const inv = Array.isArray(sub.investments) ? sub.investments[0] : sub.investments
+        const invStatus = (inv?.status || '').toLowerCase()
+        if (invStatus === 'cancelado' || invStatus === 'rejeitado' || invStatus === 'rejected')
+          return
+
+        // Valor histórico da captação:
+        // total_amount se > 0; senão investments.transfer_value se > 0;
+        // senão (quotas + redeemed_quotas) * unit_price (unit_price com fallback para sub.unit_price ou 100)
+        const subTotal = Number(sub.total_amount || 0)
+        const transferVal = Number(inv?.transfer_value || 0)
+        const unitP = Number(inv?.unit_price || sub.unit_price || 100)
+        const totalQuotas = Number(inv?.quotas || 0) + Number(inv?.redeemed_quotas || 0)
+        const calculatedByQuotas = totalQuotas * unitP
+
+        let valorHistorico = 0
+        if (subTotal > 0) {
+          valorHistorico = subTotal
+        } else if (transferVal > 0) {
+          valorHistorico = transferVal
+        } else if (calculatedByQuotas > 0) {
+          valorHistorico = calculatedByQuotas
+        }
+
+        if (valorHistorico <= 0) return
+
+        const dataCaptacao = sub.subscription_date || inv?.transfer_date || sub.created_at
+
         rawItems.push({
           id: `sub-${sub.id}`,
-          date: normalizeDate(sub.subscription_date || sub.created_at),
+          date: normalizeDate(dataCaptacao),
           sinal: 'entrada',
           categoriaOriginal: 'Aporte de Investidor',
           descricao: `Aporte — ${sub.investor_name || 'Investidor'}`,
-          valor: Number(sub.total_amount || 0),
+          valor: valorHistorico,
           origem: 'debenture_subscriptions',
         })
       })
