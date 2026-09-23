@@ -107,9 +107,10 @@ export function useDre() {
           .is('deleted_at', null),
         supabase
           .from('debenture_subscriptions')
-          .select('id, investor_name, total_amount, subscription_date, created_at, status')
-          .gte('subscription_date', inicio)
-          .lte('subscription_date', fim),
+          .select(
+            'id, investor_name, total_amount, unit_price, quantity, subscription_date, created_at, status, deleted_at, investments(quotas, redeemed_quotas, unit_price, transfer_value, transfer_date, status)',
+          )
+          .is('deleted_at', null),
         supabase
           .from('expenses')
           .select(
@@ -130,7 +131,7 @@ export function useDre() {
         supabase
           .from('credit_operations')
           .select(
-            'id, status, issue_date, sacado, requested_value, operation_calculations(net_value)',
+            'id, status, issue_date, sacado, requested_value, face_value, operation_calculations(net_value)',
           )
           .gte('issue_date', inicio)
           .lte('issue_date', fim),
@@ -279,19 +280,50 @@ export function useDre() {
       })
 
       // 2. Subscrições de Debêntures (aportes de investidores)
-      // Considera status "approved" (especificado) e também "Ativo" (valor
-      // realmente usado em produção pelo fluxo de subscrição).
-      ;(subsRes.data || []).forEach((sub) => {
+      // Recuperação do valor histórico real de captação (mesma regra de use-dfc.ts e use-accounting.ts):
+      // Aportes resgatados/encerrados (ex.: investidor Amilton Cardozo) têm valor ativo zerado,
+      // mas no DRE (competência/caixa histórico) entram com o valor efetivamente captado na data original:
+      // valor original (total_amount) -> fallback transfer_value -> fallback (quotas + redeemed_quotas) * unit_price.
+      ;(subsRes.data || []).forEach((sub: any) => {
         const st = (sub.status || '').toLowerCase()
-        if (st !== 'approved' && st !== 'ativo') return
+        if (st === 'excluído' || st === 'excluido' || st === 'cancelado') return
+
+        const inv = Array.isArray(sub.investments) ? sub.investments[0] : sub.investments
+        const invStatus = (inv?.status || '').toLowerCase()
+        if (invStatus === 'cancelado' || invStatus === 'rejeitado' || invStatus === 'rejected')
+          return
+
+        const subTotal = Number(sub.total_amount || 0)
+        const transferVal = Number(inv?.transfer_value || 0)
+        const unitP = Number(inv?.unit_price || sub.unit_price || 100)
+        const totalQuotas = Number(inv?.quotas || 0) + Number(inv?.redeemed_quotas || 0)
+        const calculatedByQuotas = totalQuotas * unitP
+
+        let valorHistorico = 0
+        if (subTotal > 0) {
+          valorHistorico = subTotal
+        } else if (transferVal > 0) {
+          valorHistorico = transferVal
+        } else if (calculatedByQuotas > 0) {
+          valorHistorico = calculatedByQuotas
+        }
+
+        if (valorHistorico <= 0) return
+
+        const dataCaptacao = sub.subscription_date || inv?.transfer_date || sub.created_at
+        const dataLanc = normalizeDate(dataCaptacao)
+
+        // Filtro estrito do período
+        if (dataLanc < inicio || dataLanc > fim) return
+
         lancamentos.push({
           id: `sub-${sub.id}`,
-          date: normalizeDate(sub.subscription_date || sub.created_at),
+          date: dataLanc,
           tipo: 'receita',
           categoriaOriginal: 'aporte_investidor',
           categoria: 'Aporte de Investidor',
           descricao: `Aporte — ${sub.investor_name || 'Investidor'}`,
-          valor: Number(sub.total_amount || 0),
+          valor: valorHistorico,
           origem: 'debenture_subscriptions',
         })
       })
@@ -336,7 +368,7 @@ export function useDre() {
         const calc = Array.isArray(op.operation_calculations)
           ? op.operation_calculations[0]
           : op.operation_calculations
-        const valor = Number(calc?.net_value ?? op.requested_value ?? 0)
+        const valor = Number(calc?.net_value || op.requested_value || 0)
         if (!valor) return
 
         lancamentos.push({

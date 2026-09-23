@@ -73,7 +73,8 @@ export function useAccounting() {
           .from('debenture_subscriptions')
           .select(
             'id, investor_name, total_amount, unit_price, quantity, subscription_date, created_at, status, investments(quotas, redeemed_quotas, unit_price, transfer_value, transfer_date, status)',
-          ),
+          )
+          .is('deleted_at', null),
         supabase
           .from('recebiveis_ccb')
           .select(
