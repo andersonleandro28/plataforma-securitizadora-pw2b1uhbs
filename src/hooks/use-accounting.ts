@@ -402,12 +402,22 @@ export function useAccounting() {
       )
 
       ;(movs || []).forEach((mov) => {
-        // Deduplicação: se vinculada a uma despesa já processada via expenses, ignora a duplicata do caixa
+        // Deduplicação: se vinculada a uma despesa existente em expenses, ignora a duplicata do caixa
+        // pois a despesa oficial em expenses é quem fornece a data real de competência e detalhes.
+        const refTipo = (mov.referencia_tipo || '').toLowerCase()
         const linkedExpenseId =
-          movIdToExpenseId.get(mov.id) ||
-          (mov.referencia_tipo === 'despesa' ? mov.referencia_id : null)
-        if (linkedExpenseId && paidExpenseIds.has(linkedExpenseId)) {
+          movIdToExpenseId.get(mov.id) || (refTipo === 'despesa' ? mov.referencia_id : null)
+        if (linkedExpenseId) {
           return
+        }
+
+        // Se for resgate já computado via investment_redemptions ou treasury_transactions, ignora
+        if (refTipo === 'resgate_investimento' && mov.referencia_id) {
+          const redId = String(mov.referencia_id)
+          const redMatch = (reds || []).find((r: any) => r.id === redId)
+          if (redMatch && redMatch.status === 'paid') {
+            return
+          }
         }
 
         // Classificação à prova de falha: somente 'entrada' normalizado vira 'in';

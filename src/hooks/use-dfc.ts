@@ -265,12 +265,22 @@ export function useDfc() {
           }
         }
 
-        // Deduplicação: se a despesa vinculada já foi computada via expenses, ignora a duplicata do caixa
+        // Deduplicação: se a despesa está vinculada a uma despesa oficial em expenses,
+        // ignora a duplicata do caixa, pois a tabela `expenses` é a fonte oficial
+        // com data correta de pagamento/vencimento.
         const linkedExpenseId =
-          movIdToExpenseId.get(mov.id) ||
-          (mov.referencia_tipo === 'despesa' ? mov.referencia_id : null)
-        if (linkedExpenseId && paidExpenseIds.has(linkedExpenseId)) {
+          movIdToExpenseId.get(mov.id) || (refTipo === 'despesa' ? mov.referencia_id : null)
+        if (linkedExpenseId) {
           return
+        }
+
+        // Se for resgate já processado via investment_redemptions ou treasury_transactions, ignora
+        if (refTipo === 'resgate_investimento' && mov.referencia_id) {
+          const redId = String(mov.referencia_id)
+          const redMatch = (redsRes.data || []).find((r: any) => r.id === redId)
+          if (redMatch && redMatch.status === 'paid') {
+            return
+          }
         }
 
         const catOriginal = mov.categoria || 'Outros'

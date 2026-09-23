@@ -83,14 +83,24 @@ export function useDre() {
       const inicioTs = `${inicio}T00:00:00`
       const fimTs = `${fim}T23:59:59`
 
-      const [movsRes, subsRes, expsRes, tresRes, credRes, ccbRes, mapRes] = await Promise.all([
+      // Busca todas as despesas pagas (e mapeamentos) para ter a data real de pagamento/vencimento
+      // e evitar que despesas de outros meses criadas no caixa caiam no período errado.
+      const [
+        movsRes,
+        subsRes,
+        expsRes,
+        tresRes,
+        credRes,
+        ccbRes,
+        mapRes,
+        allPaidExpsRes,
+        allRedemptionsRes,
+      ] = await Promise.all([
         supabase
           .from('movimentacoes_caixa')
           .select(
             'id, tipo, categoria, descricao, valor, created_at, referencia_tipo, referencia_id, referencia_numero',
-          )
-          .gte('created_at', inicioTs)
-          .lte('created_at', fimTs),
+          ),
         supabase
           .from('debenture_subscriptions')
           .select('id, investor_name, total_amount, subscription_date, created_at, status')
@@ -137,48 +147,68 @@ export function useDre() {
         supabase
           .from('mapeamento_movimentacoes')
           .select('movimentacao_caixa_id, origem_tabela, origem_id')
-          .in('origem_tabela', ['fornecedores', 'despesas']),
+          .in('origem_tabela', ['fornecedores', 'despesas', 'investment_redemptions']),
+        // Catálogo global de despesas para consultar data efetiva de pagamento/vencimento
+        supabase.from('expenses').select('id, payment_date, due_date, status'),
+        // Catálogo de resgates para consultar data efetiva do resgate
+        supabase.from('investment_redemptions').select('id, updated_at, created_at, status'),
       ])
 
       const lancamentos: DreLancamento[] = []
 
-      // Mapeamento de movimentacoes_caixa para despesas oficiais (expenses)
+      // Dicionário de todas as despesas (para saber a data efetiva de competência/pagamento)
+      const expenseMap = new Map<
+        string,
+        { payment_date: string | null; due_date: string | null; status: string }
+      >()
+      ;(allPaidExpsRes.data || []).forEach((e: any) => {
+        expenseMap.set(e.id, {
+          payment_date: e.payment_date,
+          due_date: e.due_date,
+          status: e.status,
+        })
+      })
+
+      // Dicionário de resgates para saber data efetiva
+      const redemptionMap = new Map<
+        string,
+        { updated_at: string; created_at: string; status: string }
+      >()
+      ;(allRedemptionsRes.data || []).forEach((r: any) => {
+        redemptionMap.set(r.id, {
+          updated_at: r.updated_at,
+          created_at: r.created_at,
+          status: r.status,
+        })
+      })
+
+      // Mapeamento de movimentacoes_caixa para despesas oficiais (expenses) e resgates
       const movIdToExpenseId = new Map<string, string>()
       const expenseIdToMovId = new Map<string, string>()
       ;(mapRes.data || []).forEach((m: any) => {
         if (m.movimentacao_caixa_id && m.origem_id) {
-          movIdToExpenseId.set(m.movimentacao_caixa_id, m.origem_id)
-          expenseIdToMovId.set(m.origem_id, m.movimentacao_caixa_id)
+          if (m.origem_tabela === 'fornecedores' || m.origem_tabela === 'despesas') {
+            movIdToExpenseId.set(m.movimentacao_caixa_id, m.origem_id)
+            expenseIdToMovId.set(m.origem_id, m.movimentacao_caixa_id)
+          }
         }
       })
 
       // 1. Movimentações de Caixa (Livro Caixa)
-      // Coleta, para deduplicação posterior, as operações de crédito cujo
-      // desembolso (saída) já foi lançado manualmente no caixa — ou seja,
-      // movimentações do tipo "saída" com referencia_tipo = 'recebível'
-      // vinculadas à operação de crédito via referencia_id. Entradas de
-      // liquidação de recebível (inflow) NÃO são consideradas equivalentes,
-      // pois representam o recebível entrando, não o desembolso saindo.
-      //
-      // Também coleta as referências externas equivalentes a estas movimentações
-      // (ex.: op-liq-{id} e op-bol-{id}-{numero}) para evitar que a mesma liquidação
-      // ou parcela já presente no caixa seja adicionada novamente a partir de
-      // treasury_transactions.
-      //
       // DEDUPLICAÇÃO DE FORNECEDORES E DESPESAS:
       // Se um pagamento de fornecedor ou despesa já consta no Livro Caixa E também
-      // na tabela de despesas pagas (expenses), ele deve ser contado UMA ÚNICA VEZ.
-      // Priorizamos a fonte oficial (expenses) se ela cair no período, ou a movimentação
-      // se ela já foi lançada no caixa. Se já mapeado para uma despesa paga, a despesa
-      // oficial em `expenses` é quem fornecerá os dados cadastrais ricos (ou esta movimentação
-      // é suprimida se a despesa correspondente for processada).
+      // na tabela de despesas pagas (expenses), a tabela `expenses` é a fonte oficial.
+      // Para as movimentações vinculadas a despesas:
+      //  - Se a despesa for paga ('paid'), sua data real é payment_date (ou due_date).
+      //    Se essa data real NÃO estiver no período [inicio, fim], a despesa NÃO pertence ao mês atual!
+      //  - Se estiver no período atual, ela será computada pela fonte oficial `expenses` (passo 3).
+      //  - Em AMBOS os casos, suprimimos a movimentação duplicada do caixa para que ela NUNCA
+      //    vaze para outro mês por causa do `created_at`.
       const creditOpIdsNoCaixa = new Set<string>()
       const movsExternalRefs = new Set<string>()
       const movsExpenseIdsLinked = new Set<string>()
 
       ;(movsRes.data || []).forEach((mov: any) => {
-        // Classificação à prova de falha: SOMENTE 'entrada' normalizado vira receita;
-        // QUALQUER outro valor ('saida', 'saída', unknown) vira despesa.
         const tipo: DreTipo = classifyMovimentacaoCaixaDre(mov.tipo)
         const catOriginal = mov.categoria || 'Outros'
         const refTipo = (mov.referencia_tipo || '').toLowerCase()
@@ -206,19 +236,34 @@ export function useDre() {
           movsExpenseIdsLinked.add(linkedExpenseId)
         }
 
-        // Deduplicação: se a despesa vinculada já existe no banco e será computada via tabela expenses (ou já foi lançada via caixa),
-        // evitamos a contagem em duplicidade. Se a despesa vinculada estiver presente no período atual de `expenses`,
-        // deixamos a tabela `expenses` ser a fonte da verdade cadastral e pulamos a movimentação genérica do caixa.
-        const willBeHandledByExpenses =
-          linkedExpenseId &&
-          (expsRes.data || []).some((e: any) => e.id === linkedExpenseId && e.status === 'paid')
-        if (willBeHandledByExpenses) {
+        // Se está vinculada a uma despesa em `expenses`:
+        // A fonte oficial `expenses` já é lida no passo 3 com a data correta (payment_date / due_date).
+        // Logo, suprimimos da fonte de movimentações de caixa para evitar duplicação ou vazamento de data.
+        if (linkedExpenseId && expenseMap.has(linkedExpenseId)) {
+          return
+        }
+
+        // Determina a data efetiva de competência/realização da movimentação:
+        let effectiveDate = normalizeDate(mov.created_at)
+
+        // Se for resgate de investimento, verifica a data de liquidação em investment_redemptions
+        if (
+          refTipo === 'resgate_investimento' &&
+          mov.referencia_id &&
+          redemptionMap.has(mov.referencia_id)
+        ) {
+          const red = redemptionMap.get(mov.referencia_id)!
+          effectiveDate = normalizeDate(red.updated_at || red.created_at)
+        }
+
+        // Aplica o filtro estrito do período [inicio, fim] sobre a data efetiva
+        if (effectiveDate < inicio || effectiveDate > fim) {
           return
         }
 
         lancamentos.push({
           id: `mov-${mov.id}`,
-          date: normalizeDate(mov.created_at),
+          date: effectiveDate,
           tipo,
           categoriaOriginal: catOriginal,
           categoria: labelCategoria(catOriginal),
@@ -389,10 +434,13 @@ export function useDre() {
         })
       })
 
-      // Agrupamento por categoria
+      // Garantia final estrita: nenhum lançamento fora do período [inicio, fim] permanece no DRE
+      const lancamentosFiltrados = lancamentos.filter((l) => l.date >= inicio && l.date <= fim)
+
+      // Agrupamento por categoria sobre os lançamentos estritamente do período
       const groupBy = (tipo: DreTipo) => {
         const map = new Map<string, DreCategoria>()
-        lancamentos
+        lancamentosFiltrados
           .filter((l) => l.tipo === tipo)
           .forEach((l) => {
             const existing = map.get(l.categoria)
@@ -417,7 +465,7 @@ export function useDre() {
       const totalReceitas = receitasPorCategoria.reduce((s, c) => s + c.total, 0)
       const totalDespesas = despesasPorCategoria.reduce((s, c) => s + c.total, 0)
       setDados({
-        lancamentos: lancamentos.sort(
+        lancamentos: lancamentosFiltrados.sort(
           (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
         ),
         receitasPorCategoria,
