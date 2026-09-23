@@ -4,6 +4,12 @@ import {
   classifyMovimentacaoCaixaDre,
   isTaxProvisionTransaction,
 } from '@/lib/financial-classification'
+import {
+  getConsolidatedCaptacoes,
+  normalizeDateOnly,
+  type RawInvestment,
+  type RawSubscription,
+} from '@/lib/captacoes-service'
 
 export type DreTipo = 'receita' | 'despesa'
 
@@ -99,6 +105,7 @@ export function useDre() {
       const [
         movsRes,
         subsRes,
+        invsRes,
         expsRes,
         tresRes,
         credRes,
@@ -116,9 +123,14 @@ export function useDre() {
         supabase
           .from('debenture_subscriptions')
           .select(
-            'id, investor_name, total_amount, unit_price, quantity, subscription_date, created_at, status, deleted_at, investments(quotas, redeemed_quotas, unit_price, transfer_value, transfer_date, status)',
+            'id, investor_name, document_number, total_amount, unit_price, quantity, subscription_date, created_at, status, deleted_at, investment_id, investments(quotas, redeemed_quotas, unit_price, transfer_value, transfer_date, status)',
           )
           .is('deleted_at', null),
+        supabase
+          .from('investments')
+          .select(
+            'id, user_id, quotas, redeemed_quotas, unit_price, total_value, transfer_value, transfer_date, status, created_at, profiles(id, full_name, document_number, pj_company_name), debenture_subscriptions(id, total_amount, subscription_date, status)',
+          ),
         supabase
           .from('expenses')
           .select(
@@ -281,52 +293,28 @@ export function useDre() {
         })
       })
 
-      // 2. Subscrições de Debêntures (aportes de investidores)
-      // Recuperação do valor histórico real de captação (mesma regra de use-dfc.ts e use-accounting.ts):
-      // Aportes resgatados/encerrados (ex.: investidor Amilton Cardozo) têm valor ativo zerado,
-      // mas no DRE (competência/caixa histórico) entram com o valor efetivamente captado na data original:
-      // valor original (total_amount) -> fallback transfer_value -> fallback (quotas + redeemed_quotas) * unit_price.
-      ;(subsRes.data || []).forEach((sub: any) => {
-        const st = (sub.status || '').toLowerCase()
-        if (st === 'excluído' || st === 'excluido' || st === 'cancelado') return
+      // 2. Captações de Investidores (Aportes e Subscrições)
+      // Fonte primária: tabela `investments` (a mesma da Carteira de Investidores),
+      // garantindo que NENHUM aporte resgatado (como Helton Cordeiro ou Amilton Cardozo)
+      // desapareça por não ter registro em debenture_subscriptions.
+      // Deduplicação unificada via utilitário getConsolidatedCaptacoes.
+      const rawInvs = (invsRes.data || []) as RawInvestment[]
+      const rawSubs = (subsRes.data || []) as RawSubscription[]
+      const captacoes = getConsolidatedCaptacoes(rawInvs, rawSubs)
 
-        const inv = Array.isArray(sub.investments) ? sub.investments[0] : sub.investments
-        const invStatus = (inv?.status || '').toLowerCase()
-        if (invStatus === 'cancelado' || invStatus === 'rejeitado' || invStatus === 'rejected')
-          return
-
-        const subTotal = Number(sub.total_amount || 0)
-        const transferVal = Number(inv?.transfer_value || 0)
-        const unitP = Number(inv?.unit_price || sub.unit_price || 100)
-        const totalQuotas = Number(inv?.quotas || 0) + Number(inv?.redeemed_quotas || 0)
-        const calculatedByQuotas = totalQuotas * unitP
-
-        let valorHistorico = 0
-        if (subTotal > 0) {
-          valorHistorico = subTotal
-        } else if (transferVal > 0) {
-          valorHistorico = transferVal
-        } else if (calculatedByQuotas > 0) {
-          valorHistorico = calculatedByQuotas
-        }
-
-        if (valorHistorico <= 0) return
-
-        const dataCaptacao = sub.subscription_date || inv?.transfer_date || sub.created_at
-        const dataLanc = normalizeDate(dataCaptacao)
-
+      captacoes.forEach((cap) => {
         // Filtro estrito do período
-        if (dataLanc < inicio || dataLanc > fim) return
+        if (cap.date < inicio || cap.date > fim) return
 
         lancamentos.push({
-          id: `sub-${sub.id}`,
-          date: dataLanc,
+          id: cap.id,
+          date: cap.date,
           tipo: 'receita',
           categoriaOriginal: 'aporte_investidor',
           categoria: 'Aporte de Investidor',
-          descricao: `Aporte — ${sub.investor_name || 'Investidor'}`,
-          valor: valorHistorico,
-          origem: 'debenture_subscriptions',
+          descricao: `Aporte — ${cap.investorName}`,
+          valor: cap.valor,
+          origem: cap.source,
         })
       })
 

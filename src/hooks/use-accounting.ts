@@ -4,6 +4,12 @@ import {
   classifyMovimentacaoCaixaAccounting,
   isTaxProvisionTransaction,
 } from '@/lib/financial-classification'
+import {
+  getConsolidatedCaptacoes,
+  normalizeDateOnly,
+  type RawInvestment,
+  type RawSubscription,
+} from '@/lib/captacoes-service'
 
 export type Transaction = {
   id: string
@@ -60,6 +66,7 @@ export function useAccounting() {
 
       const [
         { data: subs },
+        { data: invs },
         { data: recs },
         { data: exps },
         { data: ops },
@@ -72,9 +79,14 @@ export function useAccounting() {
         supabase
           .from('debenture_subscriptions')
           .select(
-            'id, investor_name, total_amount, unit_price, quantity, subscription_date, created_at, status, investments(quotas, redeemed_quotas, unit_price, transfer_value, transfer_date, status)',
+            'id, investor_name, document_number, total_amount, unit_price, quantity, subscription_date, created_at, status, investment_id, investments(quotas, redeemed_quotas, unit_price, transfer_value, transfer_date, status)',
           )
           .is('deleted_at', null),
+        supabase
+          .from('investments')
+          .select(
+            'id, user_id, quotas, redeemed_quotas, unit_price, total_value, transfer_value, transfer_date, status, created_at, profiles(id, full_name, document_number, pj_company_name), debenture_subscriptions(id, total_amount, subscription_date, status)',
+          ),
         supabase
           .from('recebiveis_ccb')
           .select(
@@ -202,43 +214,24 @@ export function useAccounting() {
         return { id: activeBankId, info: activeBankInfo }
       }
 
-      // 1. Subscrições
-      ;(subs || []).forEach((sub: any) => {
-        const st = (sub.status || '').toLowerCase()
-        if (st === 'excluído' || st === 'excluido' || st === 'cancelado') return
+      // 1. Captações de Investidores (Subscrições e Aportes)
+      // Fonte primária: tabela `investments` (a mesma da Carteira de Investidores),
+      // garantindo que NENHUM aporte resgatado (como Helton Cordeiro ou Amilton Cardozo)
+      // desapareça por não ter registro em debenture_subscriptions.
+      // Deduplicação unificada via utilitário getConsolidatedCaptacoes.
+      const rawInvs = (invs || []) as RawInvestment[]
+      const rawSubs = (subs || []) as RawSubscription[]
+      const captacoes = getConsolidatedCaptacoes(rawInvs, rawSubs)
 
-        const inv = Array.isArray(sub.investments) ? sub.investments[0] : sub.investments
-        const invStatus = (inv?.status || '').toLowerCase()
-        if (invStatus === 'cancelado' || invStatus === 'rejeitado' || invStatus === 'rejected')
-          return
-
-        const subTotal = Number(sub.total_amount || 0)
-        const transferVal = Number(inv?.transfer_value || 0)
-        const unitP = Number(inv?.unit_price || sub.unit_price || 100)
-        const totalQuotas = Number(inv?.quotas || 0) + Number(inv?.redeemed_quotas || 0)
-        const calculatedByQuotas = totalQuotas * unitP
-
-        let valorHistorico = 0
-        if (subTotal > 0) {
-          valorHistorico = subTotal
-        } else if (transferVal > 0) {
-          valorHistorico = transferVal
-        } else if (calculatedByQuotas > 0) {
-          valorHistorico = calculatedByQuotas
-        }
-
-        if (valorHistorico <= 0) return
-
-        const dataCaptacao = sub.subscription_date || inv?.transfer_date || sub.created_at
-
+      captacoes.forEach((cap) => {
         const bInfo = resolveBank(null)
         transactions.push({
-          id: `sub-${sub.id}`,
-          date: normalizeAccountingDate(dataCaptacao),
+          id: cap.id,
+          date: cap.date,
           type: 'in',
           category: 'Subscrição de Debênture',
-          description: `Subscrição — ${sub.investor_name}`,
-          value: valorHistorico,
+          description: `Subscrição / Aporte — ${cap.investorName}`,
+          value: cap.valor,
           bank_account_id: bInfo.id,
           bank_account_info: bInfo.info,
         })

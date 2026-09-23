@@ -4,6 +4,12 @@ import {
   classifyMovimentacaoCaixaDfc,
   isTaxProvisionTransaction,
 } from '@/lib/financial-classification'
+import {
+  getConsolidatedCaptacoes,
+  normalizeDateOnly,
+  type RawInvestment,
+  type RawSubscription,
+} from '@/lib/captacoes-service'
 
 /**
  * Seções da Demonstração do Fluxo de Caixa (FASB Statement No. 95) - Método Direto:
@@ -171,14 +177,19 @@ export function useDfc() {
       // 2. Todas as movimentações dentro do período `[inicio, fim]`
       // 3. O saldo acumulado até `fim` (Saldo Final do Livro Caixa)
       // 4. A conciliação direta FASB 95
-      const [subsRes, recsRes, expsRes, credRes, redsRes, movsRes, tresRes, mapRes] =
+      const [subsRes, invsRes, recsRes, expsRes, credRes, redsRes, movsRes, tresRes, mapRes] =
         await Promise.all([
           supabase
             .from('debenture_subscriptions')
             .select(
-              'id, investor_name, total_amount, unit_price, quantity, subscription_date, created_at, status, investments(quotas, redeemed_quotas, unit_price, transfer_value, transfer_date, status)',
+              'id, investor_name, document_number, total_amount, unit_price, quantity, subscription_date, created_at, status, investment_id, investments(quotas, redeemed_quotas, unit_price, transfer_value, transfer_date, status)',
             )
             .is('deleted_at', null),
+          supabase
+            .from('investments')
+            .select(
+              'id, user_id, quotas, redeemed_quotas, unit_price, total_value, transfer_value, transfer_date, status, created_at, profiles(id, full_name, document_number, pj_company_name), debenture_subscriptions(id, total_amount, subscription_date, status)',
+            ),
           supabase
             .from('recebiveis_ccb')
             .select(
@@ -345,47 +356,24 @@ export function useDfc() {
         })
       })
 
-      // 2. Subscrições de Debêntures (Aportes de Investidores - Financiamento)
-      ;(subsRes.data || []).forEach((sub: any) => {
-        const st = (sub.status || '').toLowerCase()
-        // Descartar SOMENTE status 'excluído'/'cancelado' — NÃO descartar 'Encerrado' nem investimentos 'resgatado'
-        if (st === 'excluído' || st === 'excluido' || st === 'cancelado') return
+      // 2. Captações de Investidores (Aportes e Subscrições - Financiamento)
+      // Fonte primária: tabela `investments` (a mesma da Carteira de Investidores),
+      // garantindo que NENHUM aporte resgatado (como Helton Cordeiro ou Amilton Cardozo)
+      // desapareça por não ter registro em debenture_subscriptions.
+      // Deduplicação unificada via utilitário getConsolidatedCaptacoes.
+      const rawInvs = (invsRes.data || []) as RawInvestment[]
+      const rawSubs = (subsRes.data || []) as RawSubscription[]
+      const captacoes = getConsolidatedCaptacoes(rawInvs, rawSubs)
 
-        const inv = Array.isArray(sub.investments) ? sub.investments[0] : sub.investments
-        const invStatus = (inv?.status || '').toLowerCase()
-        if (invStatus === 'cancelado' || invStatus === 'rejeitado' || invStatus === 'rejected')
-          return
-
-        // Valor histórico da captação:
-        // total_amount se > 0; senão investments.transfer_value se > 0;
-        // senão (quotas + redeemed_quotas) * unit_price (unit_price com fallback para sub.unit_price ou 100)
-        const subTotal = Number(sub.total_amount || 0)
-        const transferVal = Number(inv?.transfer_value || 0)
-        const unitP = Number(inv?.unit_price || sub.unit_price || 100)
-        const totalQuotas = Number(inv?.quotas || 0) + Number(inv?.redeemed_quotas || 0)
-        const calculatedByQuotas = totalQuotas * unitP
-
-        let valorHistorico = 0
-        if (subTotal > 0) {
-          valorHistorico = subTotal
-        } else if (transferVal > 0) {
-          valorHistorico = transferVal
-        } else if (calculatedByQuotas > 0) {
-          valorHistorico = calculatedByQuotas
-        }
-
-        if (valorHistorico <= 0) return
-
-        const dataCaptacao = sub.subscription_date || inv?.transfer_date || sub.created_at
-
+      captacoes.forEach((cap) => {
         rawItems.push({
-          id: `sub-${sub.id}`,
-          date: normalizeDate(dataCaptacao),
+          id: cap.id,
+          date: cap.date,
           sinal: 'entrada',
           categoriaOriginal: 'Aporte de Investidor',
-          descricao: `Aporte — ${sub.investor_name || 'Investidor'}`,
-          valor: valorHistorico,
-          origem: 'debenture_subscriptions',
+          descricao: `Aporte — ${cap.investorName}`,
+          valor: cap.valor,
+          origem: cap.source,
         })
       })
 

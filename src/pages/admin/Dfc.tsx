@@ -57,6 +57,7 @@ import {
   DeleteFinancialRecordModal,
   type FinancialRecordToDelete,
 } from '@/components/admin/DeleteFinancialRecordModal'
+import { CaptacoesConsistencyCard } from '@/components/admin/CaptacoesConsistencyCard'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 const MESES = [
@@ -236,6 +237,9 @@ export default function Dfc() {
         }}
         onSuccess={() => refetch(periodoInicio, periodoFim)}
       />
+
+      {/* Card de Consistência e Auditoria das Captações */}
+      <CaptacoesConsistencyCard />
 
       {/* Filtro de período */}
       <Card>
