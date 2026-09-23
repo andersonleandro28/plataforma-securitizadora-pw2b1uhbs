@@ -58,6 +58,14 @@ const CATEGORIA_LABEL: Record<string, string> = {
   'resgate de investidor': 'Resgate de Investidor',
   resgate_investimento: 'Resgate de Investidor',
   'resgates e rendimentos': 'Resgate de Investidor',
+  'subscrição de debênture': 'Subscrição de Debêntures',
+  subscricao_debenture: 'Subscrição de Debêntures',
+  'desembolso de crédito': 'Desembolso de Crédito',
+  desembolso_credito: 'Desembolso de Crédito',
+  'aquisição de ccb': 'Aquisição de CCB',
+  aquisicao_ccb: 'Aquisição de CCB',
+  'compra de ccb': 'Aquisição de CCB',
+  'recebimento de parcelas - ccb': 'Recebimento de Parcelas - CCB',
 }
 
 function labelCategoria(categoria: string | null | undefined): string {
@@ -135,20 +143,14 @@ export function useDre() {
           )
           .gte('issue_date', inicio)
           .lte('issue_date', fim),
-        // 6. Recebíveis CCB (boletos pagos via JSONB).
-        // Fonte de segurança: alguns boletos pagos no JSONB `recebiveis_ccb.boletos`
-        // não foram sincronizados para `treasury_transactions` (falha do trigger),
-        // mas precisam ser refletidos no DRE. A deduplicação por `external_ref`
-        // (formato `ccb-bol-{recebivel_id}-{parcela}`) evita somar duas vezes os
-        // boletos que já chegaram via treasury_transactions. Trazer todas as CCBs
-        // ativas (não é possível filtrar por data de pagamento no nível da API,
-        // pois ela vive dentro do JSONB) e filtrar em memória.
+        // 6. Recebíveis CCB (aquisições de CCB e boletos pagos via JSONB).
+        // Traz as aquisições de CCB (desembolso/saída) e boletos pagos como fallback
+        // caso não sincronizados na tesouraria.
         supabase
           .from('recebiveis_ccb')
           .select(
-            'id, ccb_id, boletos, status, tomador_id, profiles!recebiveis_ccb_tomador_id_fkey(full_name, pj_company_name)',
-          )
-          .or(`status.eq.Ativo,boletos.neq.[]`),
+            'id, ccb_id, acquisition_value, created_at, boletos, status, tomador_id, profiles!recebiveis_ccb_tomador_id_fkey(full_name, pj_company_name)',
+          ),
         // Mapeamentos de movimentações para correlacionar despesas/fornecedores entre tabelas
         supabase
           .from('mapeamento_movimentacoes')
@@ -441,7 +443,11 @@ export function useDre() {
           if (bolStatus !== 'pago' && bolStatus !== 'liquidado') return
 
           const dataPgto =
-            bol.data_pagamento || bol.payment_date || bol.data_liquidacao || bol.data_vencimento
+            bol.data_pagamento ||
+            bol.payment_date ||
+            bol.data_liquidacao ||
+            bol.data_vencimento ||
+            bol.due_date
           if (!dataPgto) return
 
           const dataLanc = normalizeDate(dataPgto)
@@ -473,6 +479,31 @@ export function useDre() {
             valor,
             origem: 'recebiveis_ccb',
           })
+        })
+      })
+
+      // 7. Aquisições de CCB (compras de CCB / desembolso de capital - Despesa de Investimento)
+      // Mesma fonte e regra do Livro Caixa (use-accounting.ts) para perfeita conciliação.
+      ;(ccbRes.data || []).forEach((rec: any) => {
+        const valAcq = Number(rec.acquisition_value || 0)
+        if (valAcq <= 0) return
+
+        const prof = Array.isArray(rec.profiles) ? rec.profiles[0] : rec.profiles
+        const tomador = prof?.pj_company_name || prof?.full_name || 'Desconhecido'
+        const dataAcq = normalizeDate(rec.created_at)
+
+        // Filtra estritamente pelo período
+        if (dataAcq < inicio || dataAcq > fim) return
+
+        lancamentos.push({
+          id: `acq-${rec.id}`,
+          date: dataAcq,
+          tipo: 'despesa',
+          categoriaOriginal: 'Aquisição de CCB',
+          categoria: 'Aquisição de CCB',
+          descricao: `Aquisição de CCB — ${tomador} — R$ ${valAcq.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          valor: valAcq,
+          origem: 'recebiveis_ccb',
         })
       })
 

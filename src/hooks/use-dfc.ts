@@ -510,6 +510,26 @@ export function useDfc() {
         })
       })
 
+      // 6.1 Aquisições de CCB (desembolso/saída - Atividades de Investimento FASB 95)
+      // Mesma fonte e valor do Livro Caixa (acq-{id}) e do DRE para garantir conciliação
+      ;(recsRes.data || []).forEach((rec: any) => {
+        const valAcq = Number(rec.acquisition_value || 0)
+        if (valAcq <= 0) return
+
+        const prof = Array.isArray(rec.profiles) ? rec.profiles[0] : rec.profiles
+        const tomador = prof?.pj_company_name || prof?.full_name || 'Desconhecido'
+
+        rawItems.push({
+          id: `acq-${rec.id}`,
+          date: normalizeDate(rec.created_at),
+          sinal: 'saida',
+          categoriaOriginal: 'Aquisição de CCB',
+          descricao: `Aquisição de CCB — ${tomador} — R$ ${valAcq.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          valor: valAcq,
+          origem: 'recebiveis_ccb',
+        })
+      })
+
       // 7. Resgates de Investidores via tabela investment_redemptions (Financiamento - Saída)
       ;(redsRes.data || []).forEach((red: any) => {
         if (red.status === 'paid') {
