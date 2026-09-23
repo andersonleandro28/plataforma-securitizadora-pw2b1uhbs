@@ -31,13 +31,21 @@ import {
   ChevronDown,
   CalendarDays,
   Plus,
+  Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { exportToCSV } from '@/lib/export-utils'
-import { useDre, type DreCategoria } from '@/hooks/use-dre'
+import { useDre, type DreCategoria, type DreLancamento } from '@/hooks/use-dre'
 import { AdminExpenseDialog } from '@/components/admin/AdminExpenseDialog'
 import { AdminCreditDialog } from '@/components/admin/AdminCreditDialog'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/hooks/use-auth'
+import { evaluateTransactionDeletionEligibility } from '@/services/financial-deletion'
+import {
+  DeleteFinancialRecordModal,
+  type FinancialRecordToDelete,
+} from '@/components/admin/DeleteFinancialRecordModal'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 const MESES = [
   'Janeiro',
@@ -63,6 +71,17 @@ export default function Dre() {
   const [fim, setFim] = useState('')
   const [expenseOpen, setExpenseOpen] = useState(false)
   const [creditOpen, setCreditOpen] = useState(false)
+  const [recordToDelete, setRecordToDelete] = useState<FinancialRecordToDelete | null>(null)
+
+  const { profile, activeRole } = useAuth()
+  const isSuperAdmin = profile?.email === 'andersonleandro28@gmail.com'
+  const isAdmin =
+    profile?.is_admin || profile?.role === 'admin' || activeRole === 'admin' || isSuperAdmin
+  const isStaff = profile?.is_staff || profile?.role === 'staff' || activeRole === 'staff'
+  const isAccountantOnly =
+    (profile?.is_accountant || profile?.role === 'accountant' || activeRole === 'accountant') &&
+    !isAdmin
+  const canDeleteTransactions = (isAdmin || isStaff) && !isAccountantOnly
 
   const { dados, loading, error, refetch } = useDre()
 
@@ -177,6 +196,15 @@ export default function Dre() {
       <AdminExpenseDialog
         open={expenseOpen}
         onOpenChange={setExpenseOpen}
+        onSuccess={() => refetch(periodoInicio, periodoFim)}
+      />
+
+      <DeleteFinancialRecordModal
+        record={recordToDelete}
+        open={!!recordToDelete}
+        onClose={(open) => {
+          if (!open) setRecordToDelete(null)
+        }}
         onSuccess={() => refetch(periodoInicio, periodoFim)}
       />
 
@@ -341,6 +369,8 @@ export default function Dre() {
         total={totalReceitas}
         tone="receita"
         formatCurrency={formatCurrency}
+        canDelete={canDeleteTransactions}
+        onDeleteRequest={(item) => setRecordToDelete(item)}
       />
 
       {/* Agrupamento por categoria — Despesas */}
@@ -352,6 +382,8 @@ export default function Dre() {
         total={totalDespesas}
         tone="despesa"
         formatCurrency={formatCurrency}
+        canDelete={canDeleteTransactions}
+        onDeleteRequest={(item) => setRecordToDelete(item)}
       />
 
       {/* Resultado consolidado */}
@@ -399,6 +431,9 @@ export default function Dre() {
                   <TableHead>Categoria</TableHead>
                   <TableHead>Tipo</TableHead>
                   <TableHead className="text-right whitespace-nowrap">Valor</TableHead>
+                  {canDeleteTransactions && (
+                    <TableHead className="text-center w-[60px]">Ações</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -465,6 +500,14 @@ export default function Dre() {
                         {l.tipo === 'receita' ? '+' : '-'}
                         {formatCurrency(l.valor)}
                       </TableCell>
+                      {canDeleteTransactions && (
+                        <TableCell className="text-center py-2">
+                          <DreDeleteButtonCell
+                            lancamento={l}
+                            onDelete={(item) => setRecordToDelete(item)}
+                          />
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))
                 )}
@@ -486,6 +529,8 @@ function CategoriaGroup({
   total,
   tone,
   formatCurrency,
+  canDelete,
+  onDeleteRequest,
 }: {
   titulo: string
   categorias: DreCategoria[]
@@ -494,6 +539,8 @@ function CategoriaGroup({
   total: number
   tone: 'receita' | 'despesa'
   formatCurrency: (v: number) => string
+  canDelete?: boolean
+  onDeleteRequest?: (item: FinancialRecordToDelete) => void
 }) {
   const isReceita = tone === 'receita'
   return (
@@ -522,6 +569,8 @@ function CategoriaGroup({
               cat={cat}
               tone={tone}
               formatCurrency={formatCurrency}
+              canDelete={canDelete}
+              onDeleteRequest={onDeleteRequest}
             />
           ))
         )}
@@ -545,10 +594,14 @@ function CategoriaRow({
   cat,
   tone,
   formatCurrency,
+  canDelete,
+  onDeleteRequest,
 }: {
   cat: DreCategoria
   tone: 'receita' | 'despesa'
   formatCurrency: (v: number) => string
+  canDelete?: boolean
+  onDeleteRequest?: (item: FinancialRecordToDelete) => void
 }) {
   const [open, setOpen] = useState(false)
   const isReceita = tone === 'receita'
@@ -590,6 +643,7 @@ function CategoriaRow({
                 <TableHead className="text-xs">Descrição</TableHead>
                 <TableHead className="text-xs">Origem</TableHead>
                 <TableHead className="text-right text-xs">Valor</TableHead>
+                {canDelete && <TableHead className="text-center text-xs w-[50px]">Ações</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -612,6 +666,14 @@ function CategoriaRow({
                       {isReceita ? '' : '-'}
                       {formatCurrency(l.valor)}
                     </TableCell>
+                    {canDelete && (
+                      <TableCell className="text-center py-1">
+                        <DreDeleteButtonCell
+                          lancamento={l}
+                          onDelete={(item) => onDeleteRequest?.(item)}
+                        />
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
             </TableBody>
@@ -619,5 +681,66 @@ function CategoriaRow({
         </div>
       </CollapsibleContent>
     </Collapsible>
+  )
+}
+
+function DreDeleteButtonCell({
+  lancamento,
+  onDelete,
+}: {
+  lancamento: DreLancamento
+  onDelete: (item: FinancialRecordToDelete) => void
+}) {
+  const eligibility = evaluateTransactionDeletionEligibility({
+    id: lancamento.id,
+    categoria: lancamento.categoria,
+    descricao: lancamento.descricao,
+    origem: lancamento.origem,
+  })
+
+  if (!eligibility.canDelete) {
+    return (
+      <TooltipProvider delayDuration={150}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-block cursor-not-allowed opacity-35">
+              <Button
+                variant="ghost"
+                size="icon"
+                disabled
+                className="h-7 w-7 text-muted-foreground"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="left" className="max-w-xs text-xs">
+            {eligibility.reason}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-7 w-7 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+      title="Excluir lançamento"
+      onClick={() =>
+        onDelete({
+          id: lancamento.id,
+          descricao: lancamento.descricao,
+          valor: lancamento.valor,
+          date: lancamento.date,
+          categoria: lancamento.categoria,
+          origem: lancamento.origem,
+          deletionTarget: eligibility,
+        })
+      }
+    >
+      <Trash2 className="w-3.5 h-3.5" />
+    </Button>
   )
 }

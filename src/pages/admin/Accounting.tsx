@@ -28,13 +28,21 @@ import {
   FileText,
   CheckCircle2,
   Search,
+  Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { exportToCSV } from '@/lib/export-utils'
 import { ReconcileModal } from '@/components/Treasury/ReconcileModal'
-import { useAccounting } from '@/hooks/use-accounting'
+import { useAccounting, type Transaction } from '@/hooks/use-accounting'
 import { TransactionDetailsModal } from '@/components/Treasury/TransactionDetailsModal'
 import { useCompanyBankAccounts } from '@/hooks/use-company-bank-accounts'
+import { useAuth } from '@/hooks/use-auth'
+import { evaluateTransactionDeletionEligibility } from '@/services/financial-deletion'
+import {
+  DeleteFinancialRecordModal,
+  type FinancialRecordToDelete,
+} from '@/components/admin/DeleteFinancialRecordModal'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 function formatDisplayDate(dateStr: string): string {
   if (!dateStr || dateStr.length < 10) return dateStr
@@ -58,6 +66,19 @@ export default function Accounting() {
   const [page, setPage] = useState(1)
   const [isReconcileOpen, setIsReconcileOpen] = useState(false)
   const [selectedTx, setSelectedTx] = useState<any>(null)
+  const [recordToDelete, setRecordToDelete] = useState<FinancialRecordToDelete | null>(null)
+
+  const { profile, activeRole } = useAuth()
+  const canDeleteTransactions = useMemo(() => {
+    const isSuperAdmin = profile?.email === 'andersonleandro28@gmail.com'
+    const isAdmin =
+      profile?.is_admin || profile?.role === 'admin' || activeRole === 'admin' || isSuperAdmin
+    const isStaff = profile?.is_staff || profile?.role === 'staff' || activeRole === 'staff'
+    const isAccountantOnly =
+      (profile?.is_accountant || profile?.role === 'accountant' || activeRole === 'accountant') &&
+      !isAdmin
+    return (isAdmin || isStaff) && !isAccountantOnly
+  }, [profile, activeRole])
 
   const { accounts: bankAccounts } = useCompanyBankAccounts()
 
@@ -363,6 +384,9 @@ export default function Accounting() {
                   <TableHead>Descrição</TableHead>
                   <TableHead className="text-right whitespace-nowrap">Valor</TableHead>
                   <TableHead className="text-right whitespace-nowrap">Saldo Acumulado</TableHead>
+                  {canDeleteTransactions && (
+                    <TableHead className="text-center w-[60px]">Ações</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -449,6 +473,17 @@ export default function Accounting() {
                       <TableCell className="text-right font-mono text-muted-foreground font-medium">
                         {formatCurrency(t.accumulated_balance)}
                       </TableCell>
+                      {canDeleteTransactions && (
+                        <TableCell
+                          className="text-center py-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <DeleteButtonCell
+                            transaction={t}
+                            onDelete={(item) => setRecordToDelete(item)}
+                          />
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))
                 )}
@@ -497,6 +532,78 @@ export default function Accounting() {
         open={!!selectedTx}
         onClose={() => setSelectedTx(null)}
       />
+
+      <DeleteFinancialRecordModal
+        record={recordToDelete}
+        open={!!recordToDelete}
+        onClose={(open) => {
+          if (!open) setRecordToDelete(null)
+        }}
+        onSuccess={() => {
+          refetch(activeFiltros.inicio, activeFiltros.fim)
+        }}
+      />
     </div>
+  )
+}
+
+function DeleteButtonCell({
+  transaction,
+  onDelete,
+}: {
+  transaction: Transaction
+  onDelete: (item: FinancialRecordToDelete) => void
+}) {
+  const eligibility = evaluateTransactionDeletionEligibility({
+    id: transaction.id,
+    categoria: transaction.category,
+    descricao: transaction.description,
+    type: transaction.type,
+  })
+
+  if (!eligibility.canDelete) {
+    return (
+      <TooltipProvider delayDuration={150}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-block cursor-not-allowed opacity-35">
+              <Button
+                variant="ghost"
+                size="icon"
+                disabled
+                className="h-8 w-8 text-muted-foreground"
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="left" className="max-w-xs text-xs">
+            {eligibility.reason}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-8 w-8 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+      title="Excluir lançamento"
+      onClick={() =>
+        onDelete({
+          id: transaction.id,
+          descricao: transaction.description,
+          valor: transaction.value,
+          date: transaction.date,
+          categoria: transaction.category,
+          tipo: transaction.type,
+          deletionTarget: eligibility,
+        })
+      }
+    >
+      <Trash2 className="w-4 h-4" />
+    </Button>
   )
 }

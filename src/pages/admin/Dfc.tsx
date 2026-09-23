@@ -38,13 +38,26 @@ import {
   Landmark,
   Briefcase,
   Layers,
+  Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { exportToCSV } from '@/lib/export-utils'
-import { useDfc, type DfcSecaoDados, type DfcSubcategoria } from '@/hooks/use-dfc'
+import {
+  useDfc,
+  type DfcSecaoDados,
+  type DfcSubcategoria,
+  type DfcLancamento,
+} from '@/hooks/use-dfc'
 import { AdminExpenseDialog } from '@/components/admin/AdminExpenseDialog'
 import { AdminCreditDialog } from '@/components/admin/AdminCreditDialog'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/hooks/use-auth'
+import { evaluateTransactionDeletionEligibility } from '@/services/financial-deletion'
+import {
+  DeleteFinancialRecordModal,
+  type FinancialRecordToDelete,
+} from '@/components/admin/DeleteFinancialRecordModal'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 const MESES = [
   'Janeiro',
@@ -70,6 +83,17 @@ export default function Dfc() {
   const [fim, setFim] = useState('')
   const [expenseOpen, setExpenseOpen] = useState(false)
   const [creditOpen, setCreditOpen] = useState(false)
+  const [recordToDelete, setRecordToDelete] = useState<FinancialRecordToDelete | null>(null)
+
+  const { profile, activeRole } = useAuth()
+  const isSuperAdmin = profile?.email === 'andersonleandro28@gmail.com'
+  const isAdmin =
+    profile?.is_admin || profile?.role === 'admin' || activeRole === 'admin' || isSuperAdmin
+  const isStaff = profile?.is_staff || profile?.role === 'staff' || activeRole === 'staff'
+  const isAccountantOnly =
+    (profile?.is_accountant || profile?.role === 'accountant' || activeRole === 'accountant') &&
+    !isAdmin
+  const canDeleteTransactions = (isAdmin || isStaff) && !isAccountantOnly
 
   const { dados, loading, error, refetch } = useDfc()
 
@@ -201,6 +225,15 @@ export default function Dfc() {
       <AdminExpenseDialog
         open={expenseOpen}
         onOpenChange={setExpenseOpen}
+        onSuccess={() => refetch(periodoInicio, periodoFim)}
+      />
+
+      <DeleteFinancialRecordModal
+        record={recordToDelete}
+        open={!!recordToDelete}
+        onClose={(open) => {
+          if (!open) setRecordToDelete(null)
+        }}
         onSuccess={() => refetch(periodoInicio, periodoFim)}
       />
 
@@ -439,6 +472,8 @@ export default function Dfc() {
         icone={<Briefcase className="w-5 h-5 text-blue-500" />}
         corBorda="border-l-blue-500"
         formatCurrency={formatCurrency}
+        canDelete={canDeleteTransactions}
+        onDeleteRequest={(item) => setRecordToDelete(item)}
       />
 
       {/* SEÇÃO 2: ATIVIDADES DE INVESTIMENTO */}
@@ -448,6 +483,8 @@ export default function Dfc() {
         icone={<Building2 className="w-5 h-5 text-amber-500" />}
         corBorda="border-l-amber-500"
         formatCurrency={formatCurrency}
+        canDelete={canDeleteTransactions}
+        onDeleteRequest={(item) => setRecordToDelete(item)}
       />
 
       {/* SEÇÃO 3: ATIVIDADES DE FINANCIAMENTO */}
@@ -457,6 +494,8 @@ export default function Dfc() {
         icone={<Landmark className="w-5 h-5 text-purple-500" />}
         corBorda="border-l-purple-500"
         formatCurrency={formatCurrency}
+        canDelete={canDeleteTransactions}
+        onDeleteRequest={(item) => setRecordToDelete(item)}
       />
 
       {/* CONCILIAÇÃO FINAL DO SALDO DE CAIXA (FASB 95 RECONCILIATION) */}
@@ -563,6 +602,9 @@ export default function Dfc() {
                   <TableHead>Descrição</TableHead>
                   <TableHead>Fluxo</TableHead>
                   <TableHead className="text-right whitespace-nowrap">Valor</TableHead>
+                  {canDeleteTransactions && (
+                    <TableHead className="text-center w-[60px]">Ações</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -648,6 +690,14 @@ export default function Dfc() {
                         {l.sinal === 'entrada' ? '+' : '-'}
                         {formatCurrency(l.valor)}
                       </TableCell>
+                      {canDeleteTransactions && (
+                        <TableCell className="text-center py-2">
+                          <DfcDeleteButtonCell
+                            lancamento={l}
+                            onDelete={(item) => setRecordToDelete(item)}
+                          />
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))
                 )}
@@ -667,12 +717,16 @@ function SecaoFasb95({
   icone,
   corBorda,
   formatCurrency,
+  canDelete,
+  onDeleteRequest,
 }: {
   secaoDados: DfcSecaoDados | undefined
   loading: boolean
   icone: React.ReactNode
   corBorda: string
   formatCurrency: (v: number) => string
+  canDelete?: boolean
+  onDeleteRequest?: (item: FinancialRecordToDelete) => void
 }) {
   if (loading || !secaoDados) {
     return (
@@ -738,6 +792,8 @@ function SecaoFasb95({
                     sub={sub}
                     sinal="entrada"
                     formatCurrency={formatCurrency}
+                    canDelete={canDelete}
+                    onDeleteRequest={onDeleteRequest}
                   />
                 ))
               )}
@@ -762,6 +818,8 @@ function SecaoFasb95({
                     sub={sub}
                     sinal="saida"
                     formatCurrency={formatCurrency}
+                    canDelete={canDelete}
+                    onDeleteRequest={onDeleteRequest}
                   />
                 ))
               )}
@@ -793,10 +851,14 @@ function SubcategoriaRow({
   sub,
   sinal,
   formatCurrency,
+  canDelete,
+  onDeleteRequest,
 }: {
   sub: DfcSubcategoria
   sinal: 'entrada' | 'saida'
   formatCurrency: (v: number) => string
+  canDelete?: boolean
+  onDeleteRequest?: (item: FinancialRecordToDelete) => void
 }) {
   const [open, setOpen] = useState(false)
   const isEntrada = sinal === 'entrada'
@@ -837,6 +899,9 @@ function SubcategoriaRow({
                 <TableHead className="text-[11px] py-1">Descrição</TableHead>
                 <TableHead className="text-[11px] py-1">Origem</TableHead>
                 <TableHead className="text-right text-[11px] py-1">Valor</TableHead>
+                {canDelete && (
+                  <TableHead className="text-center text-[11px] py-1 w-[45px]">Ações</TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -863,6 +928,14 @@ function SubcategoriaRow({
                       {isEntrada ? '+' : '-'}
                       {formatCurrency(l.valor)}
                     </TableCell>
+                    {canDelete && (
+                      <TableCell className="text-center py-1">
+                        <DfcDeleteButtonCell
+                          lancamento={l}
+                          onDelete={(item) => onDeleteRequest?.(item)}
+                        />
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
             </TableBody>
@@ -870,5 +943,66 @@ function SubcategoriaRow({
         </div>
       </CollapsibleContent>
     </Collapsible>
+  )
+}
+
+function DfcDeleteButtonCell({
+  lancamento,
+  onDelete,
+}: {
+  lancamento: DfcLancamento
+  onDelete: (item: FinancialRecordToDelete) => void
+}) {
+  const eligibility = evaluateTransactionDeletionEligibility({
+    id: lancamento.id,
+    categoria: lancamento.categoria,
+    descricao: lancamento.descricao,
+    origem: lancamento.origem,
+  })
+
+  if (!eligibility.canDelete) {
+    return (
+      <TooltipProvider delayDuration={150}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-block cursor-not-allowed opacity-35">
+              <Button
+                variant="ghost"
+                size="icon"
+                disabled
+                className="h-7 w-7 text-muted-foreground"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="left" className="max-w-xs text-xs">
+            {eligibility.reason}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-7 w-7 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+      title="Excluir lançamento"
+      onClick={() =>
+        onDelete({
+          id: lancamento.id,
+          descricao: lancamento.descricao,
+          valor: lancamento.valor,
+          date: lancamento.date,
+          categoria: lancamento.categoria,
+          origem: lancamento.origem,
+          deletionTarget: eligibility,
+        })
+      }
+    >
+      <Trash2 className="w-3.5 h-3.5" />
+    </Button>
   )
 }

@@ -202,12 +202,14 @@ export function useDfc() {
             .from('movimentacoes_caixa')
             .select(
               'id, tipo, categoria, descricao, valor, user_id, created_at, referencia_id, referencia_tipo, referencia_numero',
-            ),
+            )
+            .is('deleted_at', null),
           supabase
             .from('treasury_transactions')
             .select(
               'id, type, category, amount, description, date, external_ref, expense_id, reference_id, status',
             )
+            .is('deleted_at', null)
             .or('status.eq.Confirmado,status.is.null'),
           supabase
             .from('mapeamento_movimentacoes')

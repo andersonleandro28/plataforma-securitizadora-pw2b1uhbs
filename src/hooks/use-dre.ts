@@ -103,7 +103,8 @@ export function useDre() {
           .from('movimentacoes_caixa')
           .select(
             'id, tipo, categoria, descricao, valor, created_at, referencia_tipo, referencia_id, referencia_numero',
-          ),
+          )
+          .is('deleted_at', null),
         supabase
           .from('debenture_subscriptions')
           .select('id, investor_name, total_amount, subscription_date, created_at, status')
@@ -122,6 +123,7 @@ export function useDre() {
           .select(
             'id, type, category, amount, description, date, external_ref, expense_id, reference_id, status',
           )
+          .is('deleted_at', null)
           .or('status.eq.Confirmado,status.is.null')
           .gte('date', inicio)
           .lte('date', fim),

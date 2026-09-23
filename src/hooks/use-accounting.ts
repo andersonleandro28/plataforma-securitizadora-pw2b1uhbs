@@ -100,15 +100,17 @@ export function useAccounting() {
           .from('movimentacoes_caixa')
           .select(
             'id, tipo, categoria, descricao, valor, user_id, created_at, referencia_id, referencia_tipo, referencia_numero, bank_account_id',
-          ),
+          )
+          .is('deleted_at', null),
         // Transações do Tesourário — Recebimentos e Saídas Não Sincronizadas
         // O `treasury_transactions` contém recebimentos de parcelas de CCBs, parcelas de crédito, liquidações,
-        // resgates e créditos manuais/receitas avulsas na conta.
+        // resgates e créditos manuais/receitas avulsas na conta. Ignora deletados e cancelados.
         supabase
           .from('treasury_transactions')
           .select(
             'id, type, category, amount, description, date, external_ref, expense_id, bank_account_id',
           )
+          .is('deleted_at', null)
           .or('status.eq.Confirmado,status.is.null')
           .or(
             'category.in.("Recebimento de Parcelas - CCB","Recebimento de Parcelas - Operação","Liquidação de Recebível","Resgate de Investidor","Resgates e Rendimentos","Receita Avulsa","Crédito em Conta","Receitas Diversas","Aporte de Capital","Rendimento Financeiro","Reembolso"),external_ref.like.manual-credit-%',
