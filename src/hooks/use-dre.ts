@@ -1,6 +1,9 @@
 import { useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
-import { classifyMovimentacaoCaixaDre } from '@/lib/financial-classification'
+import {
+  classifyMovimentacaoCaixaDre,
+  isTaxProvisionTransaction,
+} from '@/lib/financial-classification'
 
 export type DreTipo = 'receita' | 'despesa'
 
@@ -358,6 +361,11 @@ export function useDre() {
       // tesouraria usa o formato `ccb-bol-{recebivel_id}-{parcela}`.
       const treasuryExternalRefs = new Set<string>()
       ;(tresRes.data || []).forEach((t) => {
+        // Exclui provisões de IRRF retido sobre resgates de investidores:
+        // São provisões de passivo (imposto a recolher), e não despesas da empresa.
+        // O recolhimento de DARF entra oficialmente via `expenses` (categoria 'Imposto').
+        if (isTaxProvisionTransaction(t)) return
+
         const tipo: DreTipo = t.type === 'out' ? 'despesa' : 'receita'
         // Deduplicação: se a saída já está refletida em expenses, ignora.
         if (tipo === 'despesa' && t.expense_id && expenseIdsInDre.has(t.expense_id)) return

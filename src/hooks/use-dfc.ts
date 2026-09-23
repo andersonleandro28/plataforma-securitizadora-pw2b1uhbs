@@ -1,6 +1,9 @@
 import { useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
-import { classifyMovimentacaoCaixaDfc } from '@/lib/financial-classification'
+import {
+  classifyMovimentacaoCaixaDfc,
+  isTaxProvisionTransaction,
+} from '@/lib/financial-classification'
 
 /**
  * Seções da Demonstração do Fluxo de Caixa (FASB Statement No. 95) - Método Direto:
@@ -433,6 +436,11 @@ export function useDfc() {
       const treasuryExternalRefs = new Set<string>()
       ;(tresRes.data || []).forEach((t) => {
         const sinal: 'entrada' | 'saida' = t.type === 'out' ? 'saida' : 'entrada'
+
+        // Exclui provisões de IRRF retido sobre resgate: são lançamentos contábeis de
+        // imposto a recolher, e NÃO saídas reais de caixa. O imposto só sai do caixa
+        // quando a DARF for efetivamente paga (via tabela `expenses`, categoria 'Imposto').
+        if (isTaxProvisionTransaction(t)) return
 
         // Deduplicação: se a saída já foi computada via expenses, ignora
         if (sinal === 'saida' && t.expense_id && expenseIdsInCaixa.has(t.expense_id)) return

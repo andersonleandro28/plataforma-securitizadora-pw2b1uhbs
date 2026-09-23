@@ -1,6 +1,9 @@
 import { useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
-import { classifyMovimentacaoCaixaAccounting } from '@/lib/financial-classification'
+import {
+  classifyMovimentacaoCaixaAccounting,
+  isTaxProvisionTransaction,
+} from '@/lib/financial-classification'
 
 export type Transaction = {
   id: string
@@ -278,6 +281,10 @@ export function useAccounting() {
       // Coleta os external_ref processados para posterior deduplicação com os boletos pagos de recebiveis_ccb.
       const treasuryExternalRefs = new Set<string>()
       ;(tt || []).forEach((tx: any) => {
+        // Exclui provisões de IRRF retido sobre resgate (não são saídas de caixa).
+        // Evita distorcer o Livro Caixa / Contabilidade e mantém conciliação com DFC e DRE.
+        if (isTaxProvisionTransaction(tx)) return
+
         const ref = tx.external_ref ? String(tx.external_ref) : null
         if (ref && movsExternalRefs.has(ref)) return
         if (ref && treasuryExternalRefs.has(ref)) return

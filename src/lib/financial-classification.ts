@@ -56,3 +56,43 @@ export function isSaidaType(type: string | null | undefined): boolean {
   const norm = normalizeType(type)
   return norm !== 'entrada'
 }
+
+/**
+ * Identifica se um lançamento em treasury_transactions representa uma PROVISÃO
+ * de IRRF retido na fonte sobre resgate de investidor (e NÃO uma saída real de caixa).
+ *
+ * Tais lançamentos são gerados na liquidação do resgate (passivo de imposto a recolher)
+ * e o desembolso efetivo de caixa só ocorrerá quando a DARF for paga via `expenses`
+ * (categoria 'Imposto'). Incluí-los como saída de caixa/resultado distorce o fluxo
+ * e gera duplicação futura.
+ *
+ * Critérios robustos combinados:
+ * 1. external_ref começando com "tax-redemption-"
+ * 2. OU descrição começando/contendo "imposto a recolher" com referência a IRRF/resgate
+ * 3. OU categoria "Impostos e Taxas" associada a resgate de investidor
+ */
+export function isTaxProvisionTransaction(tx: {
+  external_ref?: string | null
+  description?: string | null
+  category?: string | null
+}): boolean {
+  const extRef = (tx.external_ref || '').toLowerCase().trim()
+  if (extRef.startsWith('tax-redemption-') || extRef.startsWith('tax-redemption')) {
+    return true
+  }
+
+  const desc = (tx.description || '').toLowerCase().trim()
+  if (desc.includes('imposto a recolher') && (desc.includes('irrf') || desc.includes('resgate'))) {
+    return true
+  }
+
+  const cat = (tx.category || '').toLowerCase().trim()
+  if (
+    cat.includes('impostos e taxas') &&
+    (desc.includes('resgate') || extRef.includes('redemption'))
+  ) {
+    return true
+  }
+
+  return false
+}
