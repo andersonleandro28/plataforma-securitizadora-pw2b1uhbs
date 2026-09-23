@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import { classifyMovimentacaoCaixaDfc } from '@/lib/financial-classification'
 
 /**
  * Seções da Demonstração do Fluxo de Caixa (FASB Statement No. 95) - Método Direto:
@@ -167,42 +168,47 @@ export function useDfc() {
       // 2. Todas as movimentações dentro do período `[inicio, fim]`
       // 3. O saldo acumulado até `fim` (Saldo Final do Livro Caixa)
       // 4. A conciliação direta FASB 95
-      const [subsRes, recsRes, expsRes, credRes, redsRes, movsRes, tresRes] = await Promise.all([
-        supabase
-          .from('debenture_subscriptions')
-          .select('id, investor_name, total_amount, subscription_date, created_at, status'),
-        supabase
-          .from('recebiveis_ccb')
-          .select(
-            'id, acquisition_value, created_at, boletos, ccb_id, profiles!recebiveis_ccb_tomador_id_fkey(full_name, pj_company_name)',
-          ),
-        supabase
-          .from('expenses')
-          .select(
-            'id, amount, description, payment_date, due_date, status, suppliers(company_name), category',
-          ),
-        supabase
-          .from('credit_operations')
-          .select(
-            'id, requested_value, face_value, issue_date, created_at, updated_at, status, sacado, liquidation_date, liquidation_value, operation_calculations(net_value)',
-          ),
-        supabase
-          .from('investment_redemptions')
-          .select(
-            'id, net_value, updated_at, status, profiles!investment_redemptions_user_id_fkey(full_name, pj_company_name)',
-          ),
-        supabase
-          .from('movimentacoes_caixa')
-          .select(
-            'id, tipo, categoria, descricao, valor, user_id, created_at, referencia_id, referencia_tipo, referencia_numero',
-          ),
-        supabase
-          .from('treasury_transactions')
-          .select(
-            'id, type, category, amount, description, date, external_ref, expense_id, reference_id, status',
-          )
-          .or('status.eq.Confirmado,status.is.null'),
-      ])
+      const [subsRes, recsRes, expsRes, credRes, redsRes, movsRes, tresRes, mapRes] =
+        await Promise.all([
+          supabase
+            .from('debenture_subscriptions')
+            .select('id, investor_name, total_amount, subscription_date, created_at, status'),
+          supabase
+            .from('recebiveis_ccb')
+            .select(
+              'id, acquisition_value, created_at, boletos, ccb_id, profiles!recebiveis_ccb_tomador_id_fkey(full_name, pj_company_name)',
+            ),
+          supabase
+            .from('expenses')
+            .select(
+              'id, amount, description, payment_date, due_date, status, suppliers(company_name), category',
+            ),
+          supabase
+            .from('credit_operations')
+            .select(
+              'id, requested_value, face_value, issue_date, created_at, updated_at, status, sacado, liquidation_date, liquidation_value, operation_calculations(net_value)',
+            ),
+          supabase
+            .from('investment_redemptions')
+            .select(
+              'id, net_value, updated_at, status, profiles!investment_redemptions_user_id_fkey(full_name, pj_company_name)',
+            ),
+          supabase
+            .from('movimentacoes_caixa')
+            .select(
+              'id, tipo, categoria, descricao, valor, user_id, created_at, referencia_id, referencia_tipo, referencia_numero',
+            ),
+          supabase
+            .from('treasury_transactions')
+            .select(
+              'id, type, category, amount, description, date, external_ref, expense_id, reference_id, status',
+            )
+            .or('status.eq.Confirmado,status.is.null'),
+          supabase
+            .from('mapeamento_movimentacoes')
+            .select('movimentacao_caixa_id, origem_tabela, origem_id')
+            .in('origem_tabela', ['fornecedores', 'despesas']),
+        ])
 
       type ItemBruto = {
         id: string
@@ -221,9 +227,20 @@ export function useDfc() {
       const movsExternalRefs = new Set<string>()
       const redemptionsInMovs = new Set<string>()
 
+      // Mapeamento de movimentacoes_caixa para despesas oficiais (expenses)
+      const movIdToExpenseId = new Map<string, string>()
+      ;(mapRes.data || []).forEach((m: any) => {
+        if (m.movimentacao_caixa_id && m.origem_id) {
+          movIdToExpenseId.set(m.movimentacao_caixa_id, m.origem_id)
+        }
+      })
+      const paidExpenseIds = new Set(
+        (expsRes.data || []).filter((e: any) => e.status === 'paid').map((e: any) => e.id),
+      )
+
       ;(movsRes.data || []).forEach((mov: any) => {
-        const tipoLower = (mov.tipo || '').toLowerCase()
-        const sinal: 'entrada' | 'saida' = tipoLower === 'saida' ? 'saida' : 'entrada'
+        // Normalização fail-safe: SOMENTE 'entrada' normalizado vira 'entrada'; qualquer outro vira 'saida'
+        const sinal: 'entrada' | 'saida' = classifyMovimentacaoCaixaDfc(mov.tipo)
         const refTipo = (mov.referencia_tipo || '').toLowerCase()
 
         if (
@@ -244,6 +261,14 @@ export function useDfc() {
             movsExternalRefs.add(`op-bol-${mov.referencia_id}-${mov.referencia_numero}`)
             movsExternalRefs.add(String(mov.referencia_numero))
           }
+        }
+
+        // Deduplicação: se a despesa vinculada já foi computada via expenses, ignora a duplicata do caixa
+        const linkedExpenseId =
+          movIdToExpenseId.get(mov.id) ||
+          (mov.referencia_tipo === 'despesa' ? mov.referencia_id : null)
+        if (linkedExpenseId && paidExpenseIds.has(linkedExpenseId)) {
+          return
         }
 
         const catOriginal = mov.categoria || 'Outros'

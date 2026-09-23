@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import { classifyMovimentacaoCaixaDre } from '@/lib/financial-classification'
 
 export type DreTipo = 'receita' | 'despesa'
 
@@ -82,7 +83,7 @@ export function useDre() {
       const inicioTs = `${inicio}T00:00:00`
       const fimTs = `${fim}T23:59:59`
 
-      const [movsRes, subsRes, expsRes, tresRes, credRes, ccbRes] = await Promise.all([
+      const [movsRes, subsRes, expsRes, tresRes, credRes, ccbRes, mapRes] = await Promise.all([
         supabase
           .from('movimentacoes_caixa')
           .select(
@@ -98,7 +99,7 @@ export function useDre() {
         supabase
           .from('expenses')
           .select(
-            'id, amount, description, payment_date, due_date, status, category, suppliers(company_name)',
+            'id, amount, description, payment_date, due_date, status, category, supplier_id, suppliers(company_name)',
           )
           .or(
             `and(payment_date.gte.${inicio},payment_date.lte.${fim}),and(payment_date.is.null,and(due_date.gte.${inicio},due_date.lte.${fim}))`,
@@ -132,9 +133,24 @@ export function useDre() {
             'id, ccb_id, boletos, status, tomador_id, profiles!recebiveis_ccb_tomador_id_fkey(full_name, pj_company_name)',
           )
           .or(`status.eq.Ativo,boletos.neq.[]`),
+        // Mapeamentos de movimentações para correlacionar despesas/fornecedores entre tabelas
+        supabase
+          .from('mapeamento_movimentacoes')
+          .select('movimentacao_caixa_id, origem_tabela, origem_id')
+          .in('origem_tabela', ['fornecedores', 'despesas']),
       ])
 
       const lancamentos: DreLancamento[] = []
+
+      // Mapeamento de movimentacoes_caixa para despesas oficiais (expenses)
+      const movIdToExpenseId = new Map<string, string>()
+      const expenseIdToMovId = new Map<string, string>()
+      ;(mapRes.data || []).forEach((m: any) => {
+        if (m.movimentacao_caixa_id && m.origem_id) {
+          movIdToExpenseId.set(m.movimentacao_caixa_id, m.origem_id)
+          expenseIdToMovId.set(m.origem_id, m.movimentacao_caixa_id)
+        }
+      })
 
       // 1. Movimentações de Caixa (Livro Caixa)
       // Coleta, para deduplicação posterior, as operações de crédito cujo
@@ -148,13 +164,25 @@ export function useDre() {
       // (ex.: op-liq-{id} e op-bol-{id}-{numero}) para evitar que a mesma liquidação
       // ou parcela já presente no caixa seja adicionada novamente a partir de
       // treasury_transactions.
+      //
+      // DEDUPLICAÇÃO DE FORNECEDORES E DESPESAS:
+      // Se um pagamento de fornecedor ou despesa já consta no Livro Caixa E também
+      // na tabela de despesas pagas (expenses), ele deve ser contado UMA ÚNICA VEZ.
+      // Priorizamos a fonte oficial (expenses) se ela cair no período, ou a movimentação
+      // se ela já foi lançada no caixa. Se já mapeado para uma despesa paga, a despesa
+      // oficial em `expenses` é quem fornecerá os dados cadastrais ricos (ou esta movimentação
+      // é suprimida se a despesa correspondente for processada).
       const creditOpIdsNoCaixa = new Set<string>()
       const movsExternalRefs = new Set<string>()
+      const movsExpenseIdsLinked = new Set<string>()
+
       ;(movsRes.data || []).forEach((mov: any) => {
-        const tipoLower = (mov.tipo || '').toLowerCase()
-        const tipo: DreTipo = tipoLower === 'saida' ? 'despesa' : 'receita'
+        // Classificação à prova de falha: SOMENTE 'entrada' normalizado vira receita;
+        // QUALQUER outro valor ('saida', 'saída', unknown) vira despesa.
+        const tipo: DreTipo = classifyMovimentacaoCaixaDre(mov.tipo)
         const catOriginal = mov.categoria || 'Outros'
         const refTipo = (mov.referencia_tipo || '').toLowerCase()
+
         if (
           tipo === 'despesa' &&
           (refTipo === 'recebível' || refTipo === 'recebivel') &&
@@ -170,6 +198,24 @@ export function useDre() {
             movsExternalRefs.add(String(mov.referencia_numero))
           }
         }
+
+        // Se esta movimentação de caixa está vinculada a uma despesa (via mapeamento_movimentacoes ou referencia_id)
+        const linkedExpenseId =
+          movIdToExpenseId.get(mov.id) || (refTipo === 'despesa' ? mov.referencia_id : null)
+        if (linkedExpenseId) {
+          movsExpenseIdsLinked.add(linkedExpenseId)
+        }
+
+        // Deduplicação: se a despesa vinculada já existe no banco e será computada via tabela expenses (ou já foi lançada via caixa),
+        // evitamos a contagem em duplicidade. Se a despesa vinculada estiver presente no período atual de `expenses`,
+        // deixamos a tabela `expenses` ser a fonte da verdade cadastral e pulamos a movimentação genérica do caixa.
+        const willBeHandledByExpenses =
+          linkedExpenseId &&
+          (expsRes.data || []).some((e: any) => e.id === linkedExpenseId && e.status === 'paid')
+        if (willBeHandledByExpenses) {
+          return
+        }
+
         lancamentos.push({
           id: `mov-${mov.id}`,
           date: normalizeDate(mov.created_at),

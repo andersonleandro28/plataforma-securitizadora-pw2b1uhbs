@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import { classifyMovimentacaoCaixaAccounting } from '@/lib/financial-classification'
 
 export type Transaction = {
   id: string
@@ -63,6 +64,7 @@ export function useAccounting() {
         { data: movs },
         { data: tt },
         { data: companyBanks },
+        { data: mapMovs },
       ] = await Promise.all([
         supabase
           .from('debenture_subscriptions')
@@ -109,7 +111,20 @@ export function useAccounting() {
         supabase
           .from('company_bank_accounts')
           .select('id, bank_name, branch, account_number, is_active'),
+        // Mapeamentos para deduplicação entre movimentacoes_caixa e despesas oficiais
+        supabase
+          .from('mapeamento_movimentacoes')
+          .select('movimentacao_caixa_id, origem_tabela, origem_id')
+          .in('origem_tabela', ['fornecedores', 'despesas']),
       ])
+
+      // Mapeamento de movimentacoes_caixa para despesas oficiais (expenses)
+      const movIdToExpenseId = new Map<string, string>()
+      ;(mapMovs || []).forEach((m: any) => {
+        if (m.movimentacao_caixa_id && m.origem_id) {
+          movIdToExpenseId.set(m.movimentacao_caixa_id, m.origem_id)
+        }
+      })
 
       // Mapeamento de contas bancárias para lookup rápido e fallback de conta ativa
       const bankMap = new Map<
@@ -348,9 +363,29 @@ export function useAccounting() {
         liquidação_recebível: 'Liquidação de Recebível',
         liquidacao_recebivel: 'Liquidação de Recebível',
         juros_entrada: 'Juros Recebidos',
+        fornecedor: 'Pagamento Fornecedor',
+        despesa: 'Despesa Operacional',
       }
+      // DEDUP DE DESPESAS/FORNECEDORES:
+      // Se um pagamento de fornecedor já existe no Livro Caixa e também foi lançado
+      // via tabela `expenses` (status 'paid'), prioriza a tabela `expenses` (que contém
+      // os dados detalhados e fornecedor vinculado) e evita duplicar no Livro Caixa.
+      const paidExpenseIds = new Set(
+        (exps || []).filter((e: any) => e.status === 'paid').map((e: any) => e.id),
+      )
+
       ;(movs || []).forEach((mov) => {
-        const tipo = (mov.tipo || '').toLowerCase()
+        // Deduplicação: se vinculada a uma despesa já processada via expenses, ignora a duplicata do caixa
+        const linkedExpenseId =
+          movIdToExpenseId.get(mov.id) ||
+          (mov.referencia_tipo === 'despesa' ? mov.referencia_id : null)
+        if (linkedExpenseId && paidExpenseIds.has(linkedExpenseId)) {
+          return
+        }
+
+        // Classificação à prova de falha: somente 'entrada' normalizado vira 'in';
+        // qualquer outro valor (saída, saida, unknown) vira 'out'
+        const type: 'in' | 'out' = classifyMovimentacaoCaixaAccounting(mov.tipo)
         const category =
           categoriaLabel[(mov.categoria || '').toLowerCase()] ||
           mov.categoria ||
@@ -359,7 +394,7 @@ export function useAccounting() {
         transactions.push({
           id: `mov-${mov.id}`,
           date: normalizeAccountingDate(mov.created_at),
-          type: tipo === 'saida' ? 'out' : 'in',
+          type,
           category,
           description: mov.descricao || category,
           value: Number(mov.valor || 0),

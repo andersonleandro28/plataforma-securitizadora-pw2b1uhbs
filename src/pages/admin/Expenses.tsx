@@ -319,9 +319,12 @@ export default function Expenses() {
     const { data: movs } = await supabase.from('movimentacoes_caixa').select('tipo, valor')
     const saldoAtual = (movs || []).reduce((acc, m) => {
       const v = Number(m.valor) || 0
-      return (m.tipo || '').toLowerCase() === 'saída' || (m.tipo || '').toLowerCase() === 'saida'
-        ? acc - v
-        : acc + v
+      const norm = (m.tipo || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+      return norm === 'entrada' ? acc + v : acc - v
     }, 0)
     if (saldoAtual < Number(expense.amount)) {
       toast.error('Saldo insuficiente para este pagamento')
@@ -376,9 +379,12 @@ export default function Expenses() {
       const { data: movs } = await supabase.from('movimentacoes_caixa').select('tipo, valor')
       const saldoAtual = (movs || []).reduce((acc, m) => {
         const v = Number(m.valor) || 0
-        return (m.tipo || '').toLowerCase() === 'saída' || (m.tipo || '').toLowerCase() === 'saida'
-          ? acc - v
-          : acc + v
+        const norm = (m.tipo || '')
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .trim()
+        return norm === 'entrada' ? acc + v : acc - v
       }, 0)
       if (saldoAtual < Number(expForm.amount)) {
         return toast.error('Saldo insuficiente para esta despesa')
@@ -470,9 +476,12 @@ export default function Expenses() {
     const { data: movs } = await supabase.from('movimentacoes_caixa').select('tipo, valor')
     const saldoAtual = (movs || []).reduce((acc, m) => {
       const v = Number(m.valor) || 0
-      return (m.tipo || '').toLowerCase() === 'saída' || (m.tipo || '').toLowerCase() === 'saida'
-        ? acc - v
-        : acc + v
+      const norm = (m.tipo || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+      return norm === 'entrada' ? acc + v : acc - v
     }, 0)
     if (saldoAtual < expense.amount) {
       return toast.error('Saldo insuficiente para este pagamento')
