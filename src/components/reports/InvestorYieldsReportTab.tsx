@@ -583,6 +583,18 @@ export function InvestorYieldsReportTab() {
     setExpandedKeys((prev) => ({ ...prev, [key]: !prev[key] }))
   }
 
+  const expandAll = () => {
+    const all: Record<string, boolean> = {}
+    filteredGroups.forEach((g) => {
+      all[g.key] = true
+    })
+    setExpandedKeys(all)
+  }
+
+  const collapseAll = () => {
+    setExpandedKeys({})
+  }
+
   const selectedMonthLabel = useMemo(() => {
     const [y, m] = selectedMonth.split('-')
     const dateObj = new Date(Number(y), Number(m) - 1, 1)
@@ -643,6 +655,44 @@ export function InvestorYieldsReportTab() {
           #print-yields-report,
           #print-yields-report * {
             visibility: visible;
+          }
+
+          /* Força as linhas de detalhamento individual de aportes a ficarem sempre visíveis na impressão */
+          #print-yields-report .investor-detail-row,
+          #print-yields-report .investor-detail-row * {
+            display: table-row !important;
+            visibility: visible !important;
+          }
+          #print-yields-report tr.investor-detail-row {
+            display: table-row !important;
+          }
+          #print-yields-report tr.investor-detail-row td {
+            display: table-cell !important;
+          }
+          #print-yields-report tr.investor-detail-row table {
+            display: table !important;
+          }
+          #print-yields-report tr.investor-detail-row thead {
+            display: table-header-group !important;
+          }
+          #print-yields-report tr.investor-detail-row tbody {
+            display: table-row-group !important;
+          }
+          #print-yields-report tr.investor-detail-row tr {
+            display: table-row !important;
+          }
+          #print-yields-report tr.investor-detail-row th,
+          #print-yields-report tr.investor-detail-row td {
+            display: table-cell !important;
+          }
+          #print-yields-report tr.investor-detail-row div {
+            display: block !important;
+          }
+          #print-yields-report tr.investor-detail-row span {
+            display: inline !important;
+          }
+          #print-yields-report tr.investor-detail-row span.block {
+            display: block !important;
           }
 
           /* Oculta especificamente elementos com classe no-print dentro do relatório */
@@ -939,9 +989,33 @@ export function InvestorYieldsReportTab() {
                   rendimento do mês e acumulado.
                 </CardDescription>
               </div>
-              <Badge variant="outline" className="w-fit font-mono">
-                {filteredGroups.length} investidor{filteredGroups.length === 1 ? '' : 'es'}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <div className="no-print flex items-center gap-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs px-2.5"
+                    onClick={expandAll}
+                    disabled={filteredGroups.length === 0}
+                    title="Expandir todos os contratos de todos os investidores"
+                  >
+                    Expandir Todos
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs px-2.5"
+                    onClick={collapseAll}
+                    disabled={filteredGroups.length === 0}
+                    title="Recolher todos os contratos"
+                  >
+                    Recolher Todos
+                  </Button>
+                </div>
+                <Badge variant="outline" className="w-fit font-mono">
+                  {filteredGroups.length} investidor{filteredGroups.length === 1 ? '' : 'es'}
+                </Badge>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="pt-4 p-0 sm:p-6">
@@ -1044,66 +1118,75 @@ export function InvestorYieldsReportTab() {
                             </TableCell>
                           </TableRow>
 
-                          {/* Linha expandida com os aportes detalhados do investidor */}
-                          {isExpanded && (
-                            <TableRow
-                              key={`${g.key}-detail`}
-                              className="bg-muted/10 hover:bg-muted/10"
-                            >
-                              <TableCell colSpan={7} className="p-3 sm:p-4">
-                                <div className="rounded-md border bg-background overflow-hidden">
-                                  <div className="px-3 py-2 bg-muted/40 text-xs font-semibold text-muted-foreground border-b flex justify-between items-center">
-                                    <span>Detalhamento dos Aportes — {g.name}</span>
-                                    <span>{g.investments.length} aporte(s) ativo(s)</span>
-                                  </div>
-                                  <Table>
-                                    <TableHeader>
-                                      <TableRow className="text-xs">
-                                        <TableHead>Produto / Taxa</TableHead>
-                                        <TableHead>Data do Aporte</TableHead>
-                                        <TableHead className="text-center">Cotas</TableHead>
-                                        <TableHead className="text-right">Valor Aportado</TableHead>
-                                        <TableHead className="text-right text-blue-700">
-                                          Rend. no Mês
-                                        </TableHead>
-                                        <TableHead className="text-right text-emerald-700">
-                                          Rend. Acumulado
-                                        </TableHead>
-                                      </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                      {g.investments.map((inv, invIndex) => (
-                                        <TableRow
-                                          key={inv.id || `${g.key}-inv-${invIndex}`}
-                                          className="text-xs"
-                                        >
-                                          <TableCell className="font-medium">
-                                            {inv.productTitle}
-                                            <span className="block text-[11px] text-muted-foreground">
-                                              {inv.productRate} • {inv.productType}
-                                            </span>
-                                          </TableCell>
-                                          <TableCell>{formatDate(inv.investmentDate)}</TableCell>
-                                          <TableCell className="text-center font-mono">
-                                            {inv.activeQuotas}
-                                          </TableCell>
-                                          <TableCell className="text-right font-mono">
-                                            {formatCurrency(inv.investedAmount)}
-                                          </TableCell>
-                                          <TableCell className="text-right font-mono text-blue-600">
-                                            {formatCurrency(inv.yieldMonth)}
-                                          </TableCell>
-                                          <TableCell className="text-right font-mono text-emerald-600">
-                                            {formatCurrency(inv.yieldAccumulated)}
-                                          </TableCell>
-                                        </TableRow>
-                                      ))}
-                                    </TableBody>
-                                  </Table>
+                          {/* Linha com os aportes detalhados do investidor: sempre renderizada para sair no PDF/impressão; na tela obedece isExpanded */}
+                          <TableRow
+                            key={`${g.key}-detail`}
+                            className={cn(
+                              'bg-muted/10 hover:bg-muted/10 print-break-inside-avoid investor-detail-row',
+                              !isExpanded && 'hidden print:table-row',
+                            )}
+                          >
+                            <TableCell colSpan={7} className="p-3 sm:p-4 print:p-2">
+                              <div className="rounded-md border bg-background overflow-hidden print:border-slate-300">
+                                <div className="px-3 py-2 bg-muted/40 text-xs font-semibold text-muted-foreground border-b flex justify-between items-center print:bg-slate-100 print:text-slate-800">
+                                  <span>Contratos / Aportes Individualizados — {g.name}</span>
+                                  <span>{g.investments.length} contrato(s) ativo(s)</span>
                                 </div>
-                              </TableCell>
-                            </TableRow>
-                          )}
+                                <Table>
+                                  <TableHeader>
+                                    <TableRow className="text-xs print:bg-slate-50">
+                                      <TableHead className="min-w-[180px]">
+                                        Produto / Taxa
+                                      </TableHead>
+                                      <TableHead className="min-w-[110px]">
+                                        Data do Aporte
+                                      </TableHead>
+                                      <TableHead className="text-center min-w-[70px]">
+                                        Cotas
+                                      </TableHead>
+                                      <TableHead className="text-right min-w-[110px]">
+                                        Valor Aportado
+                                      </TableHead>
+                                      <TableHead className="text-right min-w-[110px] text-blue-700">
+                                        Rend. no Mês
+                                      </TableHead>
+                                      <TableHead className="text-right min-w-[120px] text-emerald-700">
+                                        Rend. Acumulado
+                                      </TableHead>
+                                    </TableRow>
+                                  </TableHeader>
+                                  <TableBody>
+                                    {g.investments.map((inv, invIndex) => (
+                                      <TableRow
+                                        key={inv.id || `${g.key}-inv-${invIndex}`}
+                                        className="text-xs print:border-b print:border-slate-200"
+                                      >
+                                        <TableCell className="font-medium">
+                                          {inv.productTitle}
+                                          <span className="block text-[11px] text-muted-foreground print:text-slate-600">
+                                            {inv.productRate} • {inv.productType}
+                                          </span>
+                                        </TableCell>
+                                        <TableCell>{formatDate(inv.investmentDate)}</TableCell>
+                                        <TableCell className="text-center font-mono">
+                                          {inv.activeQuotas}
+                                        </TableCell>
+                                        <TableCell className="text-right font-mono">
+                                          {formatCurrency(inv.investedAmount)}
+                                        </TableCell>
+                                        <TableCell className="text-right font-mono text-blue-600">
+                                          {formatCurrency(inv.yieldMonth)}
+                                        </TableCell>
+                                        <TableCell className="text-right font-mono text-emerald-600">
+                                          {formatCurrency(inv.yieldAccumulated)}
+                                        </TableCell>
+                                      </TableRow>
+                                    ))}
+                                  </TableBody>
+                                </Table>
+                              </div>
+                            </TableCell>
+                          </TableRow>
                         </React.Fragment>
                       )
                     })}
