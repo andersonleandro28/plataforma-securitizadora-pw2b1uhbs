@@ -23,6 +23,12 @@ import { supabase } from '@/lib/supabase/client'
 import { exportToCSV } from '@/lib/export-utils'
 import { formatDate, cn } from '@/lib/utils'
 import {
+  fetchInvestorYieldsForMonth,
+  fetchDreResultForPeriod,
+  calculatePeriodTaxes,
+  type PeriodTaxCalculation,
+} from '@/lib/period-tax-service'
+import {
   Search,
   Calendar,
   FileSpreadsheet,
@@ -36,6 +42,11 @@ import {
   BadgePercent,
   CheckCircle2,
   Clock,
+  Landmark,
+  Calculator,
+  ShieldCheck,
+  Scale,
+  Percent,
 } from 'lucide-react'
 
 /* ------------------------------------------------------------------ */
@@ -123,8 +134,21 @@ export function PeriodOperationsReportTab() {
   const [receivablesOps, setReceivablesOps] = useState<ReceivablesOperationItem[]>([])
   const [ccbOps, setCcbOps] = useState<CcbOperationItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingTax, setLoadingTax] = useState(false)
   const [error, setError] = useState(false)
   const [search, setSearch] = useState('')
+
+  // Dados auxiliares da apuração tributária (despesas de captação e DRE)
+  const [despesasCaptacao, setDespesasCaptacao] = useState<number>(0)
+  const [dreResult, setDreResult] = useState<{
+    totalReceitas: number
+    totalDespesas: number
+    resultado: number
+  }>({
+    totalReceitas: 0,
+    totalDespesas: 0,
+    resultado: 0,
+  })
 
   // Competência selecionada (formato YYYY-MM)
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
@@ -340,6 +364,43 @@ export function PeriodOperationsReportTab() {
     }
   }, [])
 
+  // Carregar despesas de captação (Investor Yields) e DRE para a competência selecionada
+  useEffect(() => {
+    let isCancelled = false
+    async function loadTaxAuxiliaryData() {
+      setLoadingTax(true)
+      try {
+        const [y, m] = selectedMonth.split('-')
+        const yearNum = parseInt(y, 10)
+        const monthNum = parseInt(m, 10)
+        const firstDay = `${selectedMonth}-01`
+        const lastDayDate = new Date(yearNum, monthNum, 0)
+        const lastDay = `${selectedMonth}-${String(lastDayDate.getDate()).padStart(2, '0')}`
+
+        const [yieldsMonth, dre] = await Promise.all([
+          fetchInvestorYieldsForMonth(selectedMonth),
+          fetchDreResultForPeriod(firstDay, lastDay),
+        ])
+
+        if (!isCancelled) {
+          setDespesasCaptacao(yieldsMonth || 0)
+          setDreResult(dre)
+        }
+      } catch (err) {
+        console.error('Erro ao carregar dados tributários auxiliares:', err)
+      } finally {
+        if (!isCancelled) {
+          setLoadingTax(false)
+        }
+      }
+    }
+
+    loadTaxAuxiliaryData()
+    return () => {
+      isCancelled = true
+    }
+  }, [selectedMonth])
+
   useEffect(() => {
     loadData()
   }, [loadData])
@@ -446,6 +507,18 @@ export function PeriodOperationsReportTab() {
     const label = dateObj.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
     return label.charAt(0).toUpperCase() + label.slice(1)
   }, [selectedMonth])
+
+  // Apuração tributária calculada para a competência
+  const taxCalculation: PeriodTaxCalculation = useMemo(() => {
+    return calculatePeriodTaxes({
+      receitaBrutaRecebiveis: receivablesTotals.discount,
+      receitaBrutaCcbs: ccbTotals.discount,
+      despesasCaptacao,
+      lucroReal: dreResult.resultado,
+      receitasDre: dreResult.totalReceitas,
+      despesasDre: dreResult.totalDespesas,
+    })
+  }, [receivablesTotals.discount, ccbTotals.discount, despesasCaptacao, dreResult])
 
   /* ------------------------------------------------------------------ */
   /* Exportações CSV e Impressão                                        */
@@ -563,8 +636,269 @@ export function PeriodOperationsReportTab() {
       'Deságio Nominal (R$)': consolidatedTotals.discount.toFixed(2),
       'Deságio (%)': consolidatedTotals.discountPct.toFixed(2),
       'Taxa Efetiva / CET (%)': '—',
-      'IOF Retido (R$)': consolidatedTotals.iof.toFixed(2),
+      'IOF Retido (R$)': 'Isento (R$ 0,00)',
       Status: '—',
+    })
+
+    // Separador e Seção de Apuração Tributária no CSV
+    rows.push({
+      'Tipo Operação': '---',
+      'Contrato / ID': '---',
+      'Data Operação': '---',
+      'Vencimento Final': '---',
+      'Cedente / Tomador': '---',
+      'CPF/CNPJ Cedente': '---',
+      'Regime Tributário': '---',
+      'Sacado / Devedor': '---',
+      'CPF/CNPJ Sacado': '---',
+      Parcelas: '---',
+      'Preço de Face (R$)': '---',
+      'Preço Pago / Aquisição (R$)': '---',
+      'Deságio Nominal (R$)': '---',
+      'Deságio (%)': '---',
+      'Taxa Efetiva / CET (%)': '---',
+      'IOF Retido (R$)': '---',
+      Status: '---',
+    })
+
+    rows.push({
+      'Tipo Operação': 'APURAÇÃO TRIBUTÁRIA DA SECURITIZADORA',
+      'Contrato / ID': 'Receita Bruta Total (Deságio)',
+      'Data Operação': 'Base de Cálculo',
+      'Vencimento Final': '—',
+      'Cedente / Tomador': 'Deságio Antecipações + CCBs',
+      'CPF/CNPJ Cedente': '—',
+      'Regime Tributário': 'Lucro Real / Cumulativo',
+      'Sacado / Devedor': '—',
+      'CPF/CNPJ Sacado': '—',
+      Parcelas: '—',
+      'Preço de Face (R$)': '—',
+      'Preço Pago / Aquisição (R$)': '—',
+      'Deságio Nominal (R$)': taxCalculation.receitaBrutaTotal.toFixed(2),
+      'Deságio (%)': '100.00',
+      'Taxa Efetiva / CET (%)': '—',
+      'IOF Retido (R$)': '—',
+      Status: 'Calculado',
+    })
+
+    rows.push({
+      'Tipo Operação': 'APURAÇÃO TRIBUTÁRIA DA SECURITIZADORA',
+      'Contrato / ID': 'Despesas de Captação Dedutíveis',
+      'Data Operação': 'Dedução Legal',
+      'Vencimento Final': '—',
+      'Cedente / Tomador': 'Juros/Rendimentos pagos a investidores',
+      'CPF/CNPJ Cedente': '—',
+      'Regime Tributário': 'Dedução PIS/COFINS',
+      'Sacado / Devedor': '—',
+      'CPF/CNPJ Sacado': '—',
+      Parcelas: '—',
+      'Preço de Face (R$)': '—',
+      'Preço Pago / Aquisição (R$)': '—',
+      'Deságio Nominal (R$)': (-taxCalculation.despesasCaptacao).toFixed(2),
+      'Deságio (%)': '—',
+      'Taxa Efetiva / CET (%)': '—',
+      'IOF Retido (R$)': '—',
+      Status: 'Dedutível',
+    })
+
+    rows.push({
+      'Tipo Operação': 'APURAÇÃO TRIBUTÁRIA DA SECURITIZADORA',
+      'Contrato / ID': 'Base de Cálculo Efetiva PIS/COFINS',
+      'Data Operação': 'Base Líquida',
+      'Vencimento Final': '—',
+      'Cedente / Tomador': 'Receita Bruta − Despesas de Captação',
+      'CPF/CNPJ Cedente': '—',
+      'Regime Tributário': 'Regime Cumulativo',
+      'Sacado / Devedor': '—',
+      'CPF/CNPJ Sacado': '—',
+      Parcelas: '—',
+      'Preço de Face (R$)': '—',
+      'Preço Pago / Aquisição (R$)': '—',
+      'Deságio Nominal (R$)': taxCalculation.basePisCofins.toFixed(2),
+      'Deságio (%)': '—',
+      'Taxa Efetiva / CET (%)': '—',
+      'IOF Retido (R$)': '—',
+      Status: taxCalculation.baseNegativaAviso ? 'Base Zerada (Negativa)' : 'Positiva',
+    })
+
+    rows.push({
+      'Tipo Operação': 'TRIBUTO: PIS CUMULATIVO',
+      'Contrato / ID': 'PIS (0,65%)',
+      'Data Operação': `Base: R$ ${taxCalculation.basePisCofins.toFixed(2)}`,
+      'Vencimento Final': '—',
+      'Cedente / Tomador': 'PIS Cumulativo Securitizadora',
+      'CPF/CNPJ Cedente': '—',
+      'Regime Tributário': '0,65%',
+      'Sacado / Devedor': '—',
+      'CPF/CNPJ Sacado': '—',
+      Parcelas: '—',
+      'Preço de Face (R$)': '—',
+      'Preço Pago / Aquisição (R$)': '—',
+      'Deságio Nominal (R$)': taxCalculation.valorPis.toFixed(2),
+      'Deságio (%)': '0.65',
+      'Taxa Efetiva / CET (%)': '—',
+      'IOF Retido (R$)': '—',
+      Status: 'A Recolher',
+    })
+
+    rows.push({
+      'Tipo Operação': 'TRIBUTO: COFINS CUMULATIVO',
+      'Contrato / ID': 'COFINS (4,00%)',
+      'Data Operação': `Base: R$ ${taxCalculation.basePisCofins.toFixed(2)}`,
+      'Vencimento Final': '—',
+      'Cedente / Tomador': 'COFINS Cumulativo Securitizadora',
+      'CPF/CNPJ Cedente': '—',
+      'Regime Tributário': '4,00%',
+      'Sacado / Devedor': '—',
+      'CPF/CNPJ Sacado': '—',
+      Parcelas: '—',
+      'Preço de Face (R$)': '—',
+      'Preço Pago / Aquisição (R$)': '—',
+      'Deságio Nominal (R$)': taxCalculation.valorCofins.toFixed(2),
+      'Deságio (%)': '4.00',
+      'Taxa Efetiva / CET (%)': '—',
+      'IOF Retido (R$)': '—',
+      Status: 'A Recolher',
+    })
+
+    rows.push({
+      'Tipo Operação': 'APURAÇÃO TRIBUTÁRIA DA SECURITIZADORA',
+      'Contrato / ID': 'Lucro Real do Período (DRE Oficial)',
+      'Data Operação': 'Base IRPJ / CSLL',
+      'Vencimento Final': '—',
+      'Cedente / Tomador': `Receitas: R$ ${taxCalculation.receitasDre.toFixed(2)} | Despesas: R$ ${taxCalculation.despesasDre.toFixed(2)}`,
+      'CPF/CNPJ Cedente': '—',
+      'Regime Tributário': 'Lucro Real',
+      'Sacado / Devedor': '—',
+      'CPF/CNPJ Sacado': '—',
+      Parcelas: '—',
+      'Preço de Face (R$)': '—',
+      'Preço Pago / Aquisição (R$)': '—',
+      'Deságio Nominal (R$)': taxCalculation.lucroReal.toFixed(2),
+      'Deságio (%)': '—',
+      'Taxa Efetiva / CET (%)': '—',
+      'IOF Retido (R$)': '—',
+      Status: taxCalculation.lucroReal > 0 ? 'Lucro' : 'Prejuízo',
+    })
+
+    rows.push({
+      'Tipo Operação': 'TRIBUTO: IRPJ BÁSICO',
+      'Contrato / ID': 'IRPJ Básico (15%)',
+      'Data Operação': `Base: R$ ${Math.max(0, taxCalculation.lucroReal).toFixed(2)}`,
+      'Vencimento Final': '—',
+      'Cedente / Tomador': 'IRPJ sobre Lucro Real',
+      'CPF/CNPJ Cedente': '—',
+      'Regime Tributário': '15,00%',
+      'Sacado / Devedor': '—',
+      'CPF/CNPJ Sacado': '—',
+      Parcelas: '—',
+      'Preço de Face (R$)': '—',
+      'Preço Pago / Aquisição (R$)': '—',
+      'Deságio Nominal (R$)': taxCalculation.valorIrpjBase.toFixed(2),
+      'Deságio (%)': '15.00',
+      'Taxa Efetiva / CET (%)': '—',
+      'IOF Retido (R$)': '—',
+      Status: 'A Recolher',
+    })
+
+    rows.push({
+      'Tipo Operação': 'TRIBUTO: ADICIONAL DE IRPJ',
+      'Contrato / ID': 'Adicional IRPJ (10%)',
+      'Data Operação': `Excedente > R$ 20.000: R$ ${taxCalculation.baseAdicionalIrpj.toFixed(2)}`,
+      'Vencimento Final': '—',
+      'Cedente / Tomador': '10% sobre excedente a R$ 20.000/mês',
+      'CPF/CNPJ Cedente': '—',
+      'Regime Tributário': '10,00%',
+      'Sacado / Devedor': '—',
+      'CPF/CNPJ Sacado': '—',
+      Parcelas: '—',
+      'Preço de Face (R$)': '—',
+      'Preço Pago / Aquisição (R$)': '—',
+      'Deságio Nominal (R$)': taxCalculation.valorAdicionalIrpj.toFixed(2),
+      'Deságio (%)': '10.00',
+      'Taxa Efetiva / CET (%)': '—',
+      'IOF Retido (R$)': '—',
+      Status: taxCalculation.valorAdicionalIrpj > 0 ? 'A Recolher' : 'Não Incide',
+    })
+
+    rows.push({
+      'Tipo Operação': 'TRIBUTO: CSLL',
+      'Contrato / ID': 'CSLL (9%)',
+      'Data Operação': `Base: R$ ${Math.max(0, taxCalculation.lucroReal).toFixed(2)}`,
+      'Vencimento Final': '—',
+      'Cedente / Tomador': 'CSLL sobre Lucro Real',
+      'CPF/CNPJ Cedente': '—',
+      'Regime Tributário': '9,00%',
+      'Sacado / Devedor': '—',
+      'CPF/CNPJ Sacado': '—',
+      Parcelas: '—',
+      'Preço de Face (R$)': '—',
+      'Preço Pago / Aquisição (R$)': '—',
+      'Deságio Nominal (R$)': taxCalculation.valorCsll.toFixed(2),
+      'Deságio (%)': '9.00',
+      'Taxa Efetiva / CET (%)': '—',
+      'IOF Retido (R$)': '—',
+      Status: 'A Recolher',
+    })
+
+    rows.push({
+      'Tipo Operação': 'TRIBUTO: IOF (ISENTO)',
+      'Contrato / ID': 'IOF (Alíquota Zero)',
+      'Data Operação': 'Cessão de Direitos Creditórios',
+      'Vencimento Final': '—',
+      'Cedente / Tomador': 'Não constitui financiamento direto',
+      'CPF/CNPJ Cedente': '—',
+      'Regime Tributário': '0,00%',
+      'Sacado / Devedor': '—',
+      'CPF/CNPJ Sacado': '—',
+      Parcelas: '—',
+      'Preço de Face (R$)': '—',
+      'Preço Pago / Aquisição (R$)': '—',
+      'Deságio Nominal (R$)': '0.00',
+      'Deságio (%)': '0.00',
+      'Taxa Efetiva / CET (%)': '—',
+      'IOF Retido (R$)': 'Isento',
+      Status: 'Isento',
+    })
+
+    rows.push({
+      'Tipo Operação': 'TRIBUTO: ISS (NÃO INCIDE)',
+      'Contrato / ID': 'ISS (Não Incide)',
+      'Data Operação': 'STJ / Recursos Próprios ou Debêntures',
+      'Vencimento Final': '—',
+      'Cedente / Tomador': 'Aquisição de ativos não é prestação de serviços',
+      'CPF/CNPJ Cedente': '—',
+      'Regime Tributário': '0,00%',
+      'Sacado / Devedor': '—',
+      'CPF/CNPJ Sacado': '—',
+      Parcelas: '—',
+      'Preço de Face (R$)': '—',
+      'Preço Pago / Aquisição (R$)': '—',
+      'Deságio Nominal (R$)': '0.00',
+      'Deságio (%)': '0.00',
+      'Taxa Efetiva / CET (%)': '—',
+      'IOF Retido (R$)': '—',
+      Status: 'Não Incide',
+    })
+
+    rows.push({
+      'Tipo Operação': 'TOTAL CARGA TRIBUTÁRIA ESTIMADA',
+      'Contrato / ID': 'PIS + COFINS + IRPJ + Adicional + CSLL',
+      'Data Operação': `Alíquota Efetiva: ${taxCalculation.aliquotaEfetivaSobreReceita.toFixed(2)}% s/ Faturamento`,
+      'Vencimento Final': '—',
+      'Cedente / Tomador': 'Carga Fiscal Consolidada da Securitizadora',
+      'CPF/CNPJ Cedente': '—',
+      'Regime Tributário': 'Lucro Real',
+      'Sacado / Devedor': '—',
+      'CPF/CNPJ Sacado': '—',
+      Parcelas: '—',
+      'Preço de Face (R$)': '—',
+      'Preço Pago / Aquisição (R$)': '—',
+      'Deságio Nominal (R$)': taxCalculation.totalCargaTributaria.toFixed(2),
+      'Deságio (%)': taxCalculation.aliquotaEfetivaSobreReceita.toFixed(2),
+      'Taxa Efetiva / CET (%)': '—',
+      'IOF Retido (R$)': '—',
+      Status: 'Total do Período',
     })
 
     exportToCSV(rows, `Relatorio_Operacoes_Periodo_${selectedMonth}.csv`)
@@ -903,11 +1237,12 @@ export function PeriodOperationsReportTab() {
               )}
               <div className="text-[11px] text-muted-foreground mt-1 flex items-center justify-between">
                 <span>Spread médio: {formatPercent(consolidatedTotals.discountPct)}</span>
-                {consolidatedTotals.iof > 0 && (
-                  <span className="text-amber-700 font-mono">
-                    IOF: {formatCurrency(consolidatedTotals.iof)}
-                  </span>
-                )}
+                <span
+                  className="text-emerald-700 font-medium"
+                  title="IOF: alíquota zero — a cessão de direitos creditórios não constitui operação de crédito"
+                >
+                  IOF: Isento (0%)
+                </span>
               </div>
             </CardContent>
           </Card>
@@ -978,7 +1313,11 @@ export function PeriodOperationsReportTab() {
                       </TableHead>
                       <TableHead className="text-right min-w-[75px]">Deságio %</TableHead>
                       <TableHead className="text-right min-w-[75px]">CET/Taxa</TableHead>
-                      <TableHead className="text-right min-w-[85px]">IOF (R$)</TableHead>
+                      <TableHead className="text-right min-w-[105px]">
+                        <span title="IOF: alíquota zero — a cessão de direitos creditórios não constitui operação de crédito">
+                          IOF (isento)
+                        </span>
+                      </TableHead>
                       <TableHead className="text-center min-w-[80px]">Status</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1023,8 +1362,10 @@ export function PeriodOperationsReportTab() {
                         <TableCell className="text-right font-mono">
                           {item.effectiveRate > 0 ? formatPercent(item.effectiveRate) : '—'}
                         </TableCell>
-                        <TableCell className="text-right font-mono">
-                          {item.totalIof > 0 ? formatCurrency(item.totalIof) : '—'}
+                        <TableCell className="text-right font-mono text-[11px] text-muted-foreground">
+                          <span title="IOF: alíquota zero — a cessão de direitos creditórios não constitui operação de crédito">
+                            Isento (R$ 0,00)
+                          </span>
                         </TableCell>
                         <TableCell className="text-center">
                           <Badge
@@ -1059,8 +1400,10 @@ export function PeriodOperationsReportTab() {
                         {formatPercent(receivablesTotals.discountPct)}
                       </TableCell>
                       <TableCell className="text-right font-mono">—</TableCell>
-                      <TableCell className="text-right font-mono">
-                        {receivablesTotals.iof > 0 ? formatCurrency(receivablesTotals.iof) : '—'}
+                      <TableCell className="text-right font-mono text-xs text-muted-foreground">
+                        <span title="IOF: alíquota zero — a cessão de direitos creditórios não constitui operação de crédito">
+                          Isento (R$ 0,00)
+                        </span>
                       </TableCell>
                       <TableCell className="text-center">—</TableCell>
                     </TableRow>
@@ -1270,14 +1613,13 @@ export function PeriodOperationsReportTab() {
             {/* Informações fiscais auxiliares */}
             <div className="pt-3 flex flex-wrap items-center justify-between gap-4 text-xs text-muted-foreground">
               <div className="flex items-center gap-4">
-                {consolidatedTotals.iof > 0 && (
-                  <div>
-                    IOF Total Retido nas Antecipações:{' '}
-                    <strong className="text-foreground font-mono">
-                      {formatCurrency(consolidatedTotals.iof)}
-                    </strong>
-                  </div>
-                )}
+                <div>
+                  IOF nas Operações:{' '}
+                  <strong className="text-emerald-700 font-mono">Isento (R$ 0,00)</strong>
+                  <span className="text-[11px] text-muted-foreground ml-1">
+                    (Alíquota zero — cessão de direitos creditórios)
+                  </span>
+                </div>
                 {consolidatedTotals.provision > 0 && (
                   <div>
                     Provisão de Risco CCB (3%):{' '}
@@ -1288,9 +1630,378 @@ export function PeriodOperationsReportTab() {
                 )}
               </div>
               <div className="italic text-[11px]">
-                * Demonstrativo gerado para conferência e emissão de guias contábeis e tributárias
-                (PIS/COFINS/IRPJ/CSLL sobre deságio auferido).
+                * Demonstrativo consolidado para fins societários, fiscais e contábeis.
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* ------------------------------------------------------------ */}
+        {/* SEÇÃO 4: Apuração Tributária do Período (Securitizadora)     */}
+        {/* ------------------------------------------------------------ */}
+        <Card className="border-indigo-200 dark:border-indigo-950/50 shadow-sm print-break-inside-avoid">
+          <CardHeader className="bg-gradient-to-r from-indigo-50/70 to-slate-50 border-b pb-4 dark:from-indigo-950/20 dark:to-background">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <CardTitle className="text-base font-bold flex items-center gap-2 text-indigo-950 dark:text-indigo-200">
+                  <Landmark className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                  3. Apuração Tributária do Período — Competência {selectedMonthLabel}
+                </CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Regime cumulativo de PIS/COFINS com dedução legal de captação e apuração de
+                  IRPJ/CSLL sobre o Lucro Real.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge
+                  variant="outline"
+                  className="bg-white/80 dark:bg-card font-mono text-xs border-indigo-300"
+                >
+                  Total Tributos: {formatCurrency(taxCalculation.totalCargaTributaria)}
+                </Badge>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-6 space-y-6">
+            {/* Cards de Resumo Fiscal */}
+            <div className="grid gap-4 md:grid-cols-4 print-break-inside-avoid">
+              {/* Card 1: Receita Bruta / Faturamento */}
+              <div className="rounded-lg border bg-card p-4 space-y-1 shadow-sm">
+                <div className="flex items-center justify-between text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                  <span>Receita Bruta (Faturamento)</span>
+                  <BadgePercent className="h-4 w-4 text-indigo-600" />
+                </div>
+                <div className="text-xl font-bold font-mono text-foreground">
+                  {formatCurrency(taxCalculation.receitaBrutaTotal)}
+                </div>
+                <div className="text-[11px] text-muted-foreground">
+                  Deságio Antecipações ({formatCurrency(taxCalculation.receitaBrutaRecebiveis)}) +
+                  CCBs ({formatCurrency(taxCalculation.receitaBrutaCcbs)})
+                </div>
+              </div>
+
+              {/* Card 2: Despesas de Captação Dedutíveis */}
+              <div className="rounded-lg border bg-card p-4 space-y-1 shadow-sm">
+                <div className="flex items-center justify-between text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                  <span>Despesas de Captação</span>
+                  <TrendingDown className="h-4 w-4 text-emerald-600" />
+                </div>
+                <div className="text-xl font-bold font-mono text-emerald-700">
+                  {loadingTax ? (
+                    <Skeleton className="h-7 w-28" />
+                  ) : (
+                    formatCurrency(taxCalculation.despesasCaptacao)
+                  )}
+                </div>
+                <div className="text-[11px] text-muted-foreground">
+                  Juros e rendimentos pagos/auferidos aos investidores de debêntures
+                </div>
+              </div>
+
+              {/* Card 3: Base Efetiva PIS/COFINS */}
+              <div className="rounded-lg border bg-card p-4 space-y-1 shadow-sm">
+                <div className="flex items-center justify-between text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                  <span>Base PIS / COFINS</span>
+                  <Scale className="h-4 w-4 text-blue-600" />
+                </div>
+                <div className="text-xl font-bold font-mono text-blue-700">
+                  {formatCurrency(taxCalculation.basePisCofins)}
+                </div>
+                <div className="text-[11px] text-muted-foreground">
+                  {taxCalculation.baseNegativaAviso
+                    ? 'Receita < Despesas: base zerada legalmente'
+                    : 'Receita Bruta deduzida das despesas de debêntures'}
+                </div>
+              </div>
+
+              {/* Card 4: Carga Total Estimada */}
+              <div className="rounded-lg border bg-indigo-50/50 dark:bg-indigo-950/20 p-4 space-y-1 shadow-sm border-indigo-200 dark:border-indigo-900">
+                <div className="flex items-center justify-between text-xs text-indigo-900 dark:text-indigo-200 font-semibold uppercase tracking-wider">
+                  <span>Carga Tributária Total</span>
+                  <Calculator className="h-4 w-4 text-indigo-700 dark:text-indigo-300" />
+                </div>
+                <div className="text-xl font-bold font-mono text-indigo-900 dark:text-indigo-100">
+                  {loadingTax ? (
+                    <Skeleton className="h-7 w-28" />
+                  ) : (
+                    formatCurrency(taxCalculation.totalCargaTributaria)
+                  )}
+                </div>
+                <div className="text-[11px] text-indigo-700 dark:text-indigo-300 font-medium">
+                  Alíquota efetiva: {taxCalculation.aliquotaEfetivaSobreReceita.toFixed(2)}% sobre a
+                  receita bruta
+                </div>
+              </div>
+            </div>
+
+            {/* Alerta se base for negativa */}
+            {taxCalculation.baseNegativaAviso && (
+              <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 text-amber-900 dark:text-amber-200 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
+                <span>
+                  <strong>Aviso legal:</strong> No período selecionado, as despesas de captação
+                  dedutíveis ({formatCurrency(taxCalculation.despesasCaptacao)}) superaram a receita
+                  bruta auferida ({formatCurrency(taxCalculation.receitaBrutaTotal)}). Conforme a
+                  legislação tributária das securitizadoras, a base de cálculo de PIS/COFINS não
+                  pode ser negativa, tendo sido ajustada para <strong>R$ 0,00</strong>.
+                </span>
+              </div>
+            )}
+
+            {/* Tabela Detalhada de Tributos */}
+            <div className="rounded-lg border overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50 hover:bg-muted/50 text-xs">
+                    <TableHead className="min-w-[180px]">Tributo / Obrigação Fiscal</TableHead>
+                    <TableHead className="min-w-[140px]">Classificação / Regime</TableHead>
+                    <TableHead className="text-right min-w-[140px]">Base de Cálculo (R$)</TableHead>
+                    <TableHead className="text-center min-w-[100px]">Alíquota</TableHead>
+                    <TableHead className="text-right min-w-[140px]">Valor Apurado (R$)</TableHead>
+                    <TableHead className="min-w-[260px]">
+                      Fundamentação Legal e Regra Específica
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="text-xs">
+                  {/* PIS */}
+                  <TableRow className="hover:bg-muted/30">
+                    <TableCell className="font-semibold text-foreground flex items-center gap-1.5">
+                      <Percent className="w-3.5 h-3.5 text-blue-600" /> PIS
+                    </TableCell>
+                    <TableCell>Cumulativo (Lucro Real)</TableCell>
+                    <TableCell className="text-right font-mono">
+                      {formatCurrency(taxCalculation.basePisCofins)}
+                    </TableCell>
+                    <TableCell className="text-center font-mono font-medium">0,65%</TableCell>
+                    <TableCell className="text-right font-mono font-bold text-foreground">
+                      {formatCurrency(taxCalculation.valorPis)}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-[11px]">
+                      Incide sobre a receita bruta deduzida das despesas de captação com
+                      investidores de debêntures.
+                    </TableCell>
+                  </TableRow>
+
+                  {/* COFINS */}
+                  <TableRow className="hover:bg-muted/30">
+                    <TableCell className="font-semibold text-foreground flex items-center gap-1.5">
+                      <Percent className="w-3.5 h-3.5 text-blue-600" /> COFINS
+                    </TableCell>
+                    <TableCell>Cumulativo (Lucro Real)</TableCell>
+                    <TableCell className="text-right font-mono">
+                      {formatCurrency(taxCalculation.basePisCofins)}
+                    </TableCell>
+                    <TableCell className="text-center font-mono font-medium">4,00%</TableCell>
+                    <TableCell className="text-right font-mono font-bold text-foreground">
+                      {formatCurrency(taxCalculation.valorCofins)}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-[11px]">
+                      Diferencial estratégico das securitizadoras: regime cumulativo mantido mesmo
+                      no Lucro Real, deduzindo captações.
+                    </TableCell>
+                  </TableRow>
+
+                  {/* Subtotal PIS/COFINS */}
+                  <TableRow className="bg-muted/30 font-semibold border-b">
+                    <TableCell
+                      colSpan={2}
+                      className="pl-6 uppercase tracking-wider text-[11px] text-muted-foreground"
+                    >
+                      Subtotal Contribuições Sociais (PIS + COFINS: 4,65%)
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {formatCurrency(taxCalculation.basePisCofins)}
+                    </TableCell>
+                    <TableCell className="text-center font-mono">4,65%</TableCell>
+                    <TableCell className="text-right font-mono font-bold text-blue-700">
+                      {formatCurrency(taxCalculation.totalPisCofins)}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-[11px]">
+                      Total de contribuições sobre faturamento líquido de captações.
+                    </TableCell>
+                  </TableRow>
+
+                  {/* IRPJ Básico */}
+                  <TableRow className="hover:bg-muted/30">
+                    <TableCell className="font-semibold text-foreground flex items-center gap-1.5">
+                      <Scale className="w-3.5 h-3.5 text-indigo-600" /> IRPJ (Básico)
+                    </TableCell>
+                    <TableCell>Lucro Real</TableCell>
+                    <TableCell className="text-right font-mono">
+                      {formatCurrency(Math.max(0, taxCalculation.lucroReal))}
+                    </TableCell>
+                    <TableCell className="text-center font-mono font-medium">15,00%</TableCell>
+                    <TableCell className="text-right font-mono font-bold text-foreground">
+                      {formatCurrency(taxCalculation.valorIrpjBase)}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-[11px]">
+                      15% sobre o Lucro Real apurado no DRE oficial do período (
+                      {formatCurrency(taxCalculation.lucroReal)}).
+                    </TableCell>
+                  </TableRow>
+
+                  {/* Adicional de IRPJ */}
+                  <TableRow className="hover:bg-muted/30">
+                    <TableCell className="font-semibold text-foreground flex items-center gap-1.5">
+                      <Scale className="w-3.5 h-3.5 text-indigo-600" /> Adicional de IRPJ
+                    </TableCell>
+                    <TableCell>Lucro Real Excedente</TableCell>
+                    <TableCell className="text-right font-mono">
+                      {formatCurrency(taxCalculation.baseAdicionalIrpj)}
+                    </TableCell>
+                    <TableCell className="text-center font-mono font-medium">10,00%</TableCell>
+                    <TableCell className="text-right font-mono font-bold text-foreground">
+                      {formatCurrency(taxCalculation.valorAdicionalIrpj)}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-[11px]">
+                      Adicional de 10% cobrado sobre a parcela do Lucro Real mensal que ultrapassar
+                      o limite de R$ 20.000,00.
+                    </TableCell>
+                  </TableRow>
+
+                  {/* CSLL */}
+                  <TableRow className="hover:bg-muted/30">
+                    <TableCell className="font-semibold text-foreground flex items-center gap-1.5">
+                      <Scale className="w-3.5 h-3.5 text-indigo-600" /> CSLL
+                    </TableCell>
+                    <TableCell>Lucro Real</TableCell>
+                    <TableCell className="text-right font-mono">
+                      {formatCurrency(Math.max(0, taxCalculation.lucroReal))}
+                    </TableCell>
+                    <TableCell className="text-center font-mono font-medium">9,00%</TableCell>
+                    <TableCell className="text-right font-mono font-bold text-foreground">
+                      {formatCurrency(taxCalculation.valorCsll)}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-[11px]">
+                      9% sobre a apuração do Lucro Real contábil do período.
+                    </TableCell>
+                  </TableRow>
+
+                  {/* Subtotal IRPJ/CSLL */}
+                  <TableRow className="bg-muted/30 font-semibold border-b">
+                    <TableCell
+                      colSpan={2}
+                      className="pl-6 uppercase tracking-wider text-[11px] text-muted-foreground"
+                    >
+                      Subtotal Impostos sobre o Lucro (IRPJ + Adicional + CSLL)
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {formatCurrency(Math.max(0, taxCalculation.lucroReal))}
+                    </TableCell>
+                    <TableCell className="text-center font-mono">—</TableCell>
+                    <TableCell className="text-right font-mono font-bold text-indigo-700">
+                      {formatCurrency(taxCalculation.totalIrpjCsll)}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-[11px]">
+                      Resultado contábil oficial apurado pelo DRE: receitas (
+                      {formatCurrency(taxCalculation.receitasDre)}) − despesas (
+                      {formatCurrency(taxCalculation.despesasDre)}).
+                    </TableCell>
+                  </TableRow>
+
+                  {/* IOF (Isento) */}
+                  <TableRow className="hover:bg-muted/30 bg-emerald-50/20 dark:bg-emerald-950/10">
+                    <TableCell className="font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> IOF
+                    </TableCell>
+                    <TableCell className="text-emerald-800 dark:text-emerald-300 font-medium">
+                      Isento (Alíquota Zero)
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-muted-foreground">—</TableCell>
+                    <TableCell className="text-center font-mono font-bold text-emerald-700">
+                      0,00%
+                    </TableCell>
+                    <TableCell className="text-right font-mono font-bold text-emerald-700">
+                      R$ 0,00
+                    </TableCell>
+                    <TableCell className="text-emerald-900 dark:text-emerald-200 text-[11px]">
+                      IOF: alíquota zero — a securitização é compra e venda de ativos corporativos
+                      (cessão de direitos creditórios) e não operação de crédito/financiamento
+                      direto.
+                    </TableCell>
+                  </TableRow>
+
+                  {/* ISS (Não Incide) */}
+                  <TableRow className="hover:bg-muted/30 bg-emerald-50/20 dark:bg-emerald-950/10">
+                    <TableCell className="font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> ISS
+                    </TableCell>
+                    <TableCell className="text-emerald-800 dark:text-emerald-300 font-medium">
+                      Não Incide
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-muted-foreground">—</TableCell>
+                    <TableCell className="text-center font-mono font-bold text-emerald-700">
+                      0,00%
+                    </TableCell>
+                    <TableCell className="text-right font-mono font-bold text-emerald-700">
+                      R$ 0,00
+                    </TableCell>
+                    <TableCell className="text-emerald-900 dark:text-emerald-200 text-[11px]">
+                      ISS: não incide — a aquisição de direitos creditórios com recursos próprios ou
+                      via debêntures não constitui prestação de serviço (jurisprudência pacificada
+                      STJ).
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+                <tfoot>
+                  <TableRow className="bg-indigo-900 text-white font-bold border-t-2 text-xs hover:bg-indigo-900">
+                    <TableCell colSpan={2} className="uppercase tracking-wider">
+                      Carga Tributária Total Estimada do Período
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-indigo-100">
+                      Receita: {formatCurrency(taxCalculation.receitaBrutaTotal)}
+                    </TableCell>
+                    <TableCell className="text-center font-mono text-indigo-200">
+                      {taxCalculation.aliquotaEfetivaSobreReceita.toFixed(2)}%
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-emerald-300 text-sm">
+                      {formatCurrency(taxCalculation.totalCargaTributaria)}
+                    </TableCell>
+                    <TableCell className="text-indigo-200 text-[11px] font-normal">
+                      PIS ({formatCurrency(taxCalculation.valorPis)}) + COFINS (
+                      {formatCurrency(taxCalculation.valorCofins)}) + IRPJ (
+                      {formatCurrency(taxCalculation.valorIrpjBase)}) + Adicional (
+                      {formatCurrency(taxCalculation.valorAdicionalIrpj)}) + CSLL (
+                      {formatCurrency(taxCalculation.valorCsll)})
+                    </TableCell>
+                  </TableRow>
+                </tfoot>
+              </Table>
+            </div>
+
+            {/* Notas Fixas Regulatórias no Rodapé da Seção Fiscal */}
+            <div className="rounded-lg border bg-muted/40 p-3.5 space-y-2 text-xs text-muted-foreground print-break-inside-avoid">
+              <div className="font-semibold text-foreground flex items-center gap-1.5">
+                <FileText className="w-4 h-4 text-primary" /> Notas Explicativas da Apuração Fiscal
+                da Securitizadora:
+              </div>
+              <ul className="list-disc pl-5 space-y-1 text-[11.5px] leading-relaxed">
+                <li>
+                  <strong>PIS (0,65%) e COFINS (4,00%):</strong> Calculados no regime cumulativo
+                  mesmo no Lucro Real, deduzindo da base de cálculo as despesas de captação (juros e
+                  rendimentos de debêntures auferidos aos investidores no mês pela fonte oficial).
+                  Base legal: Lei nº 9.718/1998 e regulamentação setorial.
+                </li>
+                <li>
+                  <strong>IRPJ (15% + 10% adicional) e CSLL (9%):</strong> Apurados com base no
+                  Lucro Real efetivo do período oriundo do Demonstrativo de Resultado do Exercício
+                  (DRE oficial consolidado), respeitando as deduplicações vigentes (despesas pagas,
+                  aportes na data real, recebimento de CCBs e exclusão de transferências internas).
+                </li>
+                <li>
+                  <strong>IOF:</strong> Alíquota zero — como a securitização é juridicamente
+                  classificada como uma compra e venda de ativos corporativos (cessão de direitos
+                  creditórios) e não uma operação de crédito/financiamento direto, não sofre a
+                  incidência do IOF sobre as antecipações.
+                </li>
+                <li>
+                  <strong>ISS:</strong> Não incide — há jurisprudência pacificada (inclusive no
+                  Superior Tribunal de Justiça — STJ) de que a aquisição de direitos creditórios com
+                  recursos próprios ou via debêntures não constitui prestação de serviço,
+                  desobrigando o pagamento do imposto municipal.
+                </li>
+              </ul>
             </div>
           </CardContent>
         </Card>
