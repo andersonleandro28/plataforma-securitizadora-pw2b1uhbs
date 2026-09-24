@@ -281,7 +281,7 @@ export function UnifiedReportTab() {
       <style>{`
         @page {
           size: A4 landscape;
-          margin: 10mm 8mm 10mm 8mm;
+          margin: 10mm 10mm 10mm 10mm;
         }
 
         @media print {
@@ -292,6 +292,8 @@ export function UnifiedReportTab() {
             max-height: none !important;
             background: white !important;
             color: black !important;
+            writing-mode: horizontal-tb !important;
+            transform: none !important;
           }
 
           body * {
@@ -315,11 +317,57 @@ export function UnifiedReportTab() {
             max-height: none !important;
             transform: none !important;
             animation: none !important;
+            writing-mode: horizontal-tb !important;
           }
 
+          /* Garantir que todos os sub-relatórios fiquem visíveis no contexto do relatório unificado */
           #print-unified-report,
-          #print-unified-report * {
+          #print-unified-report *,
+          #print-unified-report #print-yields-report,
+          #print-unified-report #print-yields-report *,
+          #print-unified-report #print-period-operations-report,
+          #print-unified-report #print-period-operations-report *,
+          #print-unified-report #print-movement-extract-report,
+          #print-unified-report #print-movement-extract-report * {
             visibility: visible;
+          }
+
+          /* Força as linhas de detalhamento individual de aportes a ficarem sempre visíveis no relatório unificado */
+          #print-unified-report .investor-detail-row,
+          #print-unified-report .investor-detail-row * {
+            display: table-row !important;
+            visibility: visible !important;
+          }
+          #print-unified-report tr.investor-detail-row {
+            display: table-row !important;
+          }
+          #print-unified-report tr.investor-detail-row td {
+            display: table-cell !important;
+          }
+          #print-unified-report tr.investor-detail-row table {
+            display: table !important;
+          }
+          #print-unified-report tr.investor-detail-row thead {
+            display: table-header-group !important;
+          }
+          #print-unified-report tr.investor-detail-row tbody {
+            display: table-row-group !important;
+          }
+          #print-unified-report tr.investor-detail-row tr {
+            display: table-row !important;
+          }
+          #print-unified-report tr.investor-detail-row th,
+          #print-unified-report tr.investor-detail-row td {
+            display: table-cell !important;
+          }
+          #print-unified-report tr.investor-detail-row div {
+            display: block !important;
+          }
+          #print-unified-report tr.investor-detail-row span {
+            display: inline !important;
+          }
+          #print-unified-report tr.investor-detail-row span.block {
+            display: block !important;
           }
 
           #print-unified-report .no-print,
@@ -332,8 +380,8 @@ export function UnifiedReportTab() {
             position: static !important;
             display: block !important;
             width: 100% !important;
-            max-width: 100% !important;
-            margin: 0 !important;
+            max-width: 277mm !important;
+            margin: 0 auto !important;
             padding: 0 !important;
             font-size: 8.5px;
             background: white !important;
@@ -343,13 +391,15 @@ export function UnifiedReportTab() {
             height: auto !important;
             min-height: auto !important;
             max-height: none !important;
+            transform: none !important;
+            writing-mode: horizontal-tb !important;
           }
 
           .no-print {
             display: none !important;
           }
 
-          /* Capa simples do relatório unificado com quebra de página logo em seguida */
+          /* Capa com medida em mm (compatível com folha A4 landscape de ~210mm de altura) */
           .unified-report-cover {
             page-break-after: always !important;
             break-after: page !important;
@@ -357,16 +407,37 @@ export function UnifiedReportTab() {
             flex-direction: column !important;
             justify-content: center !important;
             align-items: center !important;
-            min-height: 90vh !important;
+            box-sizing: border-box !important;
+            min-height: 175mm !important;
             text-align: center !important;
-            padding: 40px !important;
+            padding: 20mm !important;
           }
 
           /* Quebra de página explícita entre relatórios selecionados */
           .unified-section-break {
             page-break-before: always !important;
             break-before: page !important;
-            padding-top: 10mm !important;
+            padding-top: 5mm !important;
+          }
+
+          /* Remover sombras em impressão */
+          #print-unified-report .shadow-sm,
+          #print-unified-report .shadow-md,
+          #print-unified-report .shadow-lg,
+          #print-unified-report .shadow {
+            box-shadow: none !important;
+          }
+
+          /* Permitir que tabelas e wrappers respeitem paginação nativa e não limitem rolagem */
+          #print-unified-report .overflow-x-auto,
+          #print-unified-report .overflow-y-auto,
+          #print-unified-report .overflow-hidden,
+          #print-unified-report .overflow-auto,
+          #print-unified-report div:has(> table) {
+            overflow: visible !important;
+            max-height: none !important;
+            height: auto !important;
+            display: block !important;
           }
 
           #print-unified-report table {
@@ -411,7 +482,8 @@ export function UnifiedReportTab() {
             padding: 3px 4px !important;
           }
 
-          .print-break-inside-avoid {
+          .print-break-inside-avoid,
+          #print-unified-report .print-avoid-break {
             page-break-inside: avoid !important;
             break-inside: avoid !important;
           }
@@ -638,7 +710,7 @@ export function UnifiedReportTab() {
                 {selectedMonthLabel}
               </Badge>
             </div>
-            <InvestorYieldsReportTab />
+            <InvestorYieldsReportTab embedded={true} />
           </section>
         )}
 
@@ -656,7 +728,7 @@ export function UnifiedReportTab() {
                 {selectedMonthLabel}
               </Badge>
             </div>
-            <PeriodOperationsReportTab />
+            <PeriodOperationsReportTab embedded={true} />
           </section>
         )}
 

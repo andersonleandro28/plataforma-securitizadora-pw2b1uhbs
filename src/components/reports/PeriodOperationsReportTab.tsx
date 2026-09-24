@@ -130,7 +130,14 @@ const formatTaxRegime = (regime: string | null | undefined) => {
   return regime
 }
 
-export function PeriodOperationsReportTab() {
+export interface PeriodOperationsReportTabProps {
+  /** Se fornecido, oculta a barra de filtros interativa e a tag <style> de impressão individual quando embutido no relatório unificado */
+  embedded?: boolean
+}
+
+export function PeriodOperationsReportTab({
+  embedded = false,
+}: PeriodOperationsReportTabProps = {}) {
   const [receivablesOps, setReceivablesOps] = useState<ReceivablesOperationItem[]>([])
   const [ccbOps, setCcbOps] = useState<CcbOperationItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -914,219 +921,225 @@ export function PeriodOperationsReportTab() {
 
   return (
     <div className="space-y-6">
-      {/* Estilo embutido para impressão em PDF contínua, paginada e sem cortes */}
-      <style>{`
-        @page {
-          size: A4 landscape;
-          margin: 10mm 8mm 10mm 8mm;
-        }
-
-        @media print {
-          html, body {
-            overflow: visible !important;
-            height: auto !important;
-            min-height: auto !important;
-            max-height: none !important;
-            background: white !important;
-            color: black !important;
+      {/* Estilo embutido para impressão em PDF contínua, paginada e sem cortes — desativado quando embutido no relatório unificado para evitar regras concorrentes */}
+      {!embedded && (
+        <style>{`
+          @page {
+            size: A4 landscape;
+            margin: 10mm 8mm 10mm 8mm;
           }
 
-          body * {
-            visibility: hidden;
-          }
+          @media print {
+            html, body {
+              overflow: visible !important;
+              height: auto !important;
+              min-height: auto !important;
+              max-height: none !important;
+              background: white !important;
+              color: black !important;
+            }
 
-          #root,
-          #root > div,
-          main,
-          header,
-          nav,
-          aside,
-          [data-sidebar="inset"],
-          .flex,
-          .flex-1,
-          .space-y-6,
-          .space-y-4 {
-            overflow: visible !important;
-            height: auto !important;
-            min-height: auto !important;
-            max-height: none !important;
-            transform: none !important;
-            animation: none !important;
-          }
+            body * {
+              visibility: hidden;
+            }
 
-          #print-period-operations-report,
-          #print-period-operations-report * {
-            visibility: visible;
-          }
+            #root,
+            #root > div,
+            main,
+            header,
+            nav,
+            aside,
+            [data-sidebar="inset"],
+            .flex,
+            .flex-1,
+            .space-y-6,
+            .space-y-4 {
+              overflow: visible !important;
+              height: auto !important;
+              min-height: auto !important;
+              max-height: none !important;
+              transform: none !important;
+              animation: none !important;
+            }
 
-          #print-period-operations-report .no-print,
-          #print-period-operations-report .no-print * {
-            display: none !important;
-            visibility: hidden !important;
-          }
+            #print-period-operations-report,
+            #print-period-operations-report * {
+              visibility: visible;
+            }
 
-          #print-period-operations-report {
-            position: static !important;
-            display: block !important;
-            width: 100% !important;
-            max-width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            font-size: 8.5px;
-            background: white !important;
-            color: black !important;
-            box-shadow: none !important;
-            overflow: visible !important;
-            height: auto !important;
-            min-height: auto !important;
-            max-height: none !important;
-          }
+            #print-period-operations-report .no-print,
+            #print-period-operations-report .no-print * {
+              display: none !important;
+              visibility: hidden !important;
+            }
 
-          .no-print {
-            display: none !important;
-          }
+            #print-period-operations-report {
+              position: static !important;
+              display: block !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              font-size: 8.5px;
+              background: white !important;
+              color: black !important;
+              box-shadow: none !important;
+              overflow: visible !important;
+              height: auto !important;
+              min-height: auto !important;
+              max-height: none !important;
+            }
 
-          #print-period-operations-report .shadow-sm,
-          #print-period-operations-report .shadow-md,
-          #print-period-operations-report .shadow-lg,
-          #print-period-operations-report .shadow {
-            box-shadow: none !important;
-          }
+            .no-print {
+              display: none !important;
+            }
 
-          #print-period-operations-report .overflow-x-auto,
-          #print-period-operations-report .overflow-y-auto,
-          #print-period-operations-report .overflow-hidden,
-          #print-period-operations-report .overflow-auto,
-          #print-period-operations-report div:has(> table) {
-            overflow: visible !important;
-            max-height: none !important;
-            height: auto !important;
-            display: block !important;
-          }
+            #print-period-operations-report .shadow-sm,
+            #print-period-operations-report .shadow-md,
+            #print-period-operations-report .shadow-lg,
+            #print-period-operations-report .shadow {
+              box-shadow: none !important;
+            }
 
-          #print-period-operations-report table {
-            width: 100% !important;
-            border-collapse: collapse !important;
-            page-break-inside: auto !important;
-            break-inside: auto !important;
-          }
+            #print-period-operations-report .overflow-x-auto,
+            #print-period-operations-report .overflow-y-auto,
+            #print-period-operations-report .overflow-hidden,
+            #print-period-operations-report .overflow-auto,
+            #print-period-operations-report div:has(> table) {
+              overflow: visible !important;
+              max-height: none !important;
+              height: auto !important;
+              display: block !important;
+            }
 
-          #print-period-operations-report thead {
-            display: table-header-group !important;
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
-          }
+            #print-period-operations-report table {
+              width: 100% !important;
+              border-collapse: collapse !important;
+              page-break-inside: auto !important;
+              break-inside: auto !important;
+            }
 
-          #print-period-operations-report tbody {
-            display: table-row-group !important;
-          }
+            #print-period-operations-report thead {
+              display: table-header-group !important;
+              break-inside: avoid !important;
+              page-break-inside: avoid !important;
+            }
 
-          #print-period-operations-report thead th {
-            background-color: #f1f5f9 !important;
-            color: #0f172a !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
+            #print-period-operations-report tbody {
+              display: table-row-group !important;
+            }
 
-          #print-period-operations-report tfoot {
-            display: table-footer-group !important;
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
-          }
+            #print-period-operations-report thead th {
+              background-color: #f1f5f9 !important;
+              color: #0f172a !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
 
-          #print-period-operations-report tr {
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-          }
+            #print-period-operations-report tfoot {
+              display: table-footer-group !important;
+              break-inside: avoid !important;
+              page-break-inside: avoid !important;
+            }
 
-          #print-period-operations-report th,
-          #print-period-operations-report td {
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-            padding: 3px 4px !important;
-          }
+            #print-period-operations-report tr {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
 
-          .print-break-inside-avoid {
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
+            #print-period-operations-report th,
+            #print-period-operations-report td {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+              padding: 3px 4px !important;
+            }
+
+            .print-break-inside-avoid {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
           }
-        }
-      `}</style>
+        `}</style>
+      )}
 
       {/* Cabeçalho de Controle */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 no-print">
-        <div>
-          <h3 className="text-xl font-bold tracking-tight">
-            Operações do Período (Fiscal & Contábil)
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            Detalhamento de antecipações de recebíveis e aquisições de CCBs por competência: preço
-            de face, preço pago, deságio e bases fiscais.
-          </p>
-        </div>
+      {!embedded && (
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 no-print">
+          <div>
+            <h3 className="text-xl font-bold tracking-tight">
+              Operações do Período (Fiscal & Contábil)
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Detalhamento de antecipações de recebíveis e aquisições de CCBs por competência: preço
+              de face, preço pago, deságio e bases fiscais.
+            </p>
+          </div>
 
-        {/* Botões de Ação */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={handleExportCSV} variant="outline" size="sm" className="gap-1.5">
-            <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Baixar Planilha CSV
-          </Button>
-          <Button onClick={handlePrint} variant="outline" size="sm" className="gap-1.5">
-            <Printer className="w-4 h-4 text-blue-600" /> Imprimir / Salvar PDF
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={loadData}
-            disabled={loading}
-            title="Recarregar dados"
-          >
-            <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
-          </Button>
+          {/* Botões de Ação */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={handleExportCSV} variant="outline" size="sm" className="gap-1.5">
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Baixar Planilha CSV
+            </Button>
+            <Button onClick={handlePrint} variant="outline" size="sm" className="gap-1.5">
+              <Printer className="w-4 h-4 text-blue-600" /> Imprimir / Salvar PDF
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={loadData}
+              disabled={loading}
+              title="Recarregar dados"
+            >
+              <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Barra de Filtros */}
-      <Card className="no-print">
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
-            {/* Seletor de Mês de Referência */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5" /> Mês de Competência
-              </label>
-              <Select value={selectedMonth} onValueChange={setSelectedMonth} disabled={loading}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Selecione o mês" />
-                </SelectTrigger>
-                <SelectContent className="max-h-60">
-                  {availableMonths.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+      {!embedded && (
+        <Card className="no-print">
+          <CardContent className="pt-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+              {/* Seletor de Mês de Referência */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5" /> Mês de Competência
+                </label>
+                <Select value={selectedMonth} onValueChange={setSelectedMonth} disabled={loading}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Selecione o mês" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    {availableMonths.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            {/* Busca textual */}
-            <div className="space-y-1.5 md:col-span-2">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Buscar Operação / Parte Envolvida
-              </label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Filtrar por contrato, tomador, cedente, sacado ou CPF/CNPJ..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9"
-                  disabled={loading}
-                />
+              {/* Busca textual */}
+              <div className="space-y-1.5 md:col-span-2">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Buscar Operação / Parte Envolvida
+                </label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Filtrar por contrato, tomador, cedente, sacado ou CPF/CNPJ..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-9"
+                    disabled={loading}
+                  />
+                </div>
               </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Área Imprimível */}
       <div id="print-period-operations-report" className="space-y-6">

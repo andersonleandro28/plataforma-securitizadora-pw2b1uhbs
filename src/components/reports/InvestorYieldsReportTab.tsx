@@ -162,7 +162,12 @@ function resolveInvestment(
 const ELIGIBLE_INVESTMENT_STATUSES = ['approved', 'pending_transfer']
 const DISCARD_RAW_STATUSES = ['encerrado', 'resgatado', 'excluído', 'cancelled']
 
-export function InvestorYieldsReportTab() {
+export interface InvestorYieldsReportTabProps {
+  /** Se fornecido, oculta a barra de filtros interativa e a tag <style> de impressão individual quando embutido no relatório unificado */
+  embedded?: boolean
+}
+
+export function InvestorYieldsReportTab({ embedded = false }: InvestorYieldsReportTabProps = {}) {
   const [rawSubs, setRawSubs] = useState<RawSubscription[]>([])
   const [productsBySeries, setProductsBySeries] = useState<Record<string, ProductInfo>>({})
   const [manualEntries, setManualEntries] = useState<ManualEntry[]>([])
@@ -829,264 +834,270 @@ export function InvestorYieldsReportTab() {
 
   return (
     <div className="space-y-6">
-      {/* Estilo embutido para impressão em PDF limpa, paginada e sem cortes */}
-      <style>{`
-        @page {
-          size: A4 portrait;
-          margin: 12mm 10mm 12mm 10mm;
-        }
-
-        @media print {
-          /* Desativa overflow oculto ou scroll de todos os elementos e ancestrais que travam a paginação em navegadores (Chromium / Firefox / Safari) */
-          html, body {
-            overflow: visible !important;
-            height: auto !important;
-            min-height: auto !important;
-            max-height: none !important;
-            background: white !important;
-            color: black !important;
+      {/* Estilo embutido para impressão em PDF limpa, paginada e sem cortes — desativado quando embutido no relatório unificado para evitar conflito de @page */}
+      {!embedded && (
+        <style>{`
+          @page {
+            size: A4 portrait;
+            margin: 12mm 10mm 12mm 10mm;
           }
 
-          /* Oculta layout e outros elementos da aplicação */
-          body * {
-            visibility: hidden;
-          }
+          @media print {
+            /* Desativa overflow oculto ou scroll de todos os elementos e ancestrais que travam a paginação em navegadores (Chromium / Firefox / Safari) */
+            html, body {
+              overflow: visible !important;
+              height: auto !important;
+              min-height: auto !important;
+              max-height: none !important;
+              background: white !important;
+              color: black !important;
+            }
 
-          /* Garante que os pais e ancestrais do relatório não cortem altura nem restrinjam overflow/flex/grid */
-          #root,
-          #root > div,
-          main,
-          header,
-          nav,
-          aside,
-          [data-sidebar="inset"],
-          .flex,
-          .flex-1,
-          .space-y-6,
-          .space-y-4 {
-            overflow: visible !important;
-            height: auto !important;
-            min-height: auto !important;
-            max-height: none !important;
-            transform: none !important;
-            animation: none !important;
-          }
+            /* Oculta layout e outros elementos da aplicação */
+            body * {
+              visibility: hidden;
+            }
 
-          /* Relatório visível em fluxo natural de documento contínuo */
-          #print-yields-report,
-          #print-yields-report * {
-            visibility: visible;
-          }
+            /* Garante que os pais e ancestrais do relatório não cortem altura nem restrinjam overflow/flex/grid */
+            #root,
+            #root > div,
+            main,
+            header,
+            nav,
+            aside,
+            [data-sidebar="inset"],
+            .flex,
+            .flex-1,
+            .space-y-6,
+            .space-y-4 {
+              overflow: visible !important;
+              height: auto !important;
+              min-height: auto !important;
+              max-height: none !important;
+              transform: none !important;
+              animation: none !important;
+            }
 
-          /* Força as linhas de detalhamento individual de aportes a ficarem sempre visíveis na impressão */
-          #print-yields-report .investor-detail-row,
-          #print-yields-report .investor-detail-row * {
-            display: table-row !important;
-            visibility: visible !important;
-          }
-          #print-yields-report tr.investor-detail-row {
-            display: table-row !important;
-          }
-          #print-yields-report tr.investor-detail-row td {
-            display: table-cell !important;
-          }
-          #print-yields-report tr.investor-detail-row table {
-            display: table !important;
-          }
-          #print-yields-report tr.investor-detail-row thead {
-            display: table-header-group !important;
-          }
-          #print-yields-report tr.investor-detail-row tbody {
-            display: table-row-group !important;
-          }
-          #print-yields-report tr.investor-detail-row tr {
-            display: table-row !important;
-          }
-          #print-yields-report tr.investor-detail-row th,
-          #print-yields-report tr.investor-detail-row td {
-            display: table-cell !important;
-          }
-          #print-yields-report tr.investor-detail-row div {
-            display: block !important;
-          }
-          #print-yields-report tr.investor-detail-row span {
-            display: inline !important;
-          }
-          #print-yields-report tr.investor-detail-row span.block {
-            display: block !important;
-          }
+            /* Relatório visível em fluxo natural de documento contínuo */
+            #print-yields-report,
+            #print-yields-report * {
+              visibility: visible;
+            }
 
-          /* Oculta especificamente elementos com classe no-print dentro do relatório */
-          #print-yields-report .no-print,
-          #print-yields-report .no-print * {
-            display: none !important;
-            visibility: hidden !important;
-          }
+            /* Força as linhas de detalhamento individual de aportes a ficarem sempre visíveis na impressão */
+            #print-yields-report .investor-detail-row,
+            #print-yields-report .investor-detail-row * {
+              display: table-row !important;
+              visibility: visible !important;
+            }
+            #print-yields-report tr.investor-detail-row {
+              display: table-row !important;
+            }
+            #print-yields-report tr.investor-detail-row td {
+              display: table-cell !important;
+            }
+            #print-yields-report tr.investor-detail-row table {
+              display: table !important;
+            }
+            #print-yields-report tr.investor-detail-row thead {
+              display: table-header-group !important;
+            }
+            #print-yields-report tr.investor-detail-row tbody {
+              display: table-row-group !important;
+            }
+            #print-yields-report tr.investor-detail-row tr {
+              display: table-row !important;
+            }
+            #print-yields-report tr.investor-detail-row th,
+            #print-yields-report tr.investor-detail-row td {
+              display: table-cell !important;
+            }
+            #print-yields-report tr.investor-detail-row div {
+              display: block !important;
+            }
+            #print-yields-report tr.investor-detail-row span {
+              display: inline !important;
+            }
+            #print-yields-report tr.investor-detail-row span.block {
+              display: block !important;
+            }
 
-          #print-yields-report {
-            position: static !important;
-            display: block !important;
-            width: 100% !important;
-            max-width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            font-size: 10px;
-            background: white !important;
-            color: black !important;
-            box-shadow: none !important;
-            overflow: visible !important;
-            height: auto !important;
-            min-height: auto !important;
-            max-height: none !important;
-          }
+            /* Oculta especificamente elementos com classe no-print dentro do relatório */
+            #print-yields-report .no-print,
+            #print-yields-report .no-print * {
+              display: none !important;
+              visibility: hidden !important;
+            }
 
-          /* Elementos com classe no-print ou print:hidden */
-          .no-print {
-            display: none !important;
-          }
+            #print-yields-report {
+              position: static !important;
+              display: block !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              font-size: 10px;
+              background: white !important;
+              color: black !important;
+              box-shadow: none !important;
+              overflow: visible !important;
+              height: auto !important;
+              min-height: auto !important;
+              max-height: none !important;
+            }
 
-          /* Remover sombras, bordas desnecessárias e ajustar cores de fundo para impressão */
-          #print-yields-report .shadow-sm,
-          #print-yields-report .shadow-md,
-          #print-yields-report .shadow-lg,
-          #print-yields-report .shadow {
-            box-shadow: none !important;
-          }
+            /* Elementos com classe no-print ou print:hidden */
+            .no-print {
+              display: none !important;
+            }
 
-          /* Permitir que tabelas e wrappers respeitem paginação nativa e não limitem rolagem */
-          #print-yields-report .overflow-x-auto,
-          #print-yields-report .overflow-y-auto,
-          #print-yields-report .overflow-hidden,
-          #print-yields-report .overflow-auto,
-          #print-yields-report div:has(> table) {
-            overflow: visible !important;
-            max-height: none !important;
-            height: auto !important;
-            display: block !important;
-          }
+            /* Remover sombras, bordas desnecessárias e ajustar cores de fundo para impressão */
+            #print-yields-report .shadow-sm,
+            #print-yields-report .shadow-md,
+            #print-yields-report .shadow-lg,
+            #print-yields-report .shadow {
+              box-shadow: none !important;
+            }
 
-          /* Estrutura de tabela para paginação correta com cabeçalho repetido em cada folha */
-          #print-yields-report table {
-            width: 100% !important;
-            border-collapse: collapse !important;
-            page-break-inside: auto !important;
-            break-inside: auto !important;
-          }
+            /* Permitir que tabelas e wrappers respeitem paginação nativa e não limitem rolagem */
+            #print-yields-report .overflow-x-auto,
+            #print-yields-report .overflow-y-auto,
+            #print-yields-report .overflow-hidden,
+            #print-yields-report .overflow-auto,
+            #print-yields-report div:has(> table) {
+              overflow: visible !important;
+              max-height: none !important;
+              height: auto !important;
+              display: block !important;
+            }
 
-          #print-yields-report thead {
-            display: table-header-group !important;
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
-          }
+            /* Estrutura de tabela para paginação correta com cabeçalho repetido em cada folha */
+            #print-yields-report table {
+              width: 100% !important;
+              border-collapse: collapse !important;
+              page-break-inside: auto !important;
+              break-inside: auto !important;
+            }
 
-          #print-yields-report tbody {
-            display: table-row-group !important;
-          }
+            #print-yields-report thead {
+              display: table-header-group !important;
+              break-inside: avoid !important;
+              page-break-inside: avoid !important;
+            }
 
-          #print-yields-report thead th {
-            background-color: #f1f5f9 !important;
-            color: #0f172a !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
+            #print-yields-report tbody {
+              display: table-row-group !important;
+            }
 
-          #print-yields-report tfoot {
-            display: table-footer-group !important;
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
-          }
+            #print-yields-report thead th {
+              background-color: #f1f5f9 !important;
+              color: #0f172a !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
 
-          #print-yields-report tr {
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-          }
+            #print-yields-report tfoot {
+              display: table-footer-group !important;
+              break-inside: avoid !important;
+              page-break-inside: avoid !important;
+            }
 
-          #print-yields-report th,
-          #print-yields-report td {
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-          }
+            #print-yields-report tr {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
 
-          /* Evitar quebra de página dentro de cards de resumo e notas de rodapé */
-          .print-break-inside-avoid,
-          #print-yields-report .print-avoid-break {
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
+            #print-yields-report th,
+            #print-yields-report td {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+
+            /* Evitar quebra de página dentro de cards de resumo e notas de rodapé */
+            .print-break-inside-avoid,
+            #print-yields-report .print-avoid-break {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
           }
-        }
-      `}</style>
+        `}</style>
+      )}
 
       {/* Cabeçalho da Seção */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 no-print">
-        <div>
-          <h3 className="text-xl font-bold tracking-tight">Rendimentos dos Investidores</h3>
-          <p className="text-sm text-muted-foreground">
-            Relatório de posição e rentabilidade individual e acumulada por competência.
-          </p>
-        </div>
+      {!embedded && (
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 no-print">
+          <div>
+            <h3 className="text-xl font-bold tracking-tight">Rendimentos dos Investidores</h3>
+            <p className="text-sm text-muted-foreground">
+              Relatório de posição e rentabilidade individual e acumulada por competência.
+            </p>
+          </div>
 
-        {/* Ferramentas e Exportação */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={handleExportCSV} variant="outline" size="sm" className="gap-1.5">
-            <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Baixar CSV
-          </Button>
-          <Button onClick={handlePrint} variant="outline" size="sm" className="gap-1.5">
-            <Printer className="w-4 h-4 text-blue-600" /> Imprimir / Salvar PDF
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={loadData}
-            disabled={loading}
-            title="Recarregar dados"
-          >
-            <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
-          </Button>
+          {/* Ferramentas e Exportação */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={handleExportCSV} variant="outline" size="sm" className="gap-1.5">
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Baixar CSV
+            </Button>
+            <Button onClick={handlePrint} variant="outline" size="sm" className="gap-1.5">
+              <Printer className="w-4 h-4 text-blue-600" /> Imprimir / Salvar PDF
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={loadData}
+              disabled={loading}
+              title="Recarregar dados"
+            >
+              <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Barra de Filtros: Competência / Mês e Busca */}
-      <Card className="no-print">
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
-            {/* Seletor de Mês de Referência */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5" /> Mês de Competência
-              </label>
-              <Select value={selectedMonth} onValueChange={setSelectedMonth} disabled={loading}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Selecione o mês" />
-                </SelectTrigger>
-                <SelectContent className="max-h-60">
-                  {availableMonths.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+      {!embedded && (
+        <Card className="no-print">
+          <CardContent className="pt-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+              {/* Seletor de Mês de Referência */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5" /> Mês de Competência
+                </label>
+                <Select value={selectedMonth} onValueChange={setSelectedMonth} disabled={loading}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Selecione o mês" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    {availableMonths.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            {/* Busca textual */}
-            <div className="space-y-1.5 md:col-span-2">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Buscar Investidor
-              </label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Filtrar por nome ou CPF/CNPJ..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9"
-                  disabled={loading}
-                />
+              {/* Busca textual */}
+              <div className="space-y-1.5 md:col-span-2">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Buscar Investidor
+                </label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Filtrar por nome ou CPF/CNPJ..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-9"
+                    disabled={loading}
+                  />
+                </div>
               </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Área Imprimível (Cards + Tabela) */}
       <div id="print-yields-report" className="space-y-6">
