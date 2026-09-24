@@ -39,19 +39,21 @@ export interface PeriodTaxCalculation {
   // Lucro Real (DRE do Período)
   receitasDre: number
   despesasDre: number
-  lucroReal: number
+  lucroReal: number // Resultado oficial do DRE (pode ser positivo ou negativo)
+  baseLucroRealTributavel: number // Math.max(0, lucroReal) -> 0 se prejuízo
+  isPrejuizoPeriodo: boolean // true se lucroReal <= 0
 
   // IRPJ & CSLL
   aliquotaIrpj: number // 0.15 (15%)
-  valorIrpjBase: number
+  valorIrpjBase: number // 0 se lucroReal <= 0
   limiteExcedenteIrpj: number // 20000.00
-  baseAdicionalIrpj: number // max(0, lucroReal - 20000)
+  baseAdicionalIrpj: number // max(0, baseLucroRealTributavel - 20000) -> 0 se prejuízo
   aliquotaAdicionalIrpj: number // 0.10 (10%)
-  valorAdicionalIrpj: number
+  valorAdicionalIrpj: number // 0 se lucroReal <= 0
   valorIrpjTotal: number // valorIrpjBase + valorAdicionalIrpj
 
   aliquotaCsll: number // 0.09 (9%)
-  valorCsll: number
+  valorCsll: number // 0 se lucroReal <= 0
 
   totalIrpjCsll: number
 
@@ -626,21 +628,27 @@ export function calculatePeriodTaxes(params: {
   const valorCofins = basePisCofins * aliquotaCofins
   const totalPisCofins = valorPis + valorCofins
 
-  // IRPJ: 15% sobre o Lucro Real (se positivo)
+  // Lucro Real e IRPJ / CSLL:
+  // Se o período fecha em PREJUÍZO (lucroReal <= 0), não há lucro real tributável:
+  // IRPJ Básico, Adicional de IRPJ e CSLL devem ser estritamente ZERADOS (R$ 0,00).
+  const isPrejuizoPeriodo = lucroReal <= 0
+  const baseLucroRealTributavel = isPrejuizoPeriodo ? 0 : lucroReal
+
   const aliquotaIrpj = 0.15
-  const baseLucroReal = Math.max(0, lucroReal)
-  const valorIrpjBase = baseLucroReal * aliquotaIrpj
+  const valorIrpjBase = isPrejuizoPeriodo ? 0 : baseLucroRealTributavel * aliquotaIrpj
 
   // Adicional de IRPJ: 10% sobre a parcela do lucro que exceder R$ 20.000,00 por mês
   const limiteExcedenteIrpj = 20000.0
-  const baseAdicionalIrpj = Math.max(0, baseLucroReal - limiteExcedenteIrpj)
+  const baseAdicionalIrpj = isPrejuizoPeriodo
+    ? 0
+    : Math.max(0, baseLucroRealTributavel - limiteExcedenteIrpj)
   const aliquotaAdicionalIrpj = 0.1
-  const valorAdicionalIrpj = baseAdicionalIrpj * aliquotaAdicionalIrpj
+  const valorAdicionalIrpj = isPrejuizoPeriodo ? 0 : baseAdicionalIrpj * aliquotaAdicionalIrpj
   const valorIrpjTotal = valorIrpjBase + valorAdicionalIrpj
 
-  // CSLL: 9% sobre o Lucro Real
+  // CSLL: 9% sobre o Lucro Real (zerado se prejuízo)
   const aliquotaCsll = 0.09
-  const valorCsll = baseLucroReal * aliquotaCsll
+  const valorCsll = isPrejuizoPeriodo ? 0 : baseLucroRealTributavel * aliquotaCsll
   const totalIrpjCsll = valorIrpjTotal + valorCsll
 
   const totalCargaTributaria = totalPisCofins + totalIrpjCsll
@@ -663,6 +671,8 @@ export function calculatePeriodTaxes(params: {
     receitasDre,
     despesasDre,
     lucroReal,
+    baseLucroRealTributavel,
+    isPrejuizoPeriodo,
     aliquotaIrpj,
     valorIrpjBase,
     limiteExcedenteIrpj,
