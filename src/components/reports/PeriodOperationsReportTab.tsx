@@ -153,12 +153,18 @@ export function PeriodOperationsReportTab({
     resultado: number
     totalCaptacoes: number
     totalTarifasBancarias?: number
+    totalFornecedoresOperacionais?: number
+    totalFornecedoresAdministrativos?: number
+    totalFornecedoresSemNf?: number
   }>({
     totalReceitas: 0,
     totalDespesas: 0,
     resultado: 0,
     totalCaptacoes: 0,
     totalTarifasBancarias: 0,
+    totalFornecedoresOperacionais: 0,
+    totalFornecedoresAdministrativos: 0,
+    totalFornecedoresSemNf: 0,
   })
 
   // Competência selecionada (formato YYYY-MM)
@@ -530,13 +536,16 @@ export function PeriodOperationsReportTab({
     return `01/${padMonth}/${yearNum} A ${padLastDay}/${padMonth}/${yearNum}`
   }, [selectedMonth])
 
-  // Apuração tributária calculada para a competência (fonte da verdade: LAIR e estrutura oficial)
+  // Apuração tributária calculada para a competência (fonte da verdade: Lucro Real oficial e template revisado)
   const taxCalculation: PeriodTaxCalculation = useMemo(() => {
     return calculatePeriodTaxes({
       receitaBrutaRecebiveis: receivablesTotals.discount,
       receitaBrutaCcbs: ccbTotals.discount,
       despesasCaptacao,
       tarifasBancarias: dreResult.totalTarifasBancarias || 0,
+      fornecedoresOperacionais: dreResult.totalFornecedoresOperacionais || 0,
+      fornecedoresAdministrativos: dreResult.totalFornecedoresAdministrativos || 0,
+      adicaoFornecedoresSemNf: dreResult.totalFornecedoresSemNf || 0,
       mesesFiltro: 1,
       lucroReal: dreResult.resultado,
       captacoesDoPeriodo: dreResult.totalCaptacoes || 0,
@@ -769,10 +778,10 @@ export function PeriodOperationsReportTab({
       Status: 'Total',
     })
 
-    // (-) CUSTOS E DESPESAS FINANCEIRAS
+    // (-) CUSTOS E DESPESAS OPERACIONAIS
     rows.push({
-      'Tipo Operação': '(-) CUSTOS E DESPESAS FINANCEIRAS',
-      'Contrato / ID': '↳ (-) Despesas de Captação (Juros de Debêntures do Período)',
+      'Tipo Operação': '(-) CUSTOS E DESPESAS OPERACIONAIS',
+      'Contrato / ID': '↳ (-) Despesas de Captação (Juros de Debêntures)',
       'Data Operação': 'Custo Financeiro Dedutível',
       'Vencimento Final': '—',
       'Cedente / Tomador': 'Juros/Rendimentos pagos a investidores de debêntures',
@@ -791,7 +800,7 @@ export function PeriodOperationsReportTab({
     })
 
     rows.push({
-      'Tipo Operação': '(-) CUSTOS E DESPESAS FINANCEIRAS',
+      'Tipo Operação': '(-) CUSTOS E DESPESAS OPERACIONAIS',
       'Contrato / ID': '↳ (-) Tarifas Bancárias de Cobrança/Custódia',
       'Data Operação': 'Despesa Financeira Dedutível',
       'Vencimento Final': '—',
@@ -810,15 +819,56 @@ export function PeriodOperationsReportTab({
       Status: 'Dedutível',
     })
 
+    rows.push({
+      'Tipo Operação': '(-) CUSTOS E DESPESAS OPERACIONAIS',
+      'Contrato / ID': '↳ (-) Fornecedores Operacionais (Sistemas, Serasa, Assinaturas)',
+      'Data Operação': 'Despesa Operacional Dedutível',
+      'Vencimento Final': '—',
+      'Cedente / Tomador': 'Gastos com softwares, Serasa, sistemas operacionais e assinaturas',
+      'CPF/CNPJ Cedente': '—',
+      'Regime Tributário': 'Dedutível',
+      'Sacado / Devedor': '—',
+      'CPF/CNPJ Sacado': '—',
+      Parcelas: '—',
+      'Preço de Face (R$)': '—',
+      'Preço Pago / Aquisição (R$)': '—',
+      'Deságio Nominal (R$)': (-taxCalculation.fornecedoresOperacionais).toFixed(2),
+      'Deságio (%)': '—',
+      'Taxa Efetiva / CET (%)': '—',
+      'IOF Retido (R$)': '—',
+      Status: 'Dedutível',
+    })
+
+    rows.push({
+      'Tipo Operação': '(-) CUSTOS E DESPESAS OPERACIONAIS',
+      'Contrato / ID': '↳ (-) Fornecedores Administrativos (Contador, Advogado, TI)',
+      'Data Operação': 'Despesa Administrativa Dedutível',
+      'Vencimento Final': '—',
+      'Cedente / Tomador': 'Gastos com contabilidade, honorários advocatícios e suporte TI',
+      'CPF/CNPJ Cedente': '—',
+      'Regime Tributário': 'Dedutível',
+      'Sacado / Devedor': '—',
+      'CPF/CNPJ Sacado': '—',
+      Parcelas: '—',
+      'Preço de Face (R$)': '—',
+      'Preço Pago / Aquisição (R$)': '—',
+      'Deságio Nominal (R$)': (-taxCalculation.fornecedoresAdministrativos).toFixed(2),
+      'Deságio (%)': '—',
+      'Taxa Efetiva / CET (%)': '—',
+      'IOF Retido (R$)': '—',
+      Status: 'Dedutível',
+    })
+
     // (=) RESULTADO OPERACIONAL LÍQUIDO (LAIR)
     rows.push({
       'Tipo Operação': '(=) RESULTADO OPERACIONAL LÍQUIDO (LAIR)',
       'Contrato / ID': '(=) RESULTADO OPERACIONAL LÍQUIDO (LAIR)',
-      'Data Operação': 'Receita Bruta Total − Despesas de Captação − Tarifas Bancárias',
+      'Data Operação':
+        'Receita Bruta − Captação − Tarifas − Fornec. Operacionais − Fornec. Administrativos',
       'Vencimento Final': '—',
-      'Cedente / Tomador': `Receita R$ ${taxCalculation.receitaBrutaTotal.toFixed(2)} − Captação R$ ${taxCalculation.despesasCaptacao.toFixed(2)} − Tarifas R$ ${taxCalculation.tarifasBancarias.toFixed(2)}`,
+      'Cedente / Tomador': `Receita R$ ${taxCalculation.receitaBrutaTotal.toFixed(2)} − Captação R$ ${taxCalculation.despesasCaptacao.toFixed(2)} − Tarifas R$ ${taxCalculation.tarifasBancarias.toFixed(2)} − Operacionais R$ ${taxCalculation.fornecedoresOperacionais.toFixed(2)} − Admin R$ ${taxCalculation.fornecedoresAdministrativos.toFixed(2)}`,
       'CPF/CNPJ Cedente': '—',
-      'Regime Tributário': 'Base Tributária LAIR',
+      'Regime Tributário': 'Base Contábil LAIR',
       'Sacado / Devedor': '—',
       'CPF/CNPJ Sacado': '—',
       Parcelas: '—',
@@ -828,7 +878,48 @@ export function PeriodOperationsReportTab({
       'Deságio (%)': '—',
       'Taxa Efetiva / CET (%)': '—',
       'IOF Retido (R$)': '—',
-      Status: taxCalculation.isPrejuizoPeriodo ? 'Prejuízo Fiscal' : 'Lucro Operacional',
+      Status: taxCalculation.lair < 0 ? 'Prejuízo Operacional' : 'Lucro Operacional',
+    })
+
+    // AJUSTES FISCAIS PARA BASE DE CÁLCULO (LALUR)
+    rows.push({
+      'Tipo Operação': 'AJUSTES FISCAIS PARA BASE DE CÁLCULO (LALUR)',
+      'Contrato / ID': '(+) Adição: Gastos com Fornecedores sem Nota Fiscal (Recibos)',
+      'Data Operação': 'Adição LALUR',
+      'Vencimento Final': '—',
+      'Cedente / Tomador': 'Recibos simples e despesas sem nota fiscal (indedutíveis fiscalmente)',
+      'CPF/CNPJ Cedente': '—',
+      'Regime Tributário': 'Adição LALUR',
+      'Sacado / Devedor': '—',
+      'CPF/CNPJ Sacado': '—',
+      Parcelas: '—',
+      'Preço de Face (R$)': '—',
+      'Preço Pago / Aquisição (R$)': '—',
+      'Deságio Nominal (R$)': taxCalculation.adicaoFornecedoresSemNf.toFixed(2),
+      'Deságio (%)': '—',
+      'Taxa Efetiva / CET (%)': '—',
+      'IOF Retido (R$)': '—',
+      Status: 'Adição Fiscal',
+    })
+
+    rows.push({
+      'Tipo Operação': 'AJUSTES FISCAIS PARA BASE DE CÁLCULO (LALUR)',
+      'Contrato / ID': '(=) LUCRO REAL (BASE DE CÁLCULO DOS IMPOSTOS)',
+      'Data Operação': 'LAIR + Adição LALUR',
+      'Vencimento Final': '—',
+      'Cedente / Tomador': `LAIR R$ ${taxCalculation.lair.toFixed(2)} + Adição R$ ${taxCalculation.adicaoFornecedoresSemNf.toFixed(2)}`,
+      'CPF/CNPJ Cedente': '—',
+      'Regime Tributário': 'Base Tributável Oficial',
+      'Sacado / Devedor': '—',
+      'CPF/CNPJ Sacado': '—',
+      Parcelas: '—',
+      'Preço de Face (R$)': '—',
+      'Preço Pago / Aquisição (R$)': '—',
+      'Deságio Nominal (R$)': taxCalculation.lucroRealCalculado.toFixed(2),
+      'Deságio (%)': '—',
+      'Taxa Efetiva / CET (%)': '—',
+      'IOF Retido (R$)': '—',
+      Status: taxCalculation.isPrejuizoPeriodo ? 'Prejuízo Fiscal' : 'Lucro Real Positivo',
     })
 
     // PROJEÇÃO DE IMPOSTOS (LUCRO REAL)
@@ -836,7 +927,7 @@ export function PeriodOperationsReportTab({
       rows.push({
         'Tipo Operação': 'PROJEÇÃO DE IMPOSTOS (LUCRO REAL)',
         'Contrato / ID': '↳ IRPJ (15%)',
-        'Data Operação': 'LAIR <= 0 (Prejuízo)',
+        'Data Operação': 'LUCRO REAL <= 0 (Prejuízo Fiscal)',
         'Vencimento Final': '—',
         'Cedente / Tomador': 'Período em prejuízo fiscal — IRPJ zerado',
         'CPF/CNPJ Cedente': '—',
@@ -856,7 +947,7 @@ export function PeriodOperationsReportTab({
       rows.push({
         'Tipo Operação': 'PROJEÇÃO DE IMPOSTOS (LUCRO REAL)',
         'Contrato / ID': '↳ CSLL (9%)',
-        'Data Operação': 'LAIR <= 0 (Prejuízo)',
+        'Data Operação': 'LUCRO REAL <= 0 (Prejuízo Fiscal)',
         'Vencimento Final': '—',
         'Cedente / Tomador': 'Período em prejuízo fiscal — CSLL zerada',
         'CPF/CNPJ Cedente': '—',
@@ -896,9 +987,9 @@ export function PeriodOperationsReportTab({
       rows.push({
         'Tipo Operação': 'PROJEÇÃO DE IMPOSTOS (LUCRO REAL)',
         'Contrato / ID': '↳ CSLL (9%)',
-        'Data Operação': `Base LAIR: R$ ${taxCalculation.lair.toFixed(2)}`,
+        'Data Operação': `Base Lucro Real: R$ ${taxCalculation.lucroRealCalculado.toFixed(2)}`,
         'Vencimento Final': '—',
-        'Cedente / Tomador': '9% sobre o LAIR positivo',
+        'Cedente / Tomador': '9% sobre o Lucro Real positivo',
         'CPF/CNPJ Cedente': '—',
         'Regime Tributário': '9,00%',
         'Sacado / Devedor': '—',
@@ -916,9 +1007,9 @@ export function PeriodOperationsReportTab({
       rows.push({
         'Tipo Operação': 'PROJEÇÃO DE IMPOSTOS (LUCRO REAL)',
         'Contrato / ID': '↳ IRPJ Base (15%)',
-        'Data Operação': `Base LAIR: R$ ${taxCalculation.lair.toFixed(2)}`,
+        'Data Operação': `Base Lucro Real: R$ ${taxCalculation.lucroRealCalculado.toFixed(2)}`,
         'Vencimento Final': '—',
-        'Cedente / Tomador': '15% sobre o LAIR positivo',
+        'Cedente / Tomador': '15% sobre o Lucro Real positivo',
         'CPF/CNPJ Cedente': '—',
         'Regime Tributário': '15,00%',
         'Sacado / Devedor': '—',
@@ -939,9 +1030,9 @@ export function PeriodOperationsReportTab({
         'Data Operação':
           taxCalculation.baseAdicionalIrpj > 0
             ? `Excedente: R$ ${taxCalculation.baseAdicionalIrpj.toFixed(2)}`
-            : 'LAIR não excede o limite mensal',
+            : 'Lucro Real não excede o limite mensal',
         'Vencimento Final': '—',
-        'Cedente / Tomador': '10% estritamente sobre a parcela do LAIR que exceder o limite',
+        'Cedente / Tomador': '10% estritamente sobre a parcela do Lucro Real que exceder o limite',
         'CPF/CNPJ Cedente': '—',
         'Regime Tributário': '10,00%',
         'Sacado / Devedor': '—',
@@ -1855,26 +1946,33 @@ export function PeriodOperationsReportTab({
                 </div>
               </div>
 
-              {/* Card 2: Custos e Despesas Financeiras */}
+              {/* Card 2: Custos e Despesas Operacionais */}
               <div className="rounded-lg border bg-card p-4 space-y-1 shadow-sm">
                 <div className="flex items-center justify-between text-xs text-muted-foreground font-medium uppercase tracking-wider">
-                  <span>(-) Custos e Desp. Financeiras</span>
+                  <span>(-) Custos e Desp. Operacionais</span>
                   <TrendingDown className="h-4 w-4 text-rose-600" />
                 </div>
                 <div className="text-xl font-bold font-mono text-rose-700 dark:text-rose-400">
                   {loadingTax ? (
                     <Skeleton className="h-7 w-28" />
                   ) : (
-                    `(${formatCurrency(taxCalculation.totalCustosDespesasFinanceiras)})`
+                    `(${formatCurrency(taxCalculation.totalCustosDespesasOperacionais)})`
                   )}
                 </div>
-                <div className="text-[11px] text-muted-foreground">
+                <div
+                  className="text-[11px] text-muted-foreground truncate"
+                  title={`Captação: ${formatCurrency(taxCalculation.despesasCaptacao)} | Tarifas: ${formatCurrency(taxCalculation.tarifasBancarias)} | Operacionais: ${formatCurrency(taxCalculation.fornecedoresOperacionais)} | Admin: ${formatCurrency(taxCalculation.fornecedoresAdministrativos)}`}
+                >
                   Captação: {formatCurrency(taxCalculation.despesasCaptacao)} | Tarifas:{' '}
-                  {formatCurrency(taxCalculation.tarifasBancarias)}
+                  {formatCurrency(taxCalculation.tarifasBancarias)} | Fornec:{' '}
+                  {formatCurrency(
+                    taxCalculation.fornecedoresOperacionais +
+                      taxCalculation.fornecedoresAdministrativos,
+                  )}
                 </div>
               </div>
 
-              {/* Card 3: Resultado Operacional Líquido (LAIR) */}
+              {/* Card 3: Lucro Real (Base de Cálculo dos Impostos) */}
               <div
                 className={cn(
                   'rounded-lg border p-4 space-y-1 shadow-sm',
@@ -1891,7 +1989,7 @@ export function PeriodOperationsReportTab({
                         : 'text-emerald-900 dark:text-emerald-200'
                     }
                   >
-                    (=) LAIR (Base Tributária)
+                    (=) LUCRO REAL (BASE)
                   </span>
                   <Scale
                     className={cn(
@@ -1908,7 +2006,7 @@ export function PeriodOperationsReportTab({
                       : 'text-emerald-700 dark:text-emerald-300',
                   )}
                 >
-                  {formatCurrency(taxCalculation.lair)}
+                  {formatCurrency(taxCalculation.lucroRealCalculado)}
                 </div>
                 <div
                   className={cn(
@@ -1920,7 +2018,7 @@ export function PeriodOperationsReportTab({
                 >
                   {taxCalculation.isPrejuizoPeriodo
                     ? `Prejuízo fiscal gerado: ${formatCurrency(taxCalculation.valorPrejuizoFiscal)}`
-                    : 'Base positiva para IRPJ e CSLL'}
+                    : `LAIR: ${formatCurrency(taxCalculation.lair)} + LALUR: ${formatCurrency(taxCalculation.adicaoFornecedoresSemNf)}`}
                 </div>
               </div>
 
@@ -1956,15 +2054,13 @@ export function PeriodOperationsReportTab({
               </div>
 
               <div className="p-4 sm:p-6 space-y-5 font-mono text-xs leading-relaxed">
-                {/* 1. RECEITAS DA OPERAÇÃO */}
+                {/* (+) RECEITAS DA OPERAÇÃO */}
                 <div className="space-y-1.5 border-b pb-3">
                   <div className="font-bold text-slate-900 dark:text-slate-100 text-sm">
                     (+) RECEITAS DA OPERAÇÃO
                   </div>
                   <div className="flex justify-between items-center pl-4 py-0.5 text-muted-foreground">
-                    <span>
-                      ↳ Receita de Deságio Apropriada (Soma de todos os títulos pro rata):
-                    </span>
+                    <span>↳ Receita de Deságio Apropriada (Soma pro rata):</span>
                     <span className="font-bold text-foreground">
                       {formatCurrency(taxCalculation.receitaBrutaRecebiveis)}
                     </span>
@@ -1983,13 +2079,13 @@ export function PeriodOperationsReportTab({
                   </div>
                 </div>
 
-                {/* 2. CUSTOS E DESPESAS FINANCEIRAS */}
+                {/* (-) CUSTOS E DESPESAS OPERACIONAIS */}
                 <div className="space-y-1.5 border-b pb-3">
                   <div className="font-bold text-slate-900 dark:text-slate-100 text-sm">
-                    (-) CUSTOS E DESPESAS FINANCEIRAS
+                    (-) CUSTOS E DESPESAS OPERACIONAIS
                   </div>
                   <div className="flex justify-between items-center pl-4 py-0.5 text-rose-700 dark:text-rose-400">
-                    <span>↳ (-) Despesas de Captação (Juros de Debêntures do Período):</span>
+                    <span>↳ (-) Despesas de Captação (Juros de Debêntures):</span>
                     <span className="font-bold">
                       ({formatCurrency(taxCalculation.despesasCaptacao)})
                     </span>
@@ -2000,10 +2096,22 @@ export function PeriodOperationsReportTab({
                       ({formatCurrency(taxCalculation.tarifasBancarias)})
                     </span>
                   </div>
+                  <div className="flex justify-between items-center pl-4 py-0.5 text-rose-700 dark:text-rose-400">
+                    <span>↳ (-) Fornecedores Operacionais (Sistemas, Serasa, Assinaturas):</span>
+                    <span className="font-bold">
+                      ({formatCurrency(taxCalculation.fornecedoresOperacionais)})
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center pl-4 py-0.5 text-rose-700 dark:text-rose-400">
+                    <span>↳ (-) Fornecedores Administrativos (Contador, Advogado, TI):</span>
+                    <span className="font-bold">
+                      ({formatCurrency(taxCalculation.fornecedoresAdministrativos)})
+                    </span>
+                  </div>
                   <div
                     className={cn(
                       'flex justify-between items-center pt-2 font-bold border-t border-dashed text-sm',
-                      taxCalculation.isPrejuizoPeriodo
+                      taxCalculation.lair < 0
                         ? 'text-rose-700 dark:text-rose-400'
                         : 'text-emerald-700 dark:text-emerald-300',
                     )}
@@ -2013,21 +2121,47 @@ export function PeriodOperationsReportTab({
                   </div>
                 </div>
 
-                {/* 3. PROJEÇÃO DE IMPOSTOS (LUCRO REAL) */}
+                {/* AJUSTES FISCAIS PARA BASE DE CÁLCULO (LALUR) */}
+                <div className="space-y-1.5 border-b pb-3">
+                  <div className="font-bold text-slate-900 dark:text-slate-100 text-sm">
+                    AJUSTES FISCAIS PARA BASE DE CÁLCULO (LALUR)
+                  </div>
+                  <div className="flex justify-between items-center pl-4 py-0.5 text-foreground">
+                    <span>(+) Adição: Gastos com Fornecedores sem Nota Fiscal (Recibos):</span>
+                    <span className="font-bold">
+                      {formatCurrency(taxCalculation.adicaoFornecedoresSemNf)}
+                    </span>
+                  </div>
+                  <div
+                    className={cn(
+                      'flex justify-between items-center pt-2 font-bold border-t border-dashed text-sm',
+                      taxCalculation.isPrejuizoPeriodo
+                        ? 'text-rose-700 dark:text-rose-400'
+                        : 'text-emerald-700 dark:text-emerald-300',
+                    )}
+                  >
+                    <span>(=) LUCRO REAL (BASE DE CÁLCULO DOS IMPOSTOS):</span>
+                    <span className="text-base">
+                      {formatCurrency(taxCalculation.lucroRealCalculado)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* PROJEÇÃO DE IMPOSTOS (LUCRO REAL) */}
                 <div className="space-y-2">
                   <div className="font-bold text-slate-900 dark:text-slate-100 text-sm flex items-center justify-between">
                     <span>PROJEÇÃO DE IMPOSTOS (LUCRO REAL)</span>
                     <span className="text-[11px] font-normal text-muted-foreground">
                       {taxCalculation.isPrejuizoPeriodo
-                        ? 'Regra: LAIR <= 0 (Prejuízo Fiscal)'
-                        : 'Regra: LAIR > 0 (Lucro Tributável)'}
+                        ? 'Regra: LUCRO REAL <= 0 (Prejuízo Fiscal)'
+                        : 'Regra: LUCRO REAL > 0 (Lucro Tributável)'}
                     </span>
                   </div>
 
                   {taxCalculation.isPrejuizoPeriodo ? (
                     <div className="space-y-2 rounded-lg bg-rose-50/70 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900 p-3.5">
                       <div className="text-[11px] font-semibold text-rose-800 dark:text-rose-300 uppercase tracking-wide">
-                        Se RESULTADO OPERACIONAL LÍQUIDO (LAIR) for MENOR ou IGUAL a ZERO:
+                        Se LUCRO REAL for MENOR ou IGUAL a ZERO:
                       </div>
                       <div className="flex justify-between items-center pl-4 py-0.5 text-foreground">
                         <span>↳ IRPJ (15%):</span>
@@ -2052,28 +2186,27 @@ export function PeriodOperationsReportTab({
                   ) : (
                     <div className="space-y-2 rounded-lg bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900 p-3.5">
                       <div className="text-[11px] font-semibold text-emerald-900 dark:text-emerald-300 uppercase tracking-wide">
-                        Se RESULTADO OPERACIONAL LÍQUIDO (LAIR) for MAIOR que ZERO:
+                        Se LUCRO REAL for MAIOR que ZERO:
                       </div>
                       <div className="flex justify-between items-center pl-4 py-0.5 text-foreground">
-                        <span>↳ CSLL (9%): [LAIR * 0,09]</span>
+                        <span>↳ CSLL (9%): [Lucro_Real * 0,09]</span>
                         <span className="font-bold text-foreground">
                           {formatCurrency(taxCalculation.valorCsll)}
                         </span>
                       </div>
                       <div className="flex justify-between items-center pl-4 py-0.5 text-foreground">
-                        <span>↳ IRPJ Base (15%): [LAIR * 0,15]</span>
+                        <span>↳ IRPJ Base (15%): [Lucro_Real * 0,15]</span>
                         <span className="font-bold text-foreground">
                           {formatCurrency(taxCalculation.valorIrpjBase)}
                         </span>
                       </div>
                       <div className="flex justify-between items-start pl-4 py-0.5 text-foreground">
                         <span className="max-w-2xl leading-normal">
-                          ↳ Adicional IRPJ (10%): Limite R${' '}
-                          {formatCurrency(taxCalculation.limiteExcedenteIrpj)} (R$ 20.000 ×{' '}
-                          {taxCalculation.mesesFiltro} mês proporcional)
+                          ↳ Adicional IRPJ (10%): Se Lucro_Real &gt; (R$ 20.000,00 / mês
+                          proporcional), aplicar 10% sobre a parcela que exceder o limite.
                           {taxCalculation.baseAdicionalIrpj > 0
-                            ? ` — Excedente: ${formatCurrency(taxCalculation.baseAdicionalIrpj)}`
-                            : ' — Sem excedente'}
+                            ? ` (Limite: ${formatCurrency(taxCalculation.limiteExcedenteIrpj)} — Excedente: ${formatCurrency(taxCalculation.baseAdicionalIrpj)})`
+                            : ` (Limite: ${formatCurrency(taxCalculation.limiteExcedenteIrpj)} — Sem excedente)`}
                         </span>
                         <span className="font-bold text-foreground shrink-0">
                           {formatCurrency(taxCalculation.valorAdicionalIrpj)}
@@ -2096,14 +2229,18 @@ export function PeriodOperationsReportTab({
               <div className="p-3.5 rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-950/20 text-rose-900 dark:text-rose-200 text-xs space-y-1.5">
                 <div className="flex items-center gap-2 font-semibold">
                   <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-                  <span>Resultado Operacional em Prejuízo Fiscal (LAIR ≤ 0)</span>
+                  <span>Apuração em Prejuízo Fiscal (LUCRO REAL ≤ 0)</span>
                 </div>
                 <p className="leading-relaxed">
-                  O <strong>Resultado Operacional Líquido (LAIR)</strong> do período fechou em{' '}
-                  <strong>{formatCurrency(taxCalculation.lair)}</strong>. Conforme a regra
-                  tributária do Lucro Real, quando o LAIR é menor ou igual a zero, os tributos de{' '}
-                  <strong>IRPJ (15%)</strong> e <strong>CSLL (9%)</strong> são estritamente{' '}
-                  <strong>zerados (R$ 0,00)</strong>.
+                  O <strong>Resultado Operacional Líquido (LAIR)</strong> fechou em{' '}
+                  <strong>{formatCurrency(taxCalculation.lair)}</strong> e, após os{' '}
+                  <strong>Ajustes LALUR</strong> (+
+                  {formatCurrency(taxCalculation.adicaoFornecedoresSemNf)}), o{' '}
+                  <strong>LUCRO REAL</strong> do período totalizou{' '}
+                  <strong>{formatCurrency(taxCalculation.lucroRealCalculado)}</strong>. Conforme a
+                  regra tributária do Lucro Real, quando o Lucro Real é menor ou igual a zero, os
+                  tributos de <strong>IRPJ (15%)</strong> e <strong>CSLL (9%)</strong> são
+                  estritamente <strong>zerados (R$ 0,00)</strong>.
                 </p>
                 <div className="text-[11px] text-rose-900 dark:text-rose-200 bg-rose-100/70 dark:bg-rose-900/30 p-2.5 rounded border border-rose-300/70 font-mono font-semibold">
                   ↳ NOTA: Gerado Prejuízo Fiscal de{' '}
@@ -2114,16 +2251,18 @@ export function PeriodOperationsReportTab({
               <div className="p-3.5 rounded-lg border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-900 dark:text-emerald-200 text-xs space-y-1">
                 <div className="flex items-center gap-2 font-semibold">
                   <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-600" />
-                  <span>Resultado Operacional Líquido Positivo (LAIR &gt; 0)</span>
+                  <span>Lucro Real Tributável Positivo (LUCRO REAL &gt; 0)</span>
                 </div>
                 <p className="leading-relaxed">
-                  Base LAIR tributável apurada em{' '}
-                  <strong>{formatCurrency(taxCalculation.lair)}</strong>. Incidência de CSLL (9% ={' '}
-                  {formatCurrency(taxCalculation.valorCsll)}), IRPJ Base (15% ={' '}
+                  Base de Lucro Real apurada em{' '}
+                  <strong>{formatCurrency(taxCalculation.lucroRealCalculado)}</strong> (LAIR:{' '}
+                  {formatCurrency(taxCalculation.lair)} + Adições LALUR:{' '}
+                  {formatCurrency(taxCalculation.adicaoFornecedoresSemNf)}). Incidência de CSLL (9%
+                  = {formatCurrency(taxCalculation.valorCsll)}), IRPJ Base (15% ={' '}
                   {formatCurrency(taxCalculation.valorIrpjBase)})
                   {taxCalculation.valorAdicionalIrpj > 0
                     ? ` e Adicional de IRPJ (10% sobre excedente a R$ ${taxCalculation.limiteExcedenteIrpj.toFixed(2)} = ${formatCurrency(taxCalculation.valorAdicionalIrpj)}).`
-                    : ` e Adicional de IRPJ zerado (LAIR não excede R$ ${taxCalculation.limiteExcedenteIrpj.toFixed(2)}).`}
+                    : ` e Adicional de IRPJ zerado (Lucro Real não excede R$ ${taxCalculation.limiteExcedenteIrpj.toFixed(2)}).`}
                 </p>
               </div>
             )}
@@ -2223,11 +2362,11 @@ export function PeriodOperationsReportTab({
                     <TableCell className="font-semibold text-foreground flex items-center gap-1.5">
                       <Scale className="w-3.5 h-3.5 text-indigo-600" /> IRPJ (Base 15%)
                     </TableCell>
-                    <TableCell>Lucro Real (LAIR)</TableCell>
+                    <TableCell>Lucro Real (LALUR)</TableCell>
                     <TableCell className="text-right font-mono">
                       {taxCalculation.isPrejuizoPeriodo ? (
                         <span className="text-rose-600 font-medium">
-                          R$ 0,00 ({formatCurrency(taxCalculation.lair)})
+                          R$ 0,00 ({formatCurrency(taxCalculation.lucroRealCalculado)})
                         </span>
                       ) : (
                         formatCurrency(taxCalculation.baseLucroRealTributavel)
@@ -2240,12 +2379,13 @@ export function PeriodOperationsReportTab({
                     <TableCell className="text-muted-foreground text-[11px]">
                       {taxCalculation.isPrejuizoPeriodo ? (
                         <span className="text-rose-600 dark:text-rose-400 font-medium">
-                          LAIR ≤ 0 ({formatCurrency(taxCalculation.lair)}): IRPJ zerado. Gerado
-                          Prejuízo Fiscal de {formatCurrency(taxCalculation.valorPrejuizoFiscal)}{' '}
-                          para compensação futura.
+                          Lucro Real ≤ 0 ({formatCurrency(taxCalculation.lucroRealCalculado)}): IRPJ
+                          zerado. Gerado Prejuízo Fiscal de{' '}
+                          {formatCurrency(taxCalculation.valorPrejuizoFiscal)} para compensação
+                          futura.
                         </span>
                       ) : (
-                        `15% sobre o LAIR: Receita Bruta (${formatCurrency(taxCalculation.receitaBrutaTotal)}) − Captação (${formatCurrency(taxCalculation.despesasCaptacao)}) − Tarifas (${formatCurrency(taxCalculation.tarifasBancarias)}) = LAIR ${formatCurrency(taxCalculation.lair)}.`
+                        `15% sobre o Lucro Real: LAIR (${formatCurrency(taxCalculation.lair)}) + Adições LALUR (${formatCurrency(taxCalculation.adicaoFornecedoresSemNf)}) = Lucro Real ${formatCurrency(taxCalculation.lucroRealCalculado)}.`
                       )}
                     </TableCell>
                   </TableRow>
@@ -2255,7 +2395,7 @@ export function PeriodOperationsReportTab({
                     <TableCell className="font-semibold text-foreground flex items-center gap-1.5">
                       <Scale className="w-3.5 h-3.5 text-indigo-600" /> Adicional IRPJ (10%)
                     </TableCell>
-                    <TableCell>LAIR Excedente</TableCell>
+                    <TableCell>Lucro Real Excedente</TableCell>
                     <TableCell className="text-right font-mono">
                       {formatCurrency(taxCalculation.baseAdicionalIrpj)}
                     </TableCell>
@@ -2265,8 +2405,8 @@ export function PeriodOperationsReportTab({
                     </TableCell>
                     <TableCell className="text-muted-foreground text-[11px]">
                       {taxCalculation.isPrejuizoPeriodo
-                        ? 'Não incide adicional de IRPJ quando LAIR ≤ 0 (prejuízo fiscal).'
-                        : `10% estritamente sobre a parcela do LAIR que ultrapassar R$ ${taxCalculation.limiteExcedenteIrpj.toFixed(2)} (R$ 20.000 × ${taxCalculation.mesesFiltro} mês proporcional).`}
+                        ? 'Não incide adicional de IRPJ quando Lucro Real ≤ 0 (prejuízo fiscal).'
+                        : `10% estritamente sobre a parcela do Lucro Real que ultrapassar R$ ${taxCalculation.limiteExcedenteIrpj.toFixed(2)} (R$ 20.000 × ${taxCalculation.mesesFiltro} mês proporcional).`}
                     </TableCell>
                   </TableRow>
 
@@ -2275,11 +2415,11 @@ export function PeriodOperationsReportTab({
                     <TableCell className="font-semibold text-foreground flex items-center gap-1.5">
                       <Scale className="w-3.5 h-3.5 text-indigo-600" /> CSLL (9%)
                     </TableCell>
-                    <TableCell>Lucro Real (LAIR)</TableCell>
+                    <TableCell>Lucro Real (LALUR)</TableCell>
                     <TableCell className="text-right font-mono">
                       {taxCalculation.isPrejuizoPeriodo ? (
                         <span className="text-rose-600 font-medium">
-                          R$ 0,00 ({formatCurrency(taxCalculation.lair)})
+                          R$ 0,00 ({formatCurrency(taxCalculation.lucroRealCalculado)})
                         </span>
                       ) : (
                         formatCurrency(taxCalculation.baseLucroRealTributavel)
@@ -2292,12 +2432,13 @@ export function PeriodOperationsReportTab({
                     <TableCell className="text-muted-foreground text-[11px]">
                       {taxCalculation.isPrejuizoPeriodo ? (
                         <span className="text-rose-600 dark:text-rose-400 font-medium">
-                          LAIR ≤ 0 ({formatCurrency(taxCalculation.lair)}): CSLL zerada. Gerado
-                          Prejuízo Fiscal de {formatCurrency(taxCalculation.valorPrejuizoFiscal)}{' '}
-                          para compensação futura.
+                          Lucro Real ≤ 0 ({formatCurrency(taxCalculation.lucroRealCalculado)}): CSLL
+                          zerada. Gerado Prejuízo Fiscal de{' '}
+                          {formatCurrency(taxCalculation.valorPrejuizoFiscal)} para compensação
+                          futura.
                         </span>
                       ) : (
-                        `9% sobre o LAIR: ${formatCurrency(taxCalculation.lair)} × 0,09 = ${formatCurrency(taxCalculation.valorCsll)}.`
+                        `9% sobre o Lucro Real: ${formatCurrency(taxCalculation.lucroRealCalculado)} × 0,09 = ${formatCurrency(taxCalculation.valorCsll)}.`
                       )}
                     </TableCell>
                   </TableRow>
@@ -2326,7 +2467,7 @@ export function PeriodOperationsReportTab({
                     <TableCell className="text-muted-foreground text-[11px]">
                       {taxCalculation.isPrejuizoPeriodo
                         ? `NOTA: Gerado Prejuízo Fiscal de ${formatCurrency(taxCalculation.valorPrejuizoFiscal)} para compensação futura.`
-                        : `Total apurado sobre o LAIR operacional positivo (${formatCurrency(taxCalculation.lair)}).`}
+                        : `Total apurado sobre o Lucro Real positivo (${formatCurrency(taxCalculation.lucroRealCalculado)}).`}
                     </TableCell>
                   </TableRow>
 
@@ -2406,18 +2547,24 @@ export function PeriodOperationsReportTab({
               </div>
               <ul className="list-disc pl-5 space-y-1 text-[11.5px] leading-relaxed">
                 <li>
-                  <strong>Estrutura Oficial de Aquisições e LAIR:</strong> A apuração baseia-se no
-                  Resultado Operacional Líquido (LAIR): Receita Bruta Total (soma pro rata de
-                  deságio de títulos de recebíveis + CCBs/outros ganhos) deduzida das despesas de
-                  captação (juros de debêntures do período) e das tarifas bancárias de
-                  cobrança/custódia do período.
+                  <strong>Estrutura Oficial de Aquisições e LAIR:</strong> Receita Bruta Total (soma
+                  pro rata de deságio de títulos de recebíveis + CCBs/outros ganhos) deduzida de
+                  quatro linhas operacionais: Despesas de Captação (Juros de Debêntures), Tarifas
+                  Bancárias de Cobrança/Custódia, Fornecedores Operacionais (Sistemas, Serasa,
+                  Assinaturas) e Fornecedores Administrativos (Contador, Advogado, TI).
                 </li>
                 <li>
-                  <strong>Projeção de IRPJ (15% + 10%) e CSLL (9%):</strong> Se LAIR ≤ 0, IRPJ e
-                  CSLL são estritamente R$ 0,00, gerando prejuízo fiscal para compensação futura no
-                  LALUR (limite legal de 30% nos lucros subsequentes). Se LAIR &gt; 0, aplica-se 9%
-                  de CSLL, 15% de IRPJ Base e 10% de Adicional de IRPJ estritamente sobre a parcela
-                  do LAIR que exceder o limite de R$ 20.000,00 por mês proporcional do filtro.
+                  <strong>Ajustes Fiscais (LALUR) e Lucro Real:</strong> Gastos com fornecedores sem
+                  nota fiscal (recibos) são adicionados ao LAIR no LALUR para compor o Lucro Real
+                  oficial, servindo de base de cálculo do IRPJ e da CSLL.
+                </li>
+                <li>
+                  <strong>Projeção de IRPJ (15% + 10%) e CSLL (9%):</strong> Se Lucro Real ≤ 0, IRPJ
+                  e CSLL são estritamente R$ 0,00, gerando prejuízo fiscal para compensação futura
+                  no LALUR (limite legal de 30% nos lucros subsequentes). Se Lucro Real &gt; 0,
+                  aplica-se 9% de CSLL, 15% de IRPJ Base e 10% de Adicional de IRPJ estritamente
+                  sobre a parcela do Lucro Real que exceder o limite de R$ 20.000,00 por mês
+                  proporcional do filtro.
                 </li>
                 <li>
                   <strong>PIS (0,65%) e COFINS (4,00%):</strong> Calculados no regime cumulativo

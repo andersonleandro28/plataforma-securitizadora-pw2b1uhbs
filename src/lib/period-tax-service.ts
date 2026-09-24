@@ -21,17 +21,25 @@ export interface PeriodTaxCalculation {
   receitaBrutaCcbs: number
   receitaBrutaTotal: number
 
-  // Custos e Despesas Financeiras
+  // Custos e Despesas Operacionais (4 linhas dedutíveis do LAIR)
   despesasCaptacao: number // Juros de Debêntures do Período
   tarifasBancarias: number // Tarifas Bancárias de Cobrança/Custódia
-  totalCustosDespesasFinanceiras: number // despesasCaptacao + tarifasBancarias
+  fornecedoresOperacionais: number // Sistemas, Serasa, Assinaturas
+  fornecedoresAdministrativos: number // Contador, Advogado, TI
+  totalCustosDespesasOperacionais: number // Soma das 4 linhas acima
 
   // Resultado Operacional Líquido (LAIR)
-  // LAIR = Receita Bruta Total - Despesas de Captação - Tarifas Bancárias
+  // LAIR = Receita Bruta Total - Despesas Captação - Tarifas Bancárias - Fornec. Operacionais - Fornec. Administrativos
   lair: number
-  isPrejuizoPeriodo: boolean // true se lair <= 0
-  valorPrejuizoFiscal: number // Math.max(0, -lair) se lair <= 0
-  baseLucroRealTributavel: number // Math.max(0, lair) -> 0 se prejuízo
+
+  // Ajustes Fiscais para Base de Cálculo (LALUR)
+  adicaoFornecedoresSemNf: number // Gastos com Fornecedores sem Nota Fiscal (Recibos)
+
+  // Lucro Real (Base de Cálculo dos Impostos) = LAIR + Adição LALUR
+  lucroRealCalculado: number
+  isPrejuizoPeriodo: boolean // true se lucroRealCalculado <= 0
+  valorPrejuizoFiscal: number // Math.max(0, -lucroRealCalculado) se lucroRealCalculado <= 0
+  baseLucroRealTributavel: number // Math.max(0, lucroRealCalculado) -> 0 se prejuízo
 
   // Base PIS / COFINS (mantida: cumulativo, deduz captação, trava base negativa)
   basePisCofinsOriginal: number
@@ -50,20 +58,20 @@ export interface PeriodTaxCalculation {
   despesasDre: number
   lucroReal: number // Resultado oficial do DRE contábil
   captacoesDoPeriodo: number
-  lucroRealFiscal: number // mantido por compatibilidade com LAIR
+  lucroRealFiscal: number // mantido por compatibilidade
 
-  // IRPJ & CSLL (Projeção de Impostos Lucro Real baseada no LAIR)
+  // IRPJ & CSLL (Projeção de Impostos Lucro Real baseada no Lucro Real = LAIR + Adição LALUR)
   aliquotaIrpj: number // 0.15 (15%)
-  valorIrpjBase: number // 0 se lair <= 0, senão lair * 0.15
+  valorIrpjBase: number // 0 se lucroRealCalculado <= 0, senão lucroRealCalculado * 0.15
   mesesFiltro: number // Quantidade de meses cobertos pelo filtro (default 1)
   limiteExcedenteIrpj: number // 20000.00 * mesesFiltro
-  baseAdicionalIrpj: number // max(0, lair - limiteExcedenteIrpj) se lair > 0
+  baseAdicionalIrpj: number // max(0, lucroRealCalculado - limiteExcedenteIrpj) se lucroRealCalculado > 0
   aliquotaAdicionalIrpj: number // 0.10 (10%)
-  valorAdicionalIrpj: number // 0 se lair <= 0, senão baseAdicionalIrpj * 0.10
+  valorAdicionalIrpj: number // 0 se lucroRealCalculado <= 0, senão baseAdicionalIrpj * 0.10
   valorIrpjTotal: number // valorIrpjBase + valorAdicionalIrpj
 
   aliquotaCsll: number // 0.09 (9%)
-  valorCsll: number // 0 se lair <= 0, senão lair * 0.09
+  valorCsll: number // 0 se lucroRealCalculado <= 0, senão lucroRealCalculado * 0.09
 
   totalIrpjCsll: number
 
@@ -304,6 +312,9 @@ export async function fetchDreResultForPeriod(
   resultado: number
   totalCaptacoes: number
   totalTarifasBancarias: number
+  totalFornecedoresOperacionais: number
+  totalFornecedoresAdministrativos: number
+  totalFornecedoresSemNf: number
 }> {
   const [
     movsRes,
@@ -609,38 +620,160 @@ export async function fetchDreResultForPeriod(
     .filter((l) => l.tipo === 'despesa')
     .reduce((s, l) => s + l.valor, 0)
 
-  // Apuração oficial das Tarifas Bancárias de Cobrança / Custódia do período:
-  // Fontes oficiais deduplicadas existentes no DRE:
-  // 1. `expenses` pagas no período com categoria/descrição de tarifa ou custódia
-  // 2. `treasury_transactions` de saída (type='out') com categoria/descrição de tarifa não vinculadas ao expenses
+  /* ------------------------------------------------------------------ */
+  /* Classificação de Despesas Operacionais e Ajustes LALUR              */
+  /* ------------------------------------------------------------------ */
+  // Regras de exclusão mútua e classificação rigorosa conforme template oficial:
+  // 1. Tarifas Bancárias de Cobrança/Custódia:
+  //    Palavras-chave: tarifa, custodia, custódia, taxa banc, cesta de serviço, cesta de servicos, manutencao de conta
+  // 2. Fornecedores Operacionais (Sistemas, Serasa, Assinaturas):
+  //    Palavras-chave: sistema, serasa, assinatura, software, thecpay, plataforma, saas, licenca, tecnologia e consultoria, certif
+  // 3. Fornecedores Administrativos (Contador, Advogado, TI):
+  //    Palavras-chave: contador, contabilidade, advogado, juridico, jurídico, honorarios, honorários, ti, suporte ti, despesa admin, consultor, auditor
+  // 4. Exclusão mútua: se bateu em Tarifas, não entra em Operacionais nem Administrativos.
+  //    Se bateu em Operacionais, não entra em Administrativos.
+
+  const normalizeStr = (val: string | null | undefined): string => {
+    if (!val) return ''
+    return val
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+  }
+
   const isTarifaOrCustodia = (cat: string | null | undefined, desc: string | null | undefined) => {
-    const text = `${cat || ''} ${desc || ''}`.toLowerCase()
+    const text = normalizeStr(`${cat || ''} ${desc || ''}`)
     return (
       text.includes('tarifa') ||
       text.includes('custodia') ||
-      text.includes('custódia') ||
-      text.includes('taxa banc')
+      text.includes('taxa banc') ||
+      text.includes('cesta de servico') ||
+      text.includes('manutencao de conta')
     )
   }
 
+  const isFornecedorOperacional = (
+    cat: string | null | undefined,
+    desc: string | null | undefined,
+  ) => {
+    const text = normalizeStr(`${cat || ''} ${desc || ''}`)
+    return (
+      text.includes('sistema') ||
+      text.includes('serasa') ||
+      text.includes('assinatura') ||
+      text.includes('softwa') || // software / softwere
+      text.includes('thecpay') ||
+      text.includes('plataforma') ||
+      text.includes('saas') ||
+      text.includes('licenca') ||
+      text.includes('tecnologia e consultoria') ||
+      text.includes('certificado digital')
+    )
+  }
+
+  const isFornecedorAdministrativo = (
+    cat: string | null | undefined,
+    desc: string | null | undefined,
+  ) => {
+    const text = normalizeStr(`${cat || ''} ${desc || ''}`)
+    return (
+      text.includes('contador') ||
+      text.includes('contabil') ||
+      text.includes('advogad') ||
+      text.includes('juridic') ||
+      text.includes('honorari') ||
+      text.includes('consultor') ||
+      text.includes('auditor') ||
+      text.includes('despesa admin') ||
+      text.includes('despesas admin') ||
+      text.includes('administrati') ||
+      text.includes('suporte ti') ||
+      text.includes('ti ') ||
+      text.endsWith(' ti')
+    )
+  }
+
+  // Identificação de fornecedor sem Nota Fiscal (recibo simples / sem invoice_file_path anexado):
+  // O sistema armazena a nota fiscal no campo `invoice_file_path` de `expenses`.
+  // Se `invoice_file_path` for nulo, vazio ou indicar recibo, considera-se "Gastos com Fornecedores sem Nota Fiscal (Recibos)".
+  const isSemNotaFiscal = (
+    invoiceFilePath: string | null | undefined,
+    desc: string | null | undefined,
+  ) => {
+    if (!invoiceFilePath || invoiceFilePath.trim() === '') return true
+    const text = normalizeStr(desc)
+    if (text.includes('recibo') && !text.includes('nota fiscal') && !text.includes('nf-e')) {
+      return true
+    }
+    return false
+  }
+
   let totalTarifasBancarias = 0
-  ;(expsRes.data || []).forEach((exp) => {
+  let totalFornecedoresOperacionais = 0
+  let totalFornecedoresAdministrativos = 0
+  let totalFornecedoresSemNf = 0
+
+  // 1. Despesas pagas em `expenses`
+  ;(expsRes.data || []).forEach((exp: any) => {
     if (exp.status !== 'paid') return
     const dataLanc = normalizeDate(exp.payment_date || exp.due_date)
     if (dataLanc < inicio || dataLanc > fim) return
+
+    const amount = Number(exp.amount || 0)
+    if (amount <= 0) return
+
     if (isTarifaOrCustodia(exp.category, exp.description)) {
-      totalTarifasBancarias += Number(exp.amount || 0)
+      totalTarifasBancarias += amount
+    } else if (isFornecedorOperacional(exp.category, exp.description)) {
+      totalFornecedoresOperacionais += amount
+      if (isSemNotaFiscal(exp.invoice_file_path, exp.description)) {
+        totalFornecedoresSemNf += amount
+      }
+    } else if (isFornecedorAdministrativo(exp.category, exp.description)) {
+      totalFornecedoresAdministrativos += amount
+      if (isSemNotaFiscal(exp.invoice_file_path, exp.description)) {
+        totalFornecedoresSemNf += amount
+      }
+    } else {
+      // Outras despesas administrativas ou operacionais gerais de fornecedores
+      const sup = Array.isArray(exp.suppliers) ? exp.suppliers[0] : exp.suppliers
+      const isSupplier = Boolean(exp.supplier_id || sup?.company_name)
+      if (isSupplier || (exp.category || '').toLowerCase().includes('despesa')) {
+        totalFornecedoresAdministrativos += amount
+        if (isSemNotaFiscal(exp.invoice_file_path, exp.description)) {
+          totalFornecedoresSemNf += amount
+        }
+      }
     }
   })
 
-  ;(tresRes.data || []).forEach((t) => {
+  // 2. Transações de tesouraria de saída (type = 'out') não deduplicadas em `expenses`
+  ;(tresRes.data || []).forEach((t: any) => {
     if (t.type !== 'out') return
     if (isTaxProvisionTransaction(t)) return
     if (t.expense_id && expenseIdsInDre.has(t.expense_id)) return
     const dataLanc = normalizeDate(t.date)
     if (dataLanc < inicio || dataLanc > fim) return
+
+    const amount = Number(t.amount || 0)
+    if (amount <= 0) return
+
+    // Desconsidera resgates de investidores e provisões
+    const catLow = normalizeStr(t.category)
+    if (catLow.includes('resgate') || catLow.includes('imposto')) {
+      return
+    }
+
     if (isTarifaOrCustodia(t.category, t.description)) {
-      totalTarifasBancarias += Number(t.amount || 0)
+      totalTarifasBancarias += amount
+    } else if (isFornecedorOperacional(t.category, t.description)) {
+      totalFornecedoresOperacionais += amount
+      // Transações diretas da tesouraria não possuem vínculo de anexo de NF
+      totalFornecedoresSemNf += amount
+    } else if (isFornecedorAdministrativo(t.category, t.description)) {
+      totalFornecedoresAdministrativos += amount
+      totalFornecedoresSemNf += amount
     }
   })
 
@@ -650,6 +783,9 @@ export async function fetchDreResultForPeriod(
     resultado: totalReceitas - totalDespesas,
     totalCaptacoes,
     totalTarifasBancarias,
+    totalFornecedoresOperacionais,
+    totalFornecedoresAdministrativos,
+    totalFornecedoresSemNf,
   }
 }
 
@@ -669,6 +805,9 @@ export function calculatePeriodTaxes(params: {
   receitaBrutaCcbs: number
   despesasCaptacao: number
   tarifasBancarias?: number
+  fornecedoresOperacionais?: number
+  fornecedoresAdministrativos?: number
+  adicaoFornecedoresSemNf?: number
   mesesFiltro?: number
   lucroReal?: number
   captacoesDoPeriodo?: number
@@ -680,6 +819,9 @@ export function calculatePeriodTaxes(params: {
     receitaBrutaCcbs,
     despesasCaptacao,
     tarifasBancarias = 0,
+    fornecedoresOperacionais = 0,
+    fornecedoresAdministrativos = 0,
+    adicaoFornecedoresSemNf = 0,
     mesesFiltro = 1,
     lucroReal = 0,
     captacoesDoPeriodo = 0,
@@ -689,23 +831,40 @@ export function calculatePeriodTaxes(params: {
 
   const safeMesesFiltro = Math.max(1, mesesFiltro)
   const safeTarifas = Math.max(0, Number(tarifasBancarias || 0))
+  const safeFornecOperacionais = Math.max(0, Number(fornecedoresOperacionais || 0))
+  const safeFornecAdministrativos = Math.max(0, Number(fornecedoresAdministrativos || 0))
+  const safeAdicaoSemNf = Math.max(0, Number(adicaoFornecedoresSemNf || 0))
   const safeCaptacoes = Number(captacoesDoPeriodo || 0)
 
   // (+) RECEITAS DA OPERAÇÃO
   const receitaBrutaTotal = Math.max(0, receitaBrutaRecebiveis + receitaBrutaCcbs)
 
-  // (-) CUSTOS E DESPESAS FINANCEIRAS
-  const totalCustosDespesasFinanceiras = despesasCaptacao + safeTarifas
+  // (-) CUSTOS E DESPESAS OPERACIONAIS
+  // ↳ (-) Despesas de Captação (Juros de Debêntures)
+  // ↳ (-) Tarifas Bancárias de Cobrança/Custódia
+  // ↳ (-) Fornecedores Operacionais (Sistemas, Serasa, Assinaturas)
+  // ↳ (-) Fornecedores Administrativos (Contador, Advogado, TI)
+  const totalCustosDespesasOperacionais =
+    despesasCaptacao + safeTarifas + safeFornecOperacionais + safeFornecAdministrativos
 
   // (=) RESULTADO OPERACIONAL LÍQUIDO (LAIR)
-  // Receita Bruta Total MENOS despesas de captação MENOS tarifas bancárias de cobrança/custódia
-  const lair = receitaBrutaTotal - despesasCaptacao - safeTarifas
-  const isPrejuizoPeriodo = lair <= 0
-  const valorPrejuizoFiscal = isPrejuizoPeriodo ? Math.abs(lair) : 0
-  const baseLucroRealTributavel = isPrejuizoPeriodo ? 0 : lair
-  const lucroRealFiscal = lair // A base tributária de IRPJ/CSLL passa a ser o LAIR
+  const lair =
+    receitaBrutaTotal -
+    despesasCaptacao -
+    safeTarifas -
+    safeFornecOperacionais -
+    safeFornecAdministrativos
 
-  // PIS / COFINS CUMULATIVOS (mantidos: dedução de despesas de captação da base e trava de base negativa)
+  // AJUSTES FISCAIS PARA BASE DE CÁLCULO (LALUR)
+  // (+) Adição: Gastos com Fornecedores sem Nota Fiscal (Recibos)
+  // (=) LUCRO REAL (BASE DE CÁLCULO DOS IMPOSTOS): LAIR + Adição
+  const lucroRealCalculado = lair + safeAdicaoSemNf
+  const isPrejuizoPeriodo = lucroRealCalculado <= 0
+  const valorPrejuizoFiscal = isPrejuizoPeriodo ? Math.abs(lucroRealCalculado) : 0
+  const baseLucroRealTributavel = isPrejuizoPeriodo ? 0 : lucroRealCalculado
+  const lucroRealFiscal = lucroRealCalculado
+
+  // PIS / COFINS CUMULATIVOS (mantidos estritamente intactos: cumulativo, deduz captação, trava base negativa)
   const basePisCofinsOriginal = receitaBrutaTotal - despesasCaptacao
   const basePisCofins = Math.max(0, basePisCofinsOriginal)
   const baseNegativaAviso = basePisCofinsOriginal < 0
@@ -717,8 +876,8 @@ export function calculatePeriodTaxes(params: {
   const totalPisCofins = valorPis + valorCofins
 
   // PROJEÇÃO DE IMPOSTOS (LUCRO REAL)
-  // Se LAIR <= 0: IRPJ = 0, CSLL = 0
-  // Se LAIR > 0: CSLL 9%, IRPJ Base 15%, Adicional 10% sobre excedente a R$ 20.000 × N meses
+  // Se LUCRO REAL <= 0: IRPJ = 0, CSLL = 0, NOTA: Gerado Prejuízo Fiscal de [Valor] para compensação futura.
+  // Se LUCRO REAL > 0: CSLL 9%, IRPJ Base 15%, Adicional 10% sobre excedente a R$ 20.000 × N meses
   const aliquotaIrpj = 0.15
   const valorIrpjBase = isPrejuizoPeriodo ? 0 : baseLucroRealTributavel * aliquotaIrpj
 
@@ -731,7 +890,7 @@ export function calculatePeriodTaxes(params: {
   const valorAdicionalIrpj = isPrejuizoPeriodo ? 0 : baseAdicionalIrpj * aliquotaAdicionalIrpj
   const valorIrpjTotal = valorIrpjBase + valorAdicionalIrpj
 
-  // CSLL: 9% sobre LAIR (zerado se LAIR <= 0)
+  // CSLL: 9% sobre Lucro Real tributável (zerado se Lucro Real <= 0)
   const aliquotaCsll = 0.09
   const valorCsll = isPrejuizoPeriodo ? 0 : baseLucroRealTributavel * aliquotaCsll
   const totalIrpjCsll = valorIrpjTotal + valorCsll
@@ -746,8 +905,12 @@ export function calculatePeriodTaxes(params: {
     receitaBrutaTotal,
     despesasCaptacao,
     tarifasBancarias: safeTarifas,
-    totalCustosDespesasFinanceiras,
+    fornecedoresOperacionais: safeFornecOperacionais,
+    fornecedoresAdministrativos: safeFornecAdministrativos,
+    totalCustosDespesasOperacionais,
     lair,
+    adicaoFornecedoresSemNf: safeAdicaoSemNf,
+    lucroRealCalculado,
     isPrejuizoPeriodo,
     valorPrejuizoFiscal,
     baseLucroRealTributavel,
