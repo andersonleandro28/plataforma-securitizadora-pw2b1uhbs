@@ -36,12 +36,14 @@ export interface PeriodTaxCalculation {
   valorCofins: number
   totalPisCofins: number
 
-  // Lucro Real (DRE do Período)
+  // Lucro Real (DRE do Período e Lucro Real Fiscal)
   receitasDre: number
   despesasDre: number
   lucroReal: number // Resultado oficial do DRE (pode ser positivo ou negativo)
-  baseLucroRealTributavel: number // Math.max(0, lucroReal) -> 0 se prejuízo
-  isPrejuizoPeriodo: boolean // true se lucroReal <= 0
+  captacoesDoPeriodo: number // Captações do período (funding/passivo, não é receita tributável)
+  lucroRealFiscal: number // lucroReal - captacoesDoPeriodo (base fiscal de IRPJ/CSLL)
+  baseLucroRealTributavel: number // Math.max(0, lucroRealFiscal) -> 0 se prejuízo
+  isPrejuizoPeriodo: boolean // true se lucroRealFiscal <= 0
 
   // IRPJ & CSLL
   aliquotaIrpj: number // 0.15 (15%)
@@ -288,7 +290,12 @@ export async function fetchInvestorYieldsForMonth(selectedMonth: string): Promis
 export async function fetchDreResultForPeriod(
   inicio: string,
   fim: string,
-): Promise<{ totalReceitas: number; totalDespesas: number; resultado: number }> {
+): Promise<{
+  totalReceitas: number
+  totalDespesas: number
+  resultado: number
+  totalCaptacoes: number
+}> {
   const [
     movsRes,
     subsRes,
@@ -464,13 +471,16 @@ export async function fetchDreResultForPeriod(
   const rawSubs = (subsRes.data || []) as CaptacoesRawSubscription[]
   const captacoes = getConsolidatedCaptacoes(rawInvs, rawSubs)
 
+  let totalCaptacoes = 0
   captacoes.forEach((cap) => {
     if (cap.date < inicio || cap.date > fim) return
+    const valorCap = Number(cap.valor || 0)
+    totalCaptacoes += valorCap
     lancamentos.push({
       id: cap.id,
       date: cap.date,
       tipo: 'receita',
-      valor: cap.valor,
+      valor: valorCap,
     })
   })
 
@@ -594,6 +604,7 @@ export async function fetchDreResultForPeriod(
     totalReceitas,
     totalDespesas,
     resultado: totalReceitas - totalDespesas,
+    totalCaptacoes,
   }
 }
 
@@ -605,6 +616,7 @@ export function calculatePeriodTaxes(params: {
   receitaBrutaCcbs: number
   despesasCaptacao: number
   lucroReal: number
+  captacoesDoPeriodo?: number
   receitasDre: number
   despesasDre: number
 }): PeriodTaxCalculation {
@@ -613,6 +625,7 @@ export function calculatePeriodTaxes(params: {
     receitaBrutaCcbs,
     despesasCaptacao,
     lucroReal,
+    captacoesDoPeriodo = 0,
     receitasDre,
     despesasDre,
   } = params
@@ -628,16 +641,20 @@ export function calculatePeriodTaxes(params: {
   const valorCofins = basePisCofins * aliquotaCofins
   const totalPisCofins = valorPis + valorCofins
 
-  // Lucro Real e IRPJ / CSLL:
-  // Se o período fecha em PREJUÍZO (lucroReal <= 0), não há lucro real tributável:
+  // Lucro Real Fiscal e IRPJ / CSLL:
+  // Captação de debêntures é funding/passivo (não é receita operacional tributável).
+  // Deduz as captações do resultado DRE para obter o Lucro Real Fiscal.
+  // Se o período fecha em PREJUÍZO FISCAL (lucroRealFiscal <= 0), não há lucro real tributável:
   // IRPJ Básico, Adicional de IRPJ e CSLL devem ser estritamente ZERADOS (R$ 0,00).
-  const isPrejuizoPeriodo = lucroReal <= 0
-  const baseLucroRealTributavel = isPrejuizoPeriodo ? 0 : lucroReal
+  const safeCaptacoes = Number(captacoesDoPeriodo || 0)
+  const lucroRealFiscal = lucroReal - safeCaptacoes
+  const isPrejuizoPeriodo = lucroRealFiscal <= 0
+  const baseLucroRealTributavel = isPrejuizoPeriodo ? 0 : lucroRealFiscal
 
   const aliquotaIrpj = 0.15
   const valorIrpjBase = isPrejuizoPeriodo ? 0 : baseLucroRealTributavel * aliquotaIrpj
 
-  // Adicional de IRPJ: 10% sobre a parcela do lucro que exceder R$ 20.000,00 por mês
+  // Adicional de IRPJ: 10% sobre a parcela do lucro fiscal que exceder R$ 20.000,00 por mês
   const limiteExcedenteIrpj = 20000.0
   const baseAdicionalIrpj = isPrejuizoPeriodo
     ? 0
@@ -646,7 +663,7 @@ export function calculatePeriodTaxes(params: {
   const valorAdicionalIrpj = isPrejuizoPeriodo ? 0 : baseAdicionalIrpj * aliquotaAdicionalIrpj
   const valorIrpjTotal = valorIrpjBase + valorAdicionalIrpj
 
-  // CSLL: 9% sobre o Lucro Real (zerado se prejuízo)
+  // CSLL: 9% sobre o Lucro Real Fiscal (zerado se prejuízo)
   const aliquotaCsll = 0.09
   const valorCsll = isPrejuizoPeriodo ? 0 : baseLucroRealTributavel * aliquotaCsll
   const totalIrpjCsll = valorIrpjTotal + valorCsll
@@ -671,6 +688,8 @@ export function calculatePeriodTaxes(params: {
     receitasDre,
     despesasDre,
     lucroReal,
+    captacoesDoPeriodo: safeCaptacoes,
+    lucroRealFiscal,
     baseLucroRealTributavel,
     isPrejuizoPeriodo,
     aliquotaIrpj,

@@ -151,10 +151,12 @@ export function PeriodOperationsReportTab({
     totalReceitas: number
     totalDespesas: number
     resultado: number
+    totalCaptacoes: number
   }>({
     totalReceitas: 0,
     totalDespesas: 0,
     resultado: 0,
+    totalCaptacoes: 0,
   })
 
   // Competência selecionada (formato YYYY-MM)
@@ -522,6 +524,7 @@ export function PeriodOperationsReportTab({
       receitaBrutaCcbs: ccbTotals.discount,
       despesasCaptacao,
       lucroReal: dreResult.resultado,
+      captacoesDoPeriodo: dreResult.totalCaptacoes || 0,
       receitasDre: dreResult.totalReceitas,
       despesasDre: dreResult.totalDespesas,
     })
@@ -770,12 +773,12 @@ export function PeriodOperationsReportTab({
 
     rows.push({
       'Tipo Operação': 'APURAÇÃO TRIBUTÁRIA DA SECURITIZADORA',
-      'Contrato / ID': 'Lucro Real do Período (DRE Oficial)',
-      'Data Operação': 'Base IRPJ / CSLL',
+      'Contrato / ID': 'Lucro Real do DRE Oficial',
+      'Data Operação': 'Resultado Contábil DRE',
       'Vencimento Final': '—',
       'Cedente / Tomador': `Receitas: R$ ${taxCalculation.receitasDre.toFixed(2)} | Despesas: R$ ${taxCalculation.despesasDre.toFixed(2)}`,
       'CPF/CNPJ Cedente': '—',
-      'Regime Tributário': 'Lucro Real',
+      'Regime Tributário': 'DRE Consolidado',
       'Sacado / Devedor': '—',
       'CPF/CNPJ Sacado': '—',
       Parcelas: '—',
@@ -785,21 +788,64 @@ export function PeriodOperationsReportTab({
       'Deságio (%)': '—',
       'Taxa Efetiva / CET (%)': '—',
       'IOF Retido (R$)': '—',
+      Status:
+        taxCalculation.lucroReal <= 0
+          ? `Prejuízo Contábil (R$ ${taxCalculation.lucroReal.toFixed(2)})`
+          : 'Lucro Contábil',
+    })
+
+    rows.push({
+      'Tipo Operação': 'APURAÇÃO TRIBUTÁRIA DA SECURITIZADORA',
+      'Contrato / ID': 'Captações de Debêntures no Período (Funding)',
+      'Data Operação': 'Exclusão da Base Fiscal',
+      'Vencimento Final': '—',
+      'Cedente / Tomador': 'Captação de recursos é passivo/funding, NÃO receita',
+      'CPF/CNPJ Cedente': '—',
+      'Regime Tributário': 'Ajuste Fiscal',
+      'Sacado / Devedor': '—',
+      'CPF/CNPJ Sacado': '—',
+      Parcelas: '—',
+      'Preço de Face (R$)': '—',
+      'Preço Pago / Aquisição (R$)': '—',
+      'Deságio Nominal (R$)': (-taxCalculation.captacoesDoPeriodo).toFixed(2),
+      'Deságio (%)': '—',
+      'Taxa Efetiva / CET (%)': '—',
+      'IOF Retido (R$)': '—',
+      Status: 'Excluído de IRPJ/CSLL',
+    })
+
+    rows.push({
+      'Tipo Operação': 'APURAÇÃO TRIBUTÁRIA DA SECURITIZADORA',
+      'Contrato / ID': 'Lucro Real Fiscal (Base IRPJ / CSLL)',
+      'Data Operação': 'Lucro Real DRE − Captações',
+      'Vencimento Final': '—',
+      'Cedente / Tomador': `Lucro Real (DRE) R$ ${taxCalculation.lucroReal.toFixed(2)} − Captações R$ ${taxCalculation.captacoesDoPeriodo.toFixed(2)} = Lucro Real Fiscal R$ ${taxCalculation.lucroRealFiscal.toFixed(2)}`,
+      'CPF/CNPJ Cedente': '—',
+      'Regime Tributário': 'Lucro Real Fiscal',
+      'Sacado / Devedor': '—',
+      'CPF/CNPJ Sacado': '—',
+      Parcelas: '—',
+      'Preço de Face (R$)': '—',
+      'Preço Pago / Aquisição (R$)': '—',
+      'Deságio Nominal (R$)': taxCalculation.lucroRealFiscal.toFixed(2),
+      'Deságio (%)': '—',
+      'Taxa Efetiva / CET (%)': '—',
+      'IOF Retido (R$)': '—',
       Status: taxCalculation.isPrejuizoPeriodo
-        ? `Prejuízo (R$ ${taxCalculation.lucroReal.toFixed(2)})`
-        : 'Lucro Real Positivo',
+        ? `Prejuízo Fiscal (R$ ${taxCalculation.lucroRealFiscal.toFixed(2)})`
+        : 'Lucro Real Fiscal Positivo',
     })
 
     rows.push({
       'Tipo Operação': 'TRIBUTO: IRPJ BÁSICO',
       'Contrato / ID': 'IRPJ Básico (15%)',
       'Data Operação': taxCalculation.isPrejuizoPeriodo
-        ? `Prejuízo: R$ ${taxCalculation.lucroReal.toFixed(2)} (Base: R$ 0,00)`
-        : `Base: R$ ${taxCalculation.baseLucroRealTributavel.toFixed(2)}`,
+        ? `Prejuízo Fiscal: R$ ${taxCalculation.lucroRealFiscal.toFixed(2)} (Base: R$ 0,00)`
+        : `Base Fiscal: R$ ${taxCalculation.baseLucroRealTributavel.toFixed(2)}`,
       'Vencimento Final': '—',
       'Cedente / Tomador': taxCalculation.isPrejuizoPeriodo
-        ? 'Período em prejuízo — IRPJ Zerado'
-        : 'IRPJ sobre Lucro Real',
+        ? 'Período em prejuízo fiscal — IRPJ Zerado'
+        : 'IRPJ sobre Lucro Real Fiscal',
       'CPF/CNPJ Cedente': '—',
       'Regime Tributário': '15,00%',
       'Sacado / Devedor': '—',
@@ -818,10 +864,10 @@ export function PeriodOperationsReportTab({
       'Tipo Operação': 'TRIBUTO: ADICIONAL DE IRPJ',
       'Contrato / ID': 'Adicional IRPJ (10%)',
       'Data Operação': taxCalculation.isPrejuizoPeriodo
-        ? 'Período em prejuízo (Não incide)'
+        ? 'Período em prejuízo fiscal (Não incide)'
         : `Excedente > R$ 20.000: R$ ${taxCalculation.baseAdicionalIrpj.toFixed(2)}`,
       'Vencimento Final': '—',
-      'Cedente / Tomador': '10% sobre excedente a R$ 20.000/mês',
+      'Cedente / Tomador': '10% sobre excedente fiscal a R$ 20.000/mês',
       'CPF/CNPJ Cedente': '—',
       'Regime Tributário': '10,00%',
       'Sacado / Devedor': '—',
@@ -840,12 +886,12 @@ export function PeriodOperationsReportTab({
       'Tipo Operação': 'TRIBUTO: CSLL',
       'Contrato / ID': 'CSLL (9%)',
       'Data Operação': taxCalculation.isPrejuizoPeriodo
-        ? `Prejuízo: R$ ${taxCalculation.lucroReal.toFixed(2)} (Base: R$ 0,00)`
-        : `Base: R$ ${taxCalculation.baseLucroRealTributavel.toFixed(2)}`,
+        ? `Prejuízo Fiscal: R$ ${taxCalculation.lucroRealFiscal.toFixed(2)} (Base: R$ 0,00)`
+        : `Base Fiscal: R$ ${taxCalculation.baseLucroRealTributavel.toFixed(2)}`,
       'Vencimento Final': '—',
       'Cedente / Tomador': taxCalculation.isPrejuizoPeriodo
-        ? 'Período em prejuízo — CSLL Zerada'
-        : 'CSLL sobre Lucro Real',
+        ? 'Período em prejuízo fiscal — CSLL Zerada'
+        : 'CSLL sobre Lucro Real Fiscal',
       'CPF/CNPJ Cedente': '—',
       'Regime Tributário': '9,00%',
       'Sacado / Devedor': '—',
@@ -1774,18 +1820,29 @@ export function PeriodOperationsReportTab({
               </div>
             )}
 
-            {/* Alerta se o período fechou em prejuízo */}
+            {/* Alerta se o período fechou em prejuízo fiscal */}
             {taxCalculation.isPrejuizoPeriodo && (
-              <div className="p-3 rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-950/20 text-rose-900 dark:text-rose-200 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-                <span>
-                  <strong>Resultado em Prejuízo:</strong> O resultado contábil do período fechou
-                  negativo em <strong>{formatCurrency(taxCalculation.lucroReal)} (prejuízo)</strong>
+              <div className="p-3.5 rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-950/20 text-rose-900 dark:text-rose-200 text-xs space-y-1.5">
+                <div className="flex items-center gap-2 font-semibold">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>Resultado Fiscal em Prejuízo</span>
+                </div>
+                <p className="leading-relaxed">
+                  O <strong>Lucro Real Fiscal</strong> do período fechou em{' '}
+                  <strong>
+                    {formatCurrency(taxCalculation.lucroRealFiscal)} (prejuízo fiscal)
+                  </strong>
                   . Sem a existência de lucro real tributável, os tributos de{' '}
                   <strong>IRPJ Básico (15%)</strong>, <strong>Adicional de IRPJ (10%)</strong> e{' '}
                   <strong>CSLL (9%)</strong> foram integralmente <strong>zerados (R$ 0,00)</strong>{' '}
                   para esta competência.
-                </span>
+                </p>
+                <div className="text-[11px] text-rose-800 dark:text-rose-300 bg-rose-100/60 dark:bg-rose-900/30 p-2 rounded border border-rose-200/60 font-mono">
+                  Composição da Base: Lucro Real (DRE) {formatCurrency(taxCalculation.lucroReal)} −
+                  Captações do período (funding, não é receita){' '}
+                  {formatCurrency(taxCalculation.captacoesDoPeriodo)} = Lucro Real Fiscal{' '}
+                  {formatCurrency(taxCalculation.lucroRealFiscal)}
+                </div>
               </div>
             )}
 
@@ -1868,11 +1925,11 @@ export function PeriodOperationsReportTab({
                     <TableCell className="font-semibold text-foreground flex items-center gap-1.5">
                       <Scale className="w-3.5 h-3.5 text-indigo-600" /> IRPJ (Básico)
                     </TableCell>
-                    <TableCell>Lucro Real</TableCell>
+                    <TableCell>Lucro Real Fiscal</TableCell>
                     <TableCell className="text-right font-mono">
                       {taxCalculation.isPrejuizoPeriodo ? (
                         <span className="text-rose-600 font-medium">
-                          R$ 0,00 ({formatCurrency(taxCalculation.lucroReal)})
+                          R$ 0,00 ({formatCurrency(taxCalculation.lucroRealFiscal)})
                         </span>
                       ) : (
                         formatCurrency(taxCalculation.baseLucroRealTributavel)
@@ -1885,11 +1942,16 @@ export function PeriodOperationsReportTab({
                     <TableCell className="text-muted-foreground text-[11px]">
                       {taxCalculation.isPrejuizoPeriodo ? (
                         <span className="text-rose-600 dark:text-rose-400 font-medium">
-                          Período em prejuízo ({formatCurrency(taxCalculation.lucroReal)}): IRPJ
-                          zerado por ausência de lucro real.
+                          Período em prejuízo fiscal (
+                          {formatCurrency(taxCalculation.lucroRealFiscal)}): IRPJ zerado por
+                          ausência de lucro real fiscal tributável. Lucro Real (DRE){' '}
+                          {formatCurrency(taxCalculation.lucroReal)} − Captações do período
+                          (funding, não é receita){' '}
+                          {formatCurrency(taxCalculation.captacoesDoPeriodo)} = Lucro Real Fiscal{' '}
+                          {formatCurrency(taxCalculation.lucroRealFiscal)}.
                         </span>
                       ) : (
-                        `15% sobre o Lucro Real apurado no DRE oficial do período (${formatCurrency(taxCalculation.lucroReal)}).`
+                        `15% sobre o Lucro Real Fiscal: Lucro Real (DRE) ${formatCurrency(taxCalculation.lucroReal)} − Captações do período (funding, não é receita) ${formatCurrency(taxCalculation.captacoesDoPeriodo)} = Lucro Real Fiscal ${formatCurrency(taxCalculation.lucroRealFiscal)}.`
                       )}
                     </TableCell>
                   </TableRow>
@@ -1910,7 +1972,7 @@ export function PeriodOperationsReportTab({
                     <TableCell className="text-muted-foreground text-[11px]">
                       {taxCalculation.isPrejuizoPeriodo
                         ? 'Não incide adicional de IRPJ em período com prejuízo fiscal.'
-                        : 'Adicional de 10% cobrado sobre a parcela do Lucro Real mensal que ultrapassar o limite de R$ 20.000,00.'}
+                        : 'Adicional de 10% cobrado sobre a parcela do Lucro Real Fiscal mensal que ultrapassar o limite de R$ 20.000,00.'}
                     </TableCell>
                   </TableRow>
 
@@ -1919,11 +1981,11 @@ export function PeriodOperationsReportTab({
                     <TableCell className="font-semibold text-foreground flex items-center gap-1.5">
                       <Scale className="w-3.5 h-3.5 text-indigo-600" /> CSLL
                     </TableCell>
-                    <TableCell>Lucro Real</TableCell>
+                    <TableCell>Lucro Real Fiscal</TableCell>
                     <TableCell className="text-right font-mono">
                       {taxCalculation.isPrejuizoPeriodo ? (
                         <span className="text-rose-600 font-medium">
-                          R$ 0,00 ({formatCurrency(taxCalculation.lucroReal)})
+                          R$ 0,00 ({formatCurrency(taxCalculation.lucroRealFiscal)})
                         </span>
                       ) : (
                         formatCurrency(taxCalculation.baseLucroRealTributavel)
@@ -1936,11 +1998,16 @@ export function PeriodOperationsReportTab({
                     <TableCell className="text-muted-foreground text-[11px]">
                       {taxCalculation.isPrejuizoPeriodo ? (
                         <span className="text-rose-600 dark:text-rose-400 font-medium">
-                          Período em prejuízo ({formatCurrency(taxCalculation.lucroReal)}): CSLL
-                          zerada por ausência de lucro real.
+                          Período em prejuízo fiscal (
+                          {formatCurrency(taxCalculation.lucroRealFiscal)}): CSLL zerada por
+                          ausência de lucro real fiscal tributável. Lucro Real (DRE){' '}
+                          {formatCurrency(taxCalculation.lucroReal)} − Captações do período
+                          (funding, não é receita){' '}
+                          {formatCurrency(taxCalculation.captacoesDoPeriodo)} = Lucro Real Fiscal{' '}
+                          {formatCurrency(taxCalculation.lucroRealFiscal)}.
                         </span>
                       ) : (
-                        '9% sobre a apuração do Lucro Real contábil do período.'
+                        `9% sobre o Lucro Real Fiscal: Lucro Real (DRE) ${formatCurrency(taxCalculation.lucroReal)} − Captações do período (funding, não é receita) ${formatCurrency(taxCalculation.captacoesDoPeriodo)} = Lucro Real Fiscal ${formatCurrency(taxCalculation.lucroRealFiscal)}.`
                       )}
                     </TableCell>
                   </TableRow>
@@ -1956,7 +2023,8 @@ export function PeriodOperationsReportTab({
                     <TableCell className="text-right font-mono">
                       {taxCalculation.isPrejuizoPeriodo ? (
                         <span className="text-rose-600 font-medium">
-                          R$ 0,00 (Prejuízo: {formatCurrency(taxCalculation.lucroReal)})
+                          R$ 0,00 (Prejuízo Fiscal: {formatCurrency(taxCalculation.lucroRealFiscal)}
+                          )
                         </span>
                       ) : (
                         formatCurrency(taxCalculation.baseLucroRealTributavel)
@@ -1967,11 +2035,13 @@ export function PeriodOperationsReportTab({
                       {formatCurrency(taxCalculation.totalIrpjCsll)}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-[11px]">
-                      Resultado contábil oficial apurado pelo DRE: receitas (
-                      {formatCurrency(taxCalculation.receitasDre)}) − despesas (
-                      {formatCurrency(taxCalculation.despesasDre)}).
+                      Lucro Real (DRE) {formatCurrency(taxCalculation.lucroReal)} (receitas{' '}
+                      {formatCurrency(taxCalculation.receitasDre)} − despesas{' '}
+                      {formatCurrency(taxCalculation.despesasDre)}) − Captações do período (funding,
+                      não é receita) {formatCurrency(taxCalculation.captacoesDoPeriodo)} = Lucro
+                      Real Fiscal {formatCurrency(taxCalculation.lucroRealFiscal)}.
                       {taxCalculation.isPrejuizoPeriodo &&
-                        ' Tributos zerados devido ao prejuízo do período.'}
+                        ' Tributos zerados devido ao prejuízo fiscal do período.'}
                     </TableCell>
                   </TableRow>
 
@@ -2060,12 +2130,12 @@ export function PeriodOperationsReportTab({
                 </li>
                 <li>
                   <strong>IRPJ (15% + 10% adicional) e CSLL (9%):</strong> Apurados com base no
-                  Lucro Real efetivo do período oriundo do Demonstrativo de Resultado do Exercício
-                  (DRE oficial consolidado), respeitando as deduplicações vigentes (despesas pagas,
-                  aportes na data real, recebimento de CCBs e exclusão de transferências internas).
-                  Em competências que encerram com resultado negativo (prejuízo contábil/fiscal),
-                  não há lucro real tributável e os impostos correspondentes são exibidos
-                  estritamente zerados (R$ 0,00).
+                  Lucro Real Fiscal do período: Lucro Real apurado no DRE oficial deduzido das
+                  captações de debêntures do período (funding/passivo, que não constituem receita
+                  operacional tributável, mantendo-se os juros e rendimentos pagos a investidores
+                  como despesa dedutível). Em competências que encerram com resultado fiscal
+                  negativo (prejuízo fiscal), não há lucro real tributável e os impostos
+                  correspondentes são exibidos estritamente zerados (R$ 0,00).
                 </li>
                 <li>
                   <strong>IOF:</strong> Alíquota zero — como a securitização é juridicamente
