@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -869,9 +869,8 @@ export function InvestorYieldsReportTab() {
                       const hasMultiple = g.investments.length > 1
 
                       return (
-                        <>
+                        <React.Fragment key={g.key}>
                           <TableRow
-                            key={g.key}
                             className={cn(
                               'cursor-pointer transition-colors print-break-inside-avoid',
                               isExpanded ? 'bg-muted/20 font-medium' : 'hover:bg-muted/30',
@@ -953,8 +952,11 @@ export function InvestorYieldsReportTab() {
                                       </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                      {g.investments.map((inv) => (
-                                        <TableRow key={inv.id} className="text-xs">
+                                      {g.investments.map((inv, invIndex) => (
+                                        <TableRow
+                                          key={inv.id || `${g.key}-inv-${invIndex}`}
+                                          className="text-xs"
+                                        >
                                           <TableCell className="font-medium">
                                             {inv.productTitle}
                                             <span className="block text-[11px] text-muted-foreground">
@@ -982,7 +984,7 @@ export function InvestorYieldsReportTab() {
                               </TableCell>
                             </TableRow>
                           )}
-                        </>
+                        </React.Fragment>
                       )
                     })}
                   </TableBody>
