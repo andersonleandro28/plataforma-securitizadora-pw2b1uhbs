@@ -596,31 +596,120 @@ export function InvestorYieldsReportTab() {
 
   return (
     <div className="space-y-6">
-      {/* Estilo embutido para impressão em PDF limpa e profissional */}
+      {/* Estilo embutido para impressão em PDF limpa, paginada e sem cortes */}
       <style>{`
+        @page {
+          size: A4 portrait;
+          margin: 12mm 10mm 12mm 10mm;
+        }
+
         @media print {
-          body * {
-            visibility: hidden;
-          }
-          #print-yields-report, #print-yields-report * {
-            visibility: visible;
-          }
-          #print-yields-report {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            margin: 0;
-            padding: 16px;
-            font-size: 11px;
+          /* Desativa overflow oculto ou scroll dos contêineres ancestrais que travam a paginação */
+          html, body {
+            overflow: visible !important;
+            height: auto !important;
+            min-height: auto !important;
             background: white !important;
             color: black !important;
           }
+
+          /* Oculta layout e outros elementos da aplicação */
+          body * {
+            visibility: hidden;
+          }
+
+          /* Garante que os pais diretos do relatório não cortem altura nem escondam overflow */
+          div:has(> #print-yields-report),
+          main,
+          [data-sidebar="inset"],
+          .flex-1 {
+            overflow: visible !important;
+            height: auto !important;
+            min-height: auto !important;
+            display: block !important;
+            transform: none !important;
+            animation: none !important;
+          }
+
+          /* Relatório visível em fluxo natural de documento (sem position: absolute) */
+          #print-yields-report,
+          #print-yields-report * {
+            visibility: visible;
+          }
+
+          #print-yields-report {
+            position: static !important;
+            display: block !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            font-size: 10.5px;
+            background: white !important;
+            color: black !important;
+            box-shadow: none !important;
+            overflow: visible !important;
+          }
+
+          /* Elementos com classe no-print ou print:hidden */
           .no-print {
             display: none !important;
           }
-          .print-break-inside-avoid {
-            break-inside: avoid;
+
+          /* Remover sombras, bordas desnecessárias e ajustar cores de fundo para impressão */
+          #print-yields-report .shadow-sm,
+          #print-yields-report .shadow-md,
+          #print-yields-report .shadow-lg,
+          #print-yields-report .shadow {
+            box-shadow: none !important;
+          }
+
+          /* Permitir que tabelas e wrappers respeitem paginação nativa */
+          #print-yields-report .overflow-x-auto,
+          #print-yields-report .overflow-y-auto,
+          #print-yields-report .overflow-hidden,
+          #print-yields-report .overflow-auto,
+          #print-yields-report div:has(> table) {
+            overflow: visible !important;
+            max-height: none !important;
+            height: auto !important;
+            display: block !important;
+          }
+
+          /* Estrutura de tabela para paginação correta com cabeçalho repetido */
+          #print-yields-report table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            page-break-inside: auto !important;
+            break-inside: auto !important;
+          }
+
+          #print-yields-report thead {
+            display: table-header-group !important;
+          }
+
+          #print-yields-report tfoot {
+            display: table-footer-group !important;
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+
+          #print-yields-report tr {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+
+          #print-yields-report th,
+          #print-yields-report td {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+
+          /* Evitar quebra de página dentro de cards de resumo e notas de rodapé */
+          .print-break-inside-avoid,
+          #print-yields-report .print-avoid-break {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
           }
         }
       `}</style>
@@ -721,8 +810,8 @@ export function InvestorYieldsReportTab() {
         </div>
 
         {/* Cards de Resumo Consolidado */}
-        <div className="grid gap-4 md:grid-cols-4">
-          <Card>
+        <div className="grid gap-4 md:grid-cols-4 print-break-inside-avoid">
+          <Card className="print-break-inside-avoid">
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Investidores Ativos
@@ -741,7 +830,7 @@ export function InvestorYieldsReportTab() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="print-break-inside-avoid">
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Total Investido
@@ -762,7 +851,7 @@ export function InvestorYieldsReportTab() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="print-break-inside-avoid">
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Rendimento do Mês
@@ -783,7 +872,7 @@ export function InvestorYieldsReportTab() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="print-break-inside-avoid">
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Rendimento Acumulado
@@ -1015,7 +1104,7 @@ export function InvestorYieldsReportTab() {
         </Card>
 
         {/* Rodapé explicativo do relatório */}
-        <div className="text-xs text-muted-foreground space-y-1 p-3 bg-muted/20 rounded-md border border-dashed">
+        <div className="text-xs text-muted-foreground space-y-1 p-3 bg-muted/20 rounded-md border border-dashed print-break-inside-avoid">
           <p className="font-semibold text-foreground">Regras e Critérios do Relatório:</p>
           <ul className="list-disc pl-4 space-y-0.5">
             <li>
