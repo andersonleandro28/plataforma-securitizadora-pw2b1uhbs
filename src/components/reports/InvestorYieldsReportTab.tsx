@@ -604,11 +604,12 @@ export function InvestorYieldsReportTab() {
         }
 
         @media print {
-          /* Desativa overflow oculto ou scroll dos contêineres ancestrais que travam a paginação */
+          /* Desativa overflow oculto ou scroll de todos os elementos e ancestrais que travam a paginação em navegadores (Chromium / Firefox / Safari) */
           html, body {
             overflow: visible !important;
             height: auto !important;
             min-height: auto !important;
+            max-height: none !important;
             background: white !important;
             color: black !important;
           }
@@ -618,20 +619,27 @@ export function InvestorYieldsReportTab() {
             visibility: hidden;
           }
 
-          /* Garante que os pais diretos do relatório não cortem altura nem escondam overflow */
-          div:has(> #print-yields-report),
+          /* Garante que os pais e ancestrais do relatório não cortem altura nem restrinjam overflow/flex/grid */
+          #root,
+          #root > div,
           main,
+          header,
+          nav,
+          aside,
           [data-sidebar="inset"],
-          .flex-1 {
+          .flex,
+          .flex-1,
+          .space-y-6,
+          .space-y-4 {
             overflow: visible !important;
             height: auto !important;
             min-height: auto !important;
-            display: block !important;
+            max-height: none !important;
             transform: none !important;
             animation: none !important;
           }
 
-          /* Relatório visível em fluxo natural de documento (sem position: absolute) */
+          /* Relatório visível em fluxo natural de documento contínuo */
           #print-yields-report,
           #print-yields-report * {
             visibility: visible;
@@ -644,11 +652,14 @@ export function InvestorYieldsReportTab() {
             max-width: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
-            font-size: 10.5px;
+            font-size: 10px;
             background: white !important;
             color: black !important;
             box-shadow: none !important;
             overflow: visible !important;
+            height: auto !important;
+            min-height: auto !important;
+            max-height: none !important;
           }
 
           /* Elementos com classe no-print ou print:hidden */
@@ -664,7 +675,7 @@ export function InvestorYieldsReportTab() {
             box-shadow: none !important;
           }
 
-          /* Permitir que tabelas e wrappers respeitem paginação nativa */
+          /* Permitir que tabelas e wrappers respeitem paginação nativa e não limitem rolagem */
           #print-yields-report .overflow-x-auto,
           #print-yields-report .overflow-y-auto,
           #print-yields-report .overflow-hidden,
@@ -676,7 +687,7 @@ export function InvestorYieldsReportTab() {
             display: block !important;
           }
 
-          /* Estrutura de tabela para paginação correta com cabeçalho repetido */
+          /* Estrutura de tabela para paginação correta com cabeçalho repetido em cada folha */
           #print-yields-report table {
             width: 100% !important;
             border-collapse: collapse !important;
@@ -686,6 +697,13 @@ export function InvestorYieldsReportTab() {
 
           #print-yields-report thead {
             display: table-header-group !important;
+          }
+
+          #print-yields-report thead th {
+            background-color: #f1f5f9 !important;
+            color: #0f172a !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
 
           #print-yields-report tfoot {
