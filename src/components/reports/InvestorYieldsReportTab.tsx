@@ -645,6 +645,13 @@ export function InvestorYieldsReportTab() {
             visibility: visible;
           }
 
+          /* Oculta especificamente elementos com classe no-print dentro do relatório */
+          #print-yields-report .no-print,
+          #print-yields-report .no-print * {
+            display: none !important;
+            visibility: hidden !important;
+          }
+
           #print-yields-report {
             position: static !important;
             display: block !important;
@@ -697,6 +704,12 @@ export function InvestorYieldsReportTab() {
 
           #print-yields-report thead {
             display: table-header-group !important;
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+
+          #print-yields-report tbody {
+            display: table-row-group !important;
           }
 
           #print-yields-report thead th {
