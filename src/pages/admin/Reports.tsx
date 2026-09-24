@@ -5,6 +5,7 @@ import { AcquisitionsTab } from '@/components/reports/AcquisitionsTab'
 import { ResultsTab } from '@/components/reports/ResultsTab'
 import { ExtractTab } from '@/components/reports/ExtractTab'
 import { InvestorYieldsReportTab } from '@/components/reports/InvestorYieldsReportTab'
+import { PeriodOperationsReportTab } from '@/components/reports/PeriodOperationsReportTab'
 import { useAuth } from '@/hooks/use-auth'
 
 export default function Reports() {
@@ -19,7 +20,7 @@ export default function Reports() {
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Relatórios e Inteligência</h2>
           <p className="text-muted-foreground text-sm">
-            Demonstrativos de carteira, subscrições, rendimentos e balanços consolidados.
+            Demonstrativos de carteira, subscrições, rendimentos, operações e balanços consolidados.
           </p>
         </div>
       </div>
@@ -28,6 +29,11 @@ export default function Reports() {
           {isAdminOrStaff && (
             <TabsTrigger value="investor-yields" className="font-medium">
               Rendimentos dos Investidores
+            </TabsTrigger>
+          )}
+          {isAdminOrStaff && (
+            <TabsTrigger value="period-operations" className="font-medium">
+              Operações do Período
             </TabsTrigger>
           )}
           {isAdminOrStaff && <TabsTrigger value="dashboard">Resumo de Carteira</TabsTrigger>}
@@ -41,6 +47,9 @@ export default function Reports() {
           <>
             <TabsContent value="investor-yields" className="space-y-4">
               <InvestorYieldsReportTab />
+            </TabsContent>
+            <TabsContent value="period-operations" className="space-y-4">
+              <PeriodOperationsReportTab />
             </TabsContent>
             <TabsContent value="dashboard" className="space-y-4">
               <DashboardTab />
