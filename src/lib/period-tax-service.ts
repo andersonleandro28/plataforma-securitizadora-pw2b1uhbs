@@ -348,7 +348,7 @@ export async function fetchDreResultForPeriod(
     supabase
       .from('expenses')
       .select(
-        'id, amount, description, payment_date, due_date, status, category, supplier_id, suppliers(company_name)',
+        'id, amount, description, payment_date, due_date, status, category, supplier_id, invoice_file_path, suppliers(company_name)',
       )
       .or(
         `and(payment_date.gte.${inicio},payment_date.lte.${fim}),and(payment_date.is.null,and(due_date.gte.${inicio},due_date.lte.${fim}))`,
