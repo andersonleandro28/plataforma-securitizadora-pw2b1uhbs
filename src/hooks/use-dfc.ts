@@ -323,6 +323,18 @@ export function useDfc() {
           }
         }
 
+        // REGRA DE OURO FASB 95 / DFC: Transferências entre contas da própria empresa
+        // são movimentações internas de caixa e NÃO constituem fluxo de caixa externo
+        // (não são operacionais, de investimento nem financiamento). Logo, não entram no DFC.
+        if (
+          refTipo === 'transferencia_entre_contas' ||
+          (mov.categoria || '').toLowerCase().includes('transferência entre contas') ||
+          (mov.categoria || '').toLowerCase().includes('transferencia entre contas') ||
+          Boolean(mov.transfer_pair_id)
+        ) {
+          return
+        }
+
         // Se for resgate já processado via investment_redemptions (passo 7), ignora para
         // que o resgate seja processado por investment_redemptions com sua data real correta.
         if (refTipo === 'resgate_investimento' && mov.referencia_id) {

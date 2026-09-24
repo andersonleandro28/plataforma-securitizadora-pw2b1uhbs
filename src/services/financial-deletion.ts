@@ -104,10 +104,19 @@ export function evaluateTransactionDeletionEligibility(params: {
       }
     }
 
+    const isTransfer =
+      descricao.toLowerCase().includes('transferência entre contas') ||
+      descricao.toLowerCase().includes('transferencia entre contas') ||
+      params.categoria?.toLowerCase().includes('transferência entre contas') ||
+      params.categoria?.toLowerCase().includes('transferencia entre contas')
+
     return {
       canDelete: true,
       targetTable: 'movimentacoes_caixa',
       recordId: uuid,
+      reason: isTransfer
+        ? 'Ao excluir esta movimentação, a perna espelhada (origem/destino) da transferência também será excluída automaticamente.'
+        : undefined,
     }
   }
 

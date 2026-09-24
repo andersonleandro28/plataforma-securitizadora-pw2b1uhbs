@@ -71,6 +71,40 @@ export function isSaidaType(type: string | null | undefined): boolean {
  * 2. OU descrição começando/contendo "imposto a recolher" com referência a IRRF/resgate
  * 3. OU categoria "Impostos e Taxas" associada a resgate de investidor
  */
+/**
+ * Identifica se uma movimentação representa uma transferência interna entre contas bancárias.
+ * Transferências internas não devem gerar impacto no DRE (nem receita nem despesa)
+ * nem no DFC (não constituem fluxo de caixa externo da empresa).
+ */
+export function isBankTransferTransaction(tx: {
+  categoria?: string | null
+  referencia_tipo?: string | null
+  descricao?: string | null
+  transfer_pair_id?: string | null
+}): boolean {
+  if (tx.transfer_pair_id) return true
+
+  const refTipo = (tx.referencia_tipo || '').toLowerCase().trim()
+  if (refTipo === 'transferencia_entre_contas' || refTipo === 'transferência_entre_contas') {
+    return true
+  }
+
+  const cat = normalizeType(tx.categoria)
+  if (cat.includes('transferencia entre contas') || cat === 'transferencia') {
+    return true
+  }
+
+  const desc = (tx.descricao || '').toLowerCase().trim()
+  if (
+    desc.startsWith('transferência entre contas') ||
+    desc.startsWith('transferencia entre contas')
+  ) {
+    return true
+  }
+
+  return false
+}
+
 export function isTaxProvisionTransaction(tx: {
   external_ref?: string | null
   description?: string | null

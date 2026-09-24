@@ -420,6 +420,7 @@ export function useAccounting() {
         liquidação_recebível: 'Liquidação de Recebível',
         liquidacao_recebivel: 'Liquidação de Recebível',
         juros_entrada: 'Juros Recebidos',
+        transferencia_entre_contas: 'Transferência entre Contas',
         fornecedor: 'Pagamento Fornecedor',
         despesa: 'Despesa Operacional',
       }

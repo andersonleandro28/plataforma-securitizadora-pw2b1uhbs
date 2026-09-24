@@ -263,6 +263,17 @@ export function useDre() {
           return
         }
 
+        // REGRA DE OURO: Transferências entre contas bancárias da empresa NÃO impactam o resultado (DRE).
+        // Não constituem receita (mesmo com tipo 'entrada' no destino) nem despesa (saída na origem).
+        if (
+          refTipo === 'transferencia_entre_contas' ||
+          (mov.categoria || '').toLowerCase().includes('transferência entre contas') ||
+          (mov.categoria || '').toLowerCase().includes('transferencia entre contas') ||
+          Boolean(mov.transfer_pair_id)
+        ) {
+          return
+        }
+
         // Determina a data efetiva de competência/realização da movimentação:
         let effectiveDate = normalizeDate(mov.created_at)
 

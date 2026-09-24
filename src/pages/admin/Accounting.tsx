@@ -340,6 +340,9 @@ export default function Accounting() {
                   Recebimento de Parcelas - Operação
                 </SelectItem>
                 <SelectItem value="Subscrição de Debênture">Subscrição de Debênture</SelectItem>
+                <SelectItem value="Transferência entre Contas">
+                  Transferência entre Contas
+                </SelectItem>
                 <SelectItem value="Despesa">Despesa</SelectItem>
                 <SelectItem value="Pagamento Fornecedor">Pagamento Fornecedor</SelectItem>
                 <SelectItem value="Aquisição de CCB">Aquisição de CCB</SelectItem>
