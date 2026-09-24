@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
+import { printIsolatedUnifiedReport } from '@/lib/unified-report-print'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -182,15 +183,24 @@ export function UnifiedReportTab() {
     setSelectedReports([])
   }, [])
 
-  const handlePrint = useCallback(() => {
-    document.body.classList.add('printing-unified-mode')
-    const cleanup = () => {
-      document.body.classList.remove('printing-unified-mode')
-      window.removeEventListener('afterprint', cleanup)
+  const printContainerRef = useRef<HTMLDivElement>(null)
+  const [isPrinting, setIsPrinting] = useState(false)
+
+  const handlePrint = useCallback(async () => {
+    if (!printContainerRef.current) return
+    setIsPrinting(true)
+    try {
+      await printIsolatedUnifiedReport(printContainerRef.current, {
+        title: `Relatório Financeiro & Operacional Unificado — ${selectedMonthLabel} — Nexum Security 360º`,
+      })
+    } catch (err) {
+      console.error('Falha ao gerar impressão isolada do relatório unificado:', err)
+      // Fallback gracioso
+      window.print()
+    } finally {
+      setIsPrinting(false)
     }
-    window.addEventListener('afterprint', cleanup)
-    window.print()
-  }, [])
+  }, [selectedMonthLabel])
 
   // Exportação CSV unificada sequencial
   const handleExportUnifiedCSV = useCallback(() => {
@@ -294,227 +304,6 @@ export function UnifiedReportTab() {
 
   return (
     <div className="space-y-6">
-      {/* Estilos CSS para impressão unificada — aplicados sob a classe printing-unified-mode no body */}
-      <style>{`
-        @media print {
-          body.printing-unified-mode {
-            @page {
-              size: A4 landscape;
-              margin: 10mm;
-            }
-          }
-
-          body.printing-unified-mode,
-          body.printing-unified-mode html {
-            width: 277mm !important;
-            max-width: 277mm !important;
-            margin: 0 auto !important;
-            writing-mode: horizontal-tb !important;
-            transform: none !important;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-            overflow: visible !important;
-            height: auto !important;
-            min-height: auto !important;
-            max-height: none !important;
-            background: white !important;
-            color: black !important;
-          }
-
-          body.printing-unified-mode * {
-            visibility: hidden;
-          }
-
-          body.printing-unified-mode #root,
-          body.printing-unified-mode #root > div,
-          body.printing-unified-mode main,
-          body.printing-unified-mode header,
-          body.printing-unified-mode nav,
-          body.printing-unified-mode aside,
-          body.printing-unified-mode [data-sidebar="inset"],
-          body.printing-unified-mode .flex,
-          body.printing-unified-mode .flex-1,
-          body.printing-unified-mode .space-y-6,
-          body.printing-unified-mode .space-y-4 {
-            overflow: visible !important;
-            height: auto !important;
-            min-height: auto !important;
-            max-height: none !important;
-            transform: none !important;
-            animation: none !important;
-            writing-mode: horizontal-tb !important;
-          }
-
-          /* Garantir que a árvore do relatório unificado fique visível */
-          body.printing-unified-mode #print-unified-report,
-          body.printing-unified-mode #print-unified-report *,
-          body.printing-unified-mode #print-unified-report #print-yields-report,
-          body.printing-unified-mode #print-unified-report #print-yields-report *,
-          body.printing-unified-mode #print-unified-report #print-period-operations-report,
-          body.printing-unified-mode #print-unified-report #print-period-operations-report *,
-          body.printing-unified-mode #print-unified-report #print-bank-extract-report,
-          body.printing-unified-mode #print-unified-report #print-bank-extract-report * {
-            visibility: visible;
-          }
-
-          /* Força as linhas de detalhamento individual de aportes a ficarem sempre visíveis no relatório unificado */
-          body.printing-unified-mode #print-unified-report .investor-detail-row,
-          body.printing-unified-mode #print-unified-report .investor-detail-row * {
-            display: table-row !important;
-            visibility: visible !important;
-          }
-          body.printing-unified-mode #print-unified-report tr.investor-detail-row {
-            display: table-row !important;
-          }
-          body.printing-unified-mode #print-unified-report tr.investor-detail-row td {
-            display: table-cell !important;
-          }
-          body.printing-unified-mode #print-unified-report tr.investor-detail-row table {
-            display: table !important;
-          }
-          body.printing-unified-mode #print-unified-report tr.investor-detail-row thead {
-            display: table-header-group !important;
-          }
-          body.printing-unified-mode #print-unified-report tr.investor-detail-row tbody {
-            display: table-row-group !important;
-          }
-          body.printing-unified-mode #print-unified-report tr.investor-detail-row tr {
-            display: table-row !important;
-          }
-          body.printing-unified-mode #print-unified-report tr.investor-detail-row th,
-          body.printing-unified-mode #print-unified-report tr.investor-detail-row td {
-            display: table-cell !important;
-          }
-          body.printing-unified-mode #print-unified-report tr.investor-detail-row div {
-            display: block !important;
-          }
-          body.printing-unified-mode #print-unified-report tr.investor-detail-row span {
-            display: inline !important;
-          }
-          body.printing-unified-mode #print-unified-report tr.investor-detail-row span.block {
-            display: block !important;
-          }
-
-          body.printing-unified-mode #print-unified-report .no-print,
-          body.printing-unified-mode #print-unified-report .no-print * {
-            display: none !important;
-            visibility: hidden !important;
-          }
-
-          body.printing-unified-mode #print-unified-report {
-            position: static !important;
-            display: block !important;
-            width: 100% !important;
-            max-width: 277mm !important;
-            margin: 0 auto !important;
-            padding: 0 !important;
-            font-size: 8.5px;
-            background: white !important;
-            color: black !important;
-            box-shadow: none !important;
-            overflow: visible !important;
-            height: auto !important;
-            min-height: auto !important;
-            max-height: none !important;
-            transform: none !important;
-            writing-mode: horizontal-tb !important;
-          }
-
-          body.printing-unified-mode .no-print {
-            display: none !important;
-          }
-
-          /* Capa com medida em mm e quebra de página */
-          body.printing-unified-mode .unified-report-cover {
-            page-break-after: always !important;
-            break-after: page !important;
-            display: flex !important;
-            flex-direction: column !important;
-            justify-content: center !important;
-            align-items: center !important;
-            box-sizing: border-box !important;
-            min-height: 175mm !important;
-            text-align: center !important;
-            padding: 15mm 20mm !important;
-          }
-
-          /* Quebra de página explícita entre relatórios selecionados */
-          body.printing-unified-mode .unified-section-break {
-            page-break-before: always !important;
-            break-before: page !important;
-            padding-top: 5mm !important;
-          }
-
-          /* Remover sombras em impressão */
-          body.printing-unified-mode #print-unified-report .shadow-sm,
-          body.printing-unified-mode #print-unified-report .shadow-md,
-          body.printing-unified-mode #print-unified-report .shadow-lg,
-          body.printing-unified-mode #print-unified-report .shadow {
-            box-shadow: none !important;
-          }
-
-          /* Permitir que tabelas e wrappers respeitem paginação nativa e não limitem rolagem */
-          body.printing-unified-mode #print-unified-report .overflow-x-auto,
-          body.printing-unified-mode #print-unified-report .overflow-y-auto,
-          body.printing-unified-mode #print-unified-report .overflow-hidden,
-          body.printing-unified-mode #print-unified-report .overflow-auto,
-          body.printing-unified-mode #print-unified-report div:has(> table) {
-            overflow: visible !important;
-            max-height: none !important;
-            height: auto !important;
-            display: block !important;
-          }
-
-          body.printing-unified-mode #print-unified-report table {
-            width: 100% !important;
-            border-collapse: collapse !important;
-            page-break-inside: auto !important;
-            break-inside: auto !important;
-          }
-
-          body.printing-unified-mode #print-unified-report thead {
-            display: table-header-group !important;
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
-          }
-
-          body.printing-unified-mode #print-unified-report tbody {
-            display: table-row-group !important;
-          }
-
-          body.printing-unified-mode #print-unified-report thead th {
-            background-color: #f1f5f9 !important;
-            color: #0f172a !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-
-          body.printing-unified-mode #print-unified-report tfoot {
-            display: table-footer-group !important;
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
-          }
-
-          body.printing-unified-mode #print-unified-report tr {
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-          }
-
-          body.printing-unified-mode #print-unified-report th,
-          body.printing-unified-mode #print-unified-report td {
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-            padding: 3px 4px !important;
-          }
-
-          body.printing-unified-mode .print-break-inside-avoid,
-          body.printing-unified-mode #print-unified-report .print-avoid-break {
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-          }
-        }
-      `}</style>
-
       {/* Painel Superior de Configuração do Unificado */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 no-print">
         <div>
@@ -543,9 +332,10 @@ export function UnifiedReportTab() {
             variant="default"
             size="sm"
             className="gap-1.5 shadow-sm"
-            disabled={selectedReports.length === 0}
+            disabled={selectedReports.length === 0 || isPrinting}
           >
-            <Printer className="w-4 h-4 text-primary-foreground" /> Imprimir / Salvar PDF Único
+            <Printer className="w-4 h-4 text-primary-foreground" />
+            {isPrinting ? 'Preparando PDF...' : 'Imprimir / Salvar PDF Único'}
           </Button>
         </div>
       </div>
@@ -662,20 +452,24 @@ export function UnifiedReportTab() {
       </Card>
 
       {/* ÁREA DE IMPRESSÃO E PRÉ-VISUALIZAÇÃO UNIFICADA */}
-      <div id="print-unified-report" className="w-full max-w-full space-y-8">
+      <div
+        ref={printContainerRef}
+        id="print-unified-report"
+        className="w-full max-w-full space-y-8"
+      >
         {/* ============================================================== */}
         {/* CAPA HÍBRIDA DO RELATÓRIO UNIFICADO                            */}
-        {/* Na tela: Card executivo elegante; Na impressão: Página 1 com quebra */}
+        {/* Na tela: Card executivo elegante; No documento isolado: Página 1 com quebra */}
         {/* ============================================================== */}
-        <div className="unified-report-cover w-full bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-6 sm:p-10 shadow-sm print:shadow-none print:border-2 print:border-slate-300 print:rounded-lg print:p-12 print:text-center">
-          <div className="w-full max-w-3xl mx-auto space-y-6">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5 print:border-b-0 print:pb-0 print:block">
+        <div className="unified-report-cover w-full bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-6 sm:p-10 shadow-sm">
+          <div className="cover-inner w-full max-w-3xl mx-auto space-y-6">
+            <div className="cover-header flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
               <div className="flex items-center gap-3">
-                <div className="p-3 bg-primary/10 rounded-xl">
+                <div className="cover-logo-box p-3 bg-primary/10 rounded-xl">
                   <Layers className="w-8 h-8 text-primary" />
                 </div>
-                <div className="text-left print:text-center print:mt-4">
-                  <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 print:text-3xl">
+                <div className="cover-title-group text-left">
+                  <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
                     NEXUM SECURITY 360º
                   </h1>
                   <p className="text-xs font-medium text-slate-500 uppercase tracking-widest mt-0.5">
@@ -685,17 +479,17 @@ export function UnifiedReportTab() {
               </div>
               <Badge
                 variant="outline"
-                className="text-xs font-semibold py-1 px-3 border-primary/30 text-primary print:hidden"
+                className="no-print text-xs font-semibold py-1 px-3 border-primary/30 text-primary"
               >
                 Relatório Integrado
               </Badge>
             </div>
 
-            <div className="py-4 border-y border-slate-200 dark:border-slate-800 space-y-1.5 text-center print:py-6 print:border-slate-300 print:space-y-2">
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-200 print:text-slate-900">
+            <div className="py-4 border-y border-slate-200 dark:border-slate-800 space-y-1.5 text-center">
+              <h2 className="cover-main-badge text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-200">
                 Relatório Financeiro & Operacional Unificado
               </h2>
-              <div className="text-sm text-slate-600 dark:text-slate-400 font-medium">
+              <div className="cover-competence text-sm text-slate-600 dark:text-slate-400 font-medium">
                 Competência de Referência:{' '}
                 <strong className="text-slate-900 dark:text-slate-100 text-base">
                   {selectedMonthLabel}
@@ -703,12 +497,12 @@ export function UnifiedReportTab() {
               </div>
             </div>
 
-            <div className="text-left bg-slate-100/80 dark:bg-slate-900/50 p-4 sm:p-5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs space-y-2.5 print:bg-slate-100 print:border-slate-200">
-              <div className="font-semibold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
+            <div className="cover-manifest-box text-left bg-slate-100/80 dark:bg-slate-900/50 p-4 sm:p-5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs space-y-2.5">
+              <h3 className="font-semibold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
                 <FileBarChart className="w-4 h-4 text-primary" />
                 Demonstrativos Integrados neste Documento ({selectedReports.length}):
-              </div>
-              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-700 dark:text-slate-300 print:block print:space-y-1">
+              </h3>
+              <ul className="cover-manifest-list grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-700 dark:text-slate-300">
                 {selectedReports.map((id) => {
                   const cfg = AVAILABLE_REPORTS.find((r) => r.id === id)
                   return (
@@ -724,7 +518,7 @@ export function UnifiedReportTab() {
               </ul>
             </div>
 
-            <div className="pt-3 text-[11px] sm:text-xs text-slate-500 flex flex-col sm:flex-row justify-between items-center gap-2 border-t border-slate-200 dark:border-slate-800 print:border-slate-200">
+            <div className="cover-footer pt-3 text-[11px] sm:text-xs text-slate-500 flex flex-col sm:flex-row justify-between items-center gap-2 border-t border-slate-200 dark:border-slate-800">
               <div>
                 Data de Emissão:{' '}
                 <strong className="text-foreground">
