@@ -37,6 +37,10 @@ import {
   ChevronDown,
   ChevronRight,
   ArrowUpRight,
+  ArrowDownLeft,
+  DollarSign,
+  Receipt,
+  FileCheck,
 } from 'lucide-react'
 
 /* ------------------------------------------------------------------ */
@@ -125,6 +129,21 @@ export interface InvestorGroupYield {
   investments: InvestorItemYield[]
 }
 
+export interface InvestorPeriodRedemption {
+  id: string
+  userId: string | null
+  investorName: string
+  documentNumber: string | null
+  contractTitle: string
+  redemptionDate: string
+  grossValue: number
+  taxAmount: number
+  taxRate: number
+  netValue: number
+  status: string
+  requestedQuotas: number
+}
+
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
 /* ------------------------------------------------------------------ */
@@ -147,6 +166,7 @@ export function InvestorYieldsReportTab() {
   const [rawSubs, setRawSubs] = useState<RawSubscription[]>([])
   const [productsBySeries, setProductsBySeries] = useState<Record<string, ProductInfo>>({})
   const [manualEntries, setManualEntries] = useState<ManualEntry[]>([])
+  const [allRedemptions, setAllRedemptions] = useState<InvestorPeriodRedemption[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [search, setSearch] = useState('')
@@ -247,6 +267,72 @@ export function InvestorYieldsReportTab() {
       } else {
         setManualEntries([])
       }
+
+      // 4. Carregar resgates da fonte oficial (investment_redemptions)
+      const { data: redsData, error: redsErr } = await supabase
+        .from('investment_redemptions')
+        .select(
+          `
+          id,
+          user_id,
+          investment_id,
+          requested_quotas,
+          gross_value,
+          net_value,
+          tax_amount,
+          tax_rate,
+          status,
+          created_at,
+          updated_at,
+          profiles!investment_redemptions_user_id_fkey(id, full_name, document_number, pj_company_name),
+          investments!investment_redemptions_investment_id_fkey(
+            id,
+            transfer_date,
+            created_at,
+            investment_products(id, title, type, rate)
+          )
+          `,
+        )
+        .order('updated_at', { ascending: false })
+
+      if (redsErr) throw redsErr
+
+      const mappedRedemptions: InvestorPeriodRedemption[] = ((redsData || []) as any[]).map((r) => {
+        const prof = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles
+        const inv = Array.isArray(r.investments) ? r.investments[0] : r.investments
+        const prod = Array.isArray(inv?.investment_products)
+          ? inv?.investment_products[0]
+          : inv?.investment_products
+
+        const investorName =
+          prof?.pj_company_name || prof?.full_name || 'Investidor Não Identificado'
+        const documentNumber = prof?.document_number || null
+
+        // Título do contrato / aporte
+        const productTitle = prod?.title || 'Contrato de Debênture'
+        const contractInfo = prod?.rate ? `${productTitle} (${prod.rate})` : productTitle
+
+        // Data real de liquidação/pagamento: updated_at ou created_at
+        const effectiveDateStr = r.updated_at || r.created_at || ''
+        const realDate = effectiveDateStr ? effectiveDateStr.substring(0, 10) : ''
+
+        return {
+          id: r.id,
+          userId: r.user_id,
+          investorName,
+          documentNumber,
+          contractTitle: contractInfo,
+          redemptionDate: realDate,
+          grossValue: Number(r.gross_value || 0),
+          taxAmount: Number(r.tax_amount || 0),
+          taxRate: Number(r.tax_rate || 0),
+          netValue: Number(r.net_value || 0),
+          status: r.status || 'paid',
+          requestedQuotas: Number(r.requested_quotas || 0),
+        }
+      })
+
+      setAllRedemptions(mappedRedemptions)
     } catch (e) {
       console.error('Erro ao carregar dados do relatório:', e)
       setError(true)
@@ -506,6 +592,44 @@ export function InvestorYieldsReportTab() {
   }, [rawSubs, manualEntries, productsBySeries, selectedMonth])
 
   /* ------------------------------------------------------------------ */
+  /* Resgates Filtrados pela Competência Selecionada                     */
+  /* ------------------------------------------------------------------ */
+
+  const periodRedemptions = useMemo(() => {
+    // Filtra pela competência selecionada (YYYY-MM na data real redemptionDate)
+    return allRedemptions.filter((r) => {
+      if (!r.redemptionDate) return false
+      return r.redemptionDate.startsWith(selectedMonth)
+    })
+  }, [allRedemptions, selectedMonth])
+
+  // Resgates filtrados pela busca textual
+  const filteredRedemptions = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    if (!term) return periodRedemptions
+    return periodRedemptions.filter(
+      (r) =>
+        r.investorName.toLowerCase().includes(term) ||
+        (r.documentNumber || '').toLowerCase().includes(term) ||
+        r.contractTitle.toLowerCase().includes(term),
+    )
+  }, [periodRedemptions, search])
+
+  // Totais da seção de resgates
+  const redemptionsTotals = useMemo(() => {
+    return filteredRedemptions.reduce(
+      (acc, r) => {
+        acc.gross += r.grossValue
+        acc.tax += r.taxAmount
+        acc.net += r.netValue
+        acc.count += 1
+        return acc
+      },
+      { gross: 0, tax: 0, net: 0, count: 0 },
+    )
+  }, [filteredRedemptions])
+
+  /* ------------------------------------------------------------------ */
   /* Filtragem por Busca                                                */
   /* ------------------------------------------------------------------ */
 
@@ -540,39 +664,136 @@ export function InvestorYieldsReportTab() {
 
     const rows: Record<string, any>[] = []
 
+    // 1. Seção Principal: Rendimentos e Posição por Investidor
+    rows.push({
+      Seção: '1. RENDIMENTOS E POSIÇÃO DOS INVESTIDORES',
+      Investidor: '',
+      CPF_CNPJ: '',
+      'Contrato / Produto': '',
+      'Data de Referência': '',
+      'Valor Bruto / Investido (R$)': '',
+      'IRRF Retido (R$)': '',
+      'Valor Líquido / Rendimento Mês (R$)': '',
+      'Rendimento Acumulado (R$)': '',
+      Status: '',
+    })
+
     filteredGroups.forEach((g) => {
       g.investments.forEach((inv) => {
         rows.push({
+          Seção: 'Rendimentos',
           Investidor: g.name,
           CPF_CNPJ: g.document || 'Não informado',
-          Produto: inv.productTitle,
-          Tipo: inv.productType,
-          Taxa: inv.productRate,
-          'Data do Investimento': inv.investmentDate ? formatDate(inv.investmentDate) : '—',
-          'Valor Investido (R$)': inv.investedAmount.toFixed(2),
-          [`Rendimento de ${monthLabel} (R$)`]: inv.yieldMonth.toFixed(2),
-          [`Rendimento Acumulado até ${month}/${year} (R$)`]: inv.yieldAccumulated.toFixed(2),
+          'Contrato / Produto': `${inv.productTitle} (${inv.productRate})`,
+          'Data de Referência': inv.investmentDate ? formatDate(inv.investmentDate) : '—',
+          'Valor Bruto / Investido (R$)': inv.investedAmount.toFixed(2),
+          'IRRF Retido (R$)': '—',
+          'Valor Líquido / Rendimento Mês (R$)': inv.yieldMonth.toFixed(2),
+          'Rendimento Acumulado (R$)': inv.yieldAccumulated.toFixed(2),
           Status: inv.status || 'Ativo',
         })
       })
     })
 
-    // Linha de totalização no final
     rows.push({
-      Investidor: 'TOTAL GERAL CONSOLIDADO',
+      Seção: 'Totais Rendimentos',
+      Investidor: `TOTAL GERAL APORTES ATIVOS (${filteredGroups.length} investidores)`,
       CPF_CNPJ: '—',
-      Produto: '—',
-      Tipo: '—',
-      Taxa: '—',
-      'Data do Investimento': '—',
-      'Valor Investido (R$)': filteredTotals.invested.toFixed(2),
-      [`Rendimento de ${monthLabel} (R$)`]: filteredTotals.yieldMonth.toFixed(2),
-      [`Rendimento Acumulado até ${month}/${year} (R$)`]:
-        filteredTotals.yieldAccumulated.toFixed(2),
+      'Contrato / Produto': '—',
+      'Data de Referência': '—',
+      'Valor Bruto / Investido (R$)': filteredTotals.invested.toFixed(2),
+      'IRRF Retido (R$)': '—',
+      'Valor Líquido / Rendimento Mês (R$)': filteredTotals.yieldMonth.toFixed(2),
+      'Rendimento Acumulado (R$)': filteredTotals.yieldAccumulated.toFixed(2),
       Status: '—',
     })
 
-    exportToCSV(rows, `Relatorio_Rendimentos_Investidores_${selectedMonth}.csv`)
+    // Linha em branco separadora
+    rows.push({
+      Seção: '',
+      Investidor: '',
+      CPF_CNPJ: '',
+      'Contrato / Produto': '',
+      'Data de Referência': '',
+      'Valor Bruto / Investido (R$)': '',
+      'IRRF Retido (R$)': '',
+      'Valor Líquido / Rendimento Mês (R$)': '',
+      'Rendimento Acumulado (R$)': '',
+      Status: '',
+    })
+
+    // 2. Seção: Resgates do Período
+    rows.push({
+      Seção: `2. RESGATES DO PERÍODO — COMPETÊNCIA ${month}/${year}`,
+      Investidor: '',
+      CPF_CNPJ: '',
+      'Contrato / Produto': '',
+      'Data de Referência': '',
+      'Valor Bruto / Investido (R$)': '',
+      'IRRF Retido (R$)': '',
+      'Valor Líquido / Rendimento Mês (R$)': '',
+      'Rendimento Acumulado (R$)': '',
+      Status: '',
+    })
+
+    if (filteredRedemptions.length === 0) {
+      rows.push({
+        Seção: 'Resgates',
+        Investidor: 'Nenhum resgate no período selecionado',
+        CPF_CNPJ: '—',
+        'Contrato / Produto': '—',
+        'Data de Referência': '—',
+        'Valor Bruto / Investido (R$)': '0.00',
+        'IRRF Retido (R$)': '0.00',
+        'Valor Líquido / Rendimento Mês (R$)': '0.00',
+        'Rendimento Acumulado (R$)': '—',
+        Status: '—',
+      })
+    } else {
+      filteredRedemptions.forEach((red) => {
+        const taxLabel =
+          red.taxRate > 0
+            ? `${red.taxAmount.toFixed(2)} (${red.taxRate}%)`
+            : red.taxAmount.toFixed(2)
+
+        const statusLabel =
+          red.status === 'paid'
+            ? 'Pago / Liquidado'
+            : red.status === 'approved'
+              ? 'Aprovado'
+              : red.status === 'rejected'
+                ? 'Reprovado'
+                : 'Pendente'
+
+        rows.push({
+          Seção: 'Resgates',
+          Investidor: red.investorName,
+          CPF_CNPJ: red.documentNumber || 'Não informado',
+          'Contrato / Produto': red.contractTitle,
+          'Data de Referência': formatDate(red.redemptionDate),
+          'Valor Bruto / Investido (R$)': red.grossValue.toFixed(2),
+          'IRRF Retido (R$)': taxLabel,
+          'Valor Líquido / Rendimento Mês (R$)': red.netValue.toFixed(2),
+          'Rendimento Acumulado (R$)': '—',
+          Status: statusLabel,
+        })
+      })
+
+      rows.push({
+        Seção: 'Totais Resgates',
+        Investidor: `TOTAL DE RESGATES DO PERÍODO (${filteredRedemptions.length})`,
+        CPF_CNPJ: '—',
+        'Contrato / Produto': '—',
+        'Data de Referência': '—',
+        'Valor Bruto / Investido (R$)': redemptionsTotals.gross.toFixed(2),
+        'IRRF Retido (R$)': redemptionsTotals.tax.toFixed(2),
+        'Valor Líquido / Rendimento Mês (R$)': redemptionsTotals.net.toFixed(2),
+        'Rendimento Acumulado (R$)': '—',
+        Status: '—',
+      })
+    }
+
+    exportToCSV(rows, `Relatorio_Rendimentos_e_Resgates_Investidores_${selectedMonth}.csv`)
   }
 
   const handlePrint = () => {
@@ -890,8 +1111,8 @@ export function InvestorYieldsReportTab() {
           </div>
         </div>
 
-        {/* Cards de Resumo Consolidado */}
-        <div className="grid gap-4 md:grid-cols-4 print-break-inside-avoid">
+        {/* Cards de Resumo Consolidado (5 cards: 4 de rendimentos + 1 de resgates do período) */}
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-5 print-break-inside-avoid">
           <Card className="print-break-inside-avoid">
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -970,6 +1191,27 @@ export function InvestorYieldsReportTab() {
               )}
               <p className="text-[11px] text-muted-foreground mt-1">
                 Até o final de {selectedMonthLabel}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="print-break-inside-avoid col-span-2 md:col-span-1">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Resgatado no Mês
+              </CardTitle>
+              <ArrowDownLeft className="h-4 w-4 text-rose-500" />
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <Skeleton className="h-8 w-32" />
+              ) : (
+                <div className="text-2xl font-bold font-mono text-rose-600">
+                  {formatCurrency(redemptionsTotals.gross)}
+                </div>
+              )}
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Bruto ({redemptionsTotals.count} resgate{redemptionsTotals.count === 1 ? '' : 's'})
               </p>
             </CardContent>
           </Card>
@@ -1217,6 +1459,164 @@ export function InvestorYieldsReportTab() {
           </CardContent>
         </Card>
 
+        {/* ================================================================= */}
+        {/* Nova Seção: Resgates do Período                                    */}
+        {/* ================================================================= */}
+        <Card className="print-break-inside-avoid mt-6">
+          <CardHeader className="border-b pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <CardTitle className="text-base font-bold flex items-center gap-2 text-foreground">
+                  <ArrowDownLeft className="w-4 h-4 text-rose-600" />
+                  Resgates do Período — Competência {selectedMonthLabel}
+                </CardTitle>
+                <CardDescription className="text-xs mt-0.5">
+                  Resgates liquidados e pagos aos investidores no mês de competência, informados
+                  para conciliação com a contabilidade, Livro Caixa e DFC.
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge
+                  variant={filteredRedemptions.length > 0 ? 'destructive' : 'outline'}
+                  className="w-fit font-mono text-xs"
+                >
+                  {filteredRedemptions.length} resgate{filteredRedemptions.length === 1 ? '' : 's'}
+                </Badge>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-4 p-0 sm:p-6">
+            {loading ? (
+              <div className="p-6 space-y-3">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className="h-10 w-full" />
+                ))}
+              </div>
+            ) : filteredRedemptions.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 text-center text-muted-foreground">
+                <Receipt className="h-9 w-9 mb-2 opacity-40 text-muted-foreground" />
+                <p className="font-medium text-sm text-foreground">
+                  Nenhum resgate no período selecionado
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Não houve liquidação de resgate na competência {selectedMonthLabel}.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50 hover:bg-muted/50 text-xs">
+                      <TableHead className="min-w-[180px]">Investidor / CPF ou CNPJ</TableHead>
+                      <TableHead className="min-w-[160px]">Contrato / Aporte</TableHead>
+                      <TableHead className="min-w-[110px]">Data do Resgate</TableHead>
+                      <TableHead className="text-right min-w-[120px]">Valor Bruto</TableHead>
+                      <TableHead className="text-right min-w-[130px] text-amber-700">
+                        IRRF Retido
+                      </TableHead>
+                      <TableHead className="text-right min-w-[120px] text-emerald-700">
+                        Valor Líquido Pago
+                      </TableHead>
+                      <TableHead className="text-center min-w-[110px]">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredRedemptions.map((red) => {
+                      const isPaid = red.status === 'paid'
+                      return (
+                        <TableRow
+                          key={red.id}
+                          className="text-xs hover:bg-muted/30 transition-colors print-break-inside-avoid"
+                        >
+                          <TableCell>
+                            <div className="font-semibold text-foreground">{red.investorName}</div>
+                            <div className="text-[11px] text-muted-foreground font-mono">
+                              {red.documentNumber || 'Documento não informado'}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="font-medium text-foreground">{red.contractTitle}</div>
+                            {red.requestedQuotas > 0 && (
+                              <div className="text-[11px] text-muted-foreground">
+                                {red.requestedQuotas} cota{red.requestedQuotas === 1 ? '' : 's'}
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap font-medium">
+                            {formatDate(red.redemptionDate)}
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-medium text-foreground">
+                            {formatCurrency(red.grossValue)}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-amber-700 dark:text-amber-400">
+                            {red.taxAmount > 0 ? (
+                              <div>
+                                <span className="font-medium">{formatCurrency(red.taxAmount)}</span>
+                                {red.taxRate > 0 && (
+                                  <span className="text-[10px] text-muted-foreground block">
+                                    ({red.taxRate}%)
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">R$ 0,00</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-bold text-emerald-600">
+                            {formatCurrency(red.netValue)}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {isPaid ? (
+                              <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] px-2 py-0.5">
+                                Pago / Liquidado
+                              </Badge>
+                            ) : red.status === 'approved' ? (
+                              <Badge className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] px-2 py-0.5">
+                                Aprovado
+                              </Badge>
+                            ) : red.status === 'rejected' ? (
+                              <Badge variant="destructive" className="text-[10px] px-2 py-0.5">
+                                Reprovado
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="bg-amber-50 text-amber-800 border-amber-300 text-[10px] px-2 py-0.5"
+                              >
+                                Pendente
+                              </Badge>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                  {/* Linha de Totais da Seção de Resgates */}
+                  <tfoot>
+                    <TableRow className="bg-muted/80 font-bold border-t-2 border-primary/20 text-xs sm:text-sm">
+                      <TableCell colSpan={3} className="uppercase tracking-wider">
+                        Total Resgates no Período ({filteredRedemptions.length})
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm sm:text-base">
+                        {formatCurrency(redemptionsTotals.gross)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm sm:text-base text-amber-700 dark:text-amber-400">
+                        {formatCurrency(redemptionsTotals.tax)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm sm:text-base text-emerald-700">
+                        {formatCurrency(redemptionsTotals.net)}
+                      </TableCell>
+                      <TableCell className="text-center text-xs text-muted-foreground font-normal">
+                        —
+                      </TableCell>
+                    </TableRow>
+                  </tfoot>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Rodapé explicativo do relatório */}
         <div className="text-xs text-muted-foreground space-y-1 p-3 bg-muted/20 rounded-md border border-dashed print-break-inside-avoid">
           <p className="font-semibold text-foreground">Regras e Critérios do Relatório:</p>
@@ -1232,6 +1632,12 @@ export function InvestorYieldsReportTab() {
             <li>
               <strong>Rendimento Acumulado:</strong> Rendimento acumulado desde a data do
               investimento até o último dia da competência de referência.
+            </li>
+            <li>
+              <strong>Resgates do Período:</strong> Resgates cuja liquidação e efetivo pagamento
+              ocorreram na competência selecionada (data real de liquidação). O valor bruto
+              representa a saída original do caixa, o IRRF retido é provisionado para recolhimento
+              via DARF e o valor líquido é o crédito pago ao investidor.
             </li>
             <li>
               <strong>Data do Investimento:</strong> Data original da subscrição / transferência
