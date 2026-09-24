@@ -73,7 +73,7 @@ export default function Operations() {
     setLoading(true)
     const { data } = await supabase
       .from('credit_operations')
-      .select('*, profiles(full_name), operation_calculations(*)')
+      .select('*, profiles(full_name), operation_calculations(*), credit_managers(id, full_name)')
       .order('issue_date', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })
 
@@ -277,6 +277,7 @@ export default function Operations() {
                     <TableHead>ID</TableHead>
                     <TableHead>Data Operação</TableHead>
                     <TableHead>Tomador</TableHead>
+                    <TableHead>Gerente (Indicação)</TableHead>
                     <TableHead>Tipo Ativo</TableHead>
                     <TableHead>Valor Face (VF)</TableHead>
                     <TableHead>Valor Líquido</TableHead>
@@ -320,6 +321,15 @@ export default function Operations() {
                         </TableCell>
                         <TableCell className="font-medium text-sm truncate max-w-[150px]">
                           {op.profiles?.full_name || 'Desconhecido'}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {op.credit_managers?.full_name ? (
+                            <span className="font-medium text-primary">
+                              {op.credit_managers.full_name}
+                            </span>
+                          ) : (
+                            <span className="italic text-muted-foreground">Sem indicação</span>
+                          )}
                         </TableCell>
                         <TableCell className="uppercase text-xs font-semibold text-muted-foreground">
                           {op.receivable_type?.replace('_', ' ')}

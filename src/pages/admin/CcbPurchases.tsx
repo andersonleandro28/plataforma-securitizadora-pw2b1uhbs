@@ -30,6 +30,7 @@ import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { toast } from 'sonner'
 import { CompanyBankAccountSelect } from '@/components/admin/CompanyBankAccountSelect'
+import { fetchCreditManagers, CreditManager } from '@/services/credit-managers'
 import {
   Plus,
   Trash2,
@@ -55,6 +56,7 @@ export default function CcbPurchases() {
     activeRole === 'staff'
   const [purchases, setPurchases] = useState<any[]>([])
   const [ccbs, setCcbs] = useState<any[]>([])
+  const [creditManagers, setCreditManagers] = useState<CreditManager[]>([])
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -90,6 +92,7 @@ export default function CcbPurchases() {
     boleto_unit_value: '',
     created_at: '',
     ccb_created_at: '',
+    manager_id: 'none',
   })
   const [boletos, setBoletos] = useState<any[]>([])
 
@@ -100,6 +103,11 @@ export default function CcbPurchases() {
       .from('recebiveis_ccb')
       .select(`
         *,
+        credit_managers (
+          id,
+          full_name,
+          commission_ccb_pct
+        ),
         ccb_solicitacoes (
           *,
           profiles!ccb_solicitacoes_user_id_fkey (*)
@@ -145,6 +153,14 @@ export default function CcbPurchases() {
 
     setPurchases(p || [])
     setCcbs(c || [])
+
+    try {
+      const mgrs = await fetchCreditManagers(false)
+      setCreditManagers(mgrs)
+    } catch (mErr) {
+      console.error('Erro ao carregar gerentes:', mErr)
+    }
+
     setLoading(false)
   }
 
@@ -196,6 +212,7 @@ export default function CcbPurchases() {
     const payload: any = {
       ccb_id: form.ccb_id,
       tomador_id: tomador_id,
+      manager_id: form.manager_id && form.manager_id !== 'none' ? form.manager_id : null,
       acquisition_value: acq,
       boleto_count: Number(form.boleto_count),
       boleto_unit_value: Number(form.boleto_unit_value),
@@ -323,6 +340,7 @@ export default function CcbPurchases() {
       boleto_unit_value: '',
       created_at: new Date().toISOString().split('T')[0],
       ccb_created_at: new Date().toISOString().split('T')[0],
+      manager_id: 'none',
     })
     setBoletos([])
     setOpen(true)
@@ -337,6 +355,7 @@ export default function CcbPurchases() {
       boleto_unit_value: String(p.boleto_unit_value),
       created_at: toISODate(p.created_at),
       ccb_created_at: toISODate(p.ccb_solicitacoes?.created_at),
+      manager_id: p.manager_id || 'none',
     })
     setBoletos(p.boletos || [])
     setOpen(true)
@@ -513,12 +532,13 @@ export default function CcbPurchases() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="pl-4">Data Aquisição</TableHead>
-                <TableHead>Tomador</TableHead>
-                <TableHead>Boletos</TableHead>
+                <TableHead className="pl-4">Data</TableHead>
+                <TableHead>Tomador / Operação</TableHead>
+                <TableHead>Gerente (Indicação)</TableHead>
+                <TableHead>Fluxo de Parcelas</TableHead>
                 <TableHead>Lucro Bruto</TableHead>
                 <TableHead className="text-right pr-4">Ações</TableHead>
-              </TableRow>
+              </TableRow>{' '}
             </TableHeader>
             <TableBody>
               {purchases.map((p) => (
@@ -530,6 +550,15 @@ export default function CcbPurchases() {
                     {p.ccb_solicitacoes?.profiles?.full_name ||
                       p.ccb_solicitacoes?.profiles?.pj_company_name ||
                       'Desconhecido'}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {p.credit_managers?.full_name ? (
+                      <span className="font-medium text-primary">
+                        {p.credit_managers.full_name}
+                      </span>
+                    ) : (
+                      <span className="italic text-muted-foreground">Sem indicação</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     {p.boleto_count}x R$ {p.boleto_unit_value}
@@ -642,6 +671,39 @@ export default function CcbPurchases() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Gerente de Crédito */}
+              <div className="space-y-2 p-3 bg-muted/20 border rounded-lg">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="ccb-manager" className="text-xs font-medium">
+                    Gerente de Crédito (Indicação)
+                  </Label>
+                  <span className="text-[11px] text-muted-foreground">
+                    Comissão sobre deságio da CCB
+                  </span>
+                </div>
+                <Select
+                  value={form.manager_id}
+                  onValueChange={(val) => setForm({ ...form, manager_id: val })}
+                >
+                  <SelectTrigger id="ccb-manager" className="bg-background">
+                    <SelectValue placeholder="Selecione o gerente responsável..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">
+                      Sem indicação de gerente (não paga comissão)
+                    </SelectItem>
+                    {creditManagers
+                      .filter((m) => m.is_active || m.id === form.manager_id)
+                      .map((mgr) => (
+                        <SelectItem key={mgr.id} value={mgr.id}>
+                          {mgr.full_name} ({mgr.commission_ccb_pct}% comissão CCB)
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Data Aquisição</Label>

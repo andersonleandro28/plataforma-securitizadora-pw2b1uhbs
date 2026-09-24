@@ -26,6 +26,7 @@ import { useSacadoSuggestions, KnownSacado } from '@/hooks/use-sacado-suggestion
 import { SacadoAutocomplete } from '@/components/operations/SacadoAutocomplete'
 import { onlyDigits, maskCpf, maskCnpj } from '@/lib/cpf-cnpj'
 import { toast } from 'sonner'
+import { fetchCreditManagers, CreditManager } from '@/services/credit-managers'
 import {
   Loader2,
   Calculator,
@@ -80,6 +81,8 @@ export function AdminNewOperationDialog({
   const [borrowers, setBorrowers] = useState<BorrowerOption[]>([])
   const [loadingBorrowers, setLoadingBorrowers] = useState(false)
   const [selectedBorrowerId, setSelectedBorrowerId] = useState<string>('')
+  const [creditManagers, setCreditManagers] = useState<CreditManager[]>([])
+  const [selectedManagerId, setSelectedManagerId] = useState<string>('none')
 
   const [files, setFiles] = useState<File[]>([])
   const [submitting, setSubmitting] = useState(false)
@@ -138,6 +141,13 @@ export function AdminNewOperationDialog({
         setBorrowers(data)
       }
       setLoadingBorrowers(false)
+
+      try {
+        const mgrs = await fetchCreditManagers(true) // apenas ativos para novas operações
+        setCreditManagers(mgrs)
+      } catch (mErr) {
+        console.error('Erro ao buscar gerentes de crédito:', mErr)
+      }
     }
     fetchBorrowers()
   }, [open])
@@ -388,6 +398,7 @@ export function AdminNewOperationDialog({
 
   const resetForm = () => {
     setSelectedBorrowerId('')
+    setSelectedManagerId('none')
     setFormData({
       receivableType: '',
       receivableTypeOther: '',
@@ -555,6 +566,7 @@ export function AdminNewOperationDialog({
         .from('credit_operations')
         .insert({
           borrower_id: selectedBorrowerId,
+          manager_id: selectedManagerId && selectedManagerId !== 'none' ? selectedManagerId : null,
           receivable_type: formData.receivableType,
           receivable_type_other: formData.receivableTypeOther || null,
           cedente: formData.cedente,
@@ -810,9 +822,40 @@ export function AdminNewOperationDialog({
             <div className="space-y-3 pt-2">
               <div className="border-b pb-1">
                 <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                  <Building className="w-3.5 h-3.5" /> Dados do Originador e Título
+                  <Building className="w-3.5 h-3.5" /> Dados do Originador, Gerente e Título
                 </h4>
               </div>
+
+              {/* Seletor de Gerente de Crédito */}
+              <div className="p-3 bg-muted/20 border rounded-lg space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label
+                    htmlFor="op-manager"
+                    className="text-xs font-medium flex items-center gap-1.5"
+                  >
+                    <User className="w-3.5 h-3.5 text-primary" /> Gerente de Crédito (Indicação)
+                  </Label>
+                  <span className="text-[11px] text-muted-foreground">
+                    Define a comissão sobre o deságio
+                  </span>
+                </div>
+                <Select value={selectedManagerId} onValueChange={setSelectedManagerId}>
+                  <SelectTrigger id="op-manager" className="bg-background">
+                    <SelectValue placeholder="Selecione o gerente responsável..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">
+                      Sem indicação de gerente (não paga comissão)
+                    </SelectItem>
+                    {creditManagers.map((mgr) => (
+                      <SelectItem key={mgr.id} value={mgr.id}>
+                        {mgr.full_name} ({mgr.commission_anticipation_pct}% comissão)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Cedente / Originador *</Label>

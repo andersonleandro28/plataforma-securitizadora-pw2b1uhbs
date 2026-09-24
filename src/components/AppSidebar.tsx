@@ -18,6 +18,7 @@ import {
   ShieldAlert,
   Wallet,
   BarChart3,
+  UserCheck,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -115,6 +116,12 @@ const allNavItems = [
     title: 'Mesa de Operações',
     path: '/operations',
     icon: FileText,
+    roles: ['admin', 'staff'],
+  },
+  {
+    title: 'Gerentes de Crédito',
+    path: '/admin/credit-managers',
+    icon: UserCheck,
     roles: ['admin', 'staff'],
   },
   {

@@ -102,7 +102,9 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
     setLoading(true)
     const { data: operation } = await supabase
       .from('credit_operations')
-      .select('*, profiles(full_name, email, document_number, phone)')
+      .select(
+        '*, profiles(full_name, email, document_number, phone), credit_managers(id, full_name, commission_anticipation_pct, commission_ccb_pct, is_active)',
+      )
       .eq('id', opId)
       .single()
 
@@ -658,6 +660,19 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                     <p>
                       <span className="font-medium text-foreground">Parcelas:</span>{' '}
                       {op.installments || 1}x
+                    </p>
+                    <p className="pt-1 border-t text-xs">
+                      <span className="font-medium text-foreground">Gerente (Indicação):</span>{' '}
+                      {(op as any).credit_managers ? (
+                        <span className="font-medium text-primary">
+                          {(op as any).credit_managers.full_name} (
+                          {(op as any).credit_managers.commission_anticipation_pct}% comissão)
+                        </span>
+                      ) : (
+                        <span className="italic text-muted-foreground">
+                          Sem indicação de gerente
+                        </span>
+                      )}
                     </p>
                   </CardContent>
                 </Card>
