@@ -26,7 +26,18 @@ import {
   Activity,
   AlertCircle,
   FileCheck,
+  Shield,
+  FileBarChart,
+  CheckCircle2,
 } from 'lucide-react'
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/components/ui/table'
 import { exportToCSV } from '@/lib/export-utils'
 import { BankMovementExtractReportTab } from '@/components/reports/BankMovementExtractReportTab'
 import { InvestorYieldsReportTab } from '@/components/reports/InvestorYieldsReportTab'
@@ -172,6 +183,12 @@ export function UnifiedReportTab() {
   }, [])
 
   const handlePrint = useCallback(() => {
+    document.body.classList.add('printing-unified-mode')
+    const cleanup = () => {
+      document.body.classList.remove('printing-unified-mode')
+      window.removeEventListener('afterprint', cleanup)
+    }
+    window.addEventListener('afterprint', cleanup)
     window.print()
   }, [])
 
@@ -277,40 +294,48 @@ export function UnifiedReportTab() {
 
   return (
     <div className="space-y-6">
-      {/* Estilos CSS para impressão unificada: capa, quebras de página entre seções e thead repetido */}
+      {/* Estilos CSS para impressão unificada — aplicados sob a classe printing-unified-mode no body */}
       <style>{`
-        @page {
-          size: A4 landscape;
-          margin: 10mm 10mm 10mm 10mm;
-        }
-
         @media print {
-          html, body {
+          body.printing-unified-mode {
+            @page {
+              size: A4 landscape;
+              margin: 10mm;
+            }
+          }
+
+          body.printing-unified-mode,
+          body.printing-unified-mode html {
+            width: 277mm !important;
+            max-width: 277mm !important;
+            margin: 0 auto !important;
+            writing-mode: horizontal-tb !important;
+            transform: none !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
             overflow: visible !important;
             height: auto !important;
             min-height: auto !important;
             max-height: none !important;
             background: white !important;
             color: black !important;
-            writing-mode: horizontal-tb !important;
-            transform: none !important;
           }
 
-          body * {
+          body.printing-unified-mode * {
             visibility: hidden;
           }
 
-          #root,
-          #root > div,
-          main,
-          header,
-          nav,
-          aside,
-          [data-sidebar="inset"],
-          .flex,
-          .flex-1,
-          .space-y-6,
-          .space-y-4 {
+          body.printing-unified-mode #root,
+          body.printing-unified-mode #root > div,
+          body.printing-unified-mode main,
+          body.printing-unified-mode header,
+          body.printing-unified-mode nav,
+          body.printing-unified-mode aside,
+          body.printing-unified-mode [data-sidebar="inset"],
+          body.printing-unified-mode .flex,
+          body.printing-unified-mode .flex-1,
+          body.printing-unified-mode .space-y-6,
+          body.printing-unified-mode .space-y-4 {
             overflow: visible !important;
             height: auto !important;
             min-height: auto !important;
@@ -320,63 +345,63 @@ export function UnifiedReportTab() {
             writing-mode: horizontal-tb !important;
           }
 
-          /* Garantir que todos os sub-relatórios fiquem visíveis no contexto do relatório unificado */
-          #print-unified-report,
-          #print-unified-report *,
-          #print-unified-report #print-yields-report,
-          #print-unified-report #print-yields-report *,
-          #print-unified-report #print-period-operations-report,
-          #print-unified-report #print-period-operations-report *,
-          #print-unified-report #print-movement-extract-report,
-          #print-unified-report #print-movement-extract-report * {
+          /* Garantir que a árvore do relatório unificado fique visível */
+          body.printing-unified-mode #print-unified-report,
+          body.printing-unified-mode #print-unified-report *,
+          body.printing-unified-mode #print-unified-report #print-yields-report,
+          body.printing-unified-mode #print-unified-report #print-yields-report *,
+          body.printing-unified-mode #print-unified-report #print-period-operations-report,
+          body.printing-unified-mode #print-unified-report #print-period-operations-report *,
+          body.printing-unified-mode #print-unified-report #print-bank-extract-report,
+          body.printing-unified-mode #print-unified-report #print-bank-extract-report * {
             visibility: visible;
           }
 
           /* Força as linhas de detalhamento individual de aportes a ficarem sempre visíveis no relatório unificado */
-          #print-unified-report .investor-detail-row,
-          #print-unified-report .investor-detail-row * {
+          body.printing-unified-mode #print-unified-report .investor-detail-row,
+          body.printing-unified-mode #print-unified-report .investor-detail-row * {
             display: table-row !important;
             visibility: visible !important;
           }
-          #print-unified-report tr.investor-detail-row {
+          body.printing-unified-mode #print-unified-report tr.investor-detail-row {
             display: table-row !important;
           }
-          #print-unified-report tr.investor-detail-row td {
+          body.printing-unified-mode #print-unified-report tr.investor-detail-row td {
             display: table-cell !important;
           }
-          #print-unified-report tr.investor-detail-row table {
+          body.printing-unified-mode #print-unified-report tr.investor-detail-row table {
             display: table !important;
           }
-          #print-unified-report tr.investor-detail-row thead {
+          body.printing-unified-mode #print-unified-report tr.investor-detail-row thead {
             display: table-header-group !important;
           }
-          #print-unified-report tr.investor-detail-row tbody {
+          body.printing-unified-mode #print-unified-report tr.investor-detail-row tbody {
             display: table-row-group !important;
           }
-          #print-unified-report tr.investor-detail-row tr {
+          body.printing-unified-mode #print-unified-report tr.investor-detail-row tr {
             display: table-row !important;
           }
-          #print-unified-report tr.investor-detail-row th,
-          #print-unified-report tr.investor-detail-row td {
+          body.printing-unified-mode #print-unified-report tr.investor-detail-row th,
+          body.printing-unified-mode #print-unified-report tr.investor-detail-row td {
             display: table-cell !important;
           }
-          #print-unified-report tr.investor-detail-row div {
+          body.printing-unified-mode #print-unified-report tr.investor-detail-row div {
             display: block !important;
           }
-          #print-unified-report tr.investor-detail-row span {
+          body.printing-unified-mode #print-unified-report tr.investor-detail-row span {
             display: inline !important;
           }
-          #print-unified-report tr.investor-detail-row span.block {
+          body.printing-unified-mode #print-unified-report tr.investor-detail-row span.block {
             display: block !important;
           }
 
-          #print-unified-report .no-print,
-          #print-unified-report .no-print * {
+          body.printing-unified-mode #print-unified-report .no-print,
+          body.printing-unified-mode #print-unified-report .no-print * {
             display: none !important;
             visibility: hidden !important;
           }
 
-          #print-unified-report {
+          body.printing-unified-mode #print-unified-report {
             position: static !important;
             display: block !important;
             width: 100% !important;
@@ -395,12 +420,12 @@ export function UnifiedReportTab() {
             writing-mode: horizontal-tb !important;
           }
 
-          .no-print {
+          body.printing-unified-mode .no-print {
             display: none !important;
           }
 
-          /* Capa com medida em mm (compatível com folha A4 landscape de ~210mm de altura) */
-          .unified-report-cover {
+          /* Capa com medida em mm e quebra de página */
+          body.printing-unified-mode .unified-report-cover {
             page-break-after: always !important;
             break-after: page !important;
             display: flex !important;
@@ -410,80 +435,80 @@ export function UnifiedReportTab() {
             box-sizing: border-box !important;
             min-height: 175mm !important;
             text-align: center !important;
-            padding: 20mm !important;
+            padding: 15mm 20mm !important;
           }
 
           /* Quebra de página explícita entre relatórios selecionados */
-          .unified-section-break {
+          body.printing-unified-mode .unified-section-break {
             page-break-before: always !important;
             break-before: page !important;
             padding-top: 5mm !important;
           }
 
           /* Remover sombras em impressão */
-          #print-unified-report .shadow-sm,
-          #print-unified-report .shadow-md,
-          #print-unified-report .shadow-lg,
-          #print-unified-report .shadow {
+          body.printing-unified-mode #print-unified-report .shadow-sm,
+          body.printing-unified-mode #print-unified-report .shadow-md,
+          body.printing-unified-mode #print-unified-report .shadow-lg,
+          body.printing-unified-mode #print-unified-report .shadow {
             box-shadow: none !important;
           }
 
           /* Permitir que tabelas e wrappers respeitem paginação nativa e não limitem rolagem */
-          #print-unified-report .overflow-x-auto,
-          #print-unified-report .overflow-y-auto,
-          #print-unified-report .overflow-hidden,
-          #print-unified-report .overflow-auto,
-          #print-unified-report div:has(> table) {
+          body.printing-unified-mode #print-unified-report .overflow-x-auto,
+          body.printing-unified-mode #print-unified-report .overflow-y-auto,
+          body.printing-unified-mode #print-unified-report .overflow-hidden,
+          body.printing-unified-mode #print-unified-report .overflow-auto,
+          body.printing-unified-mode #print-unified-report div:has(> table) {
             overflow: visible !important;
             max-height: none !important;
             height: auto !important;
             display: block !important;
           }
 
-          #print-unified-report table {
+          body.printing-unified-mode #print-unified-report table {
             width: 100% !important;
             border-collapse: collapse !important;
             page-break-inside: auto !important;
             break-inside: auto !important;
           }
 
-          #print-unified-report thead {
+          body.printing-unified-mode #print-unified-report thead {
             display: table-header-group !important;
             break-inside: avoid !important;
             page-break-inside: avoid !important;
           }
 
-          #print-unified-report tbody {
+          body.printing-unified-mode #print-unified-report tbody {
             display: table-row-group !important;
           }
 
-          #print-unified-report thead th {
+          body.printing-unified-mode #print-unified-report thead th {
             background-color: #f1f5f9 !important;
             color: #0f172a !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
 
-          #print-unified-report tfoot {
+          body.printing-unified-mode #print-unified-report tfoot {
             display: table-footer-group !important;
             break-inside: avoid !important;
             page-break-inside: avoid !important;
           }
 
-          #print-unified-report tr {
+          body.printing-unified-mode #print-unified-report tr {
             page-break-inside: avoid !important;
             break-inside: avoid !important;
           }
 
-          #print-unified-report th,
-          #print-unified-report td {
+          body.printing-unified-mode #print-unified-report th,
+          body.printing-unified-mode #print-unified-report td {
             page-break-inside: avoid !important;
             break-inside: avoid !important;
             padding: 3px 4px !important;
           }
 
-          .print-break-inside-avoid,
-          #print-unified-report .print-avoid-break {
+          body.printing-unified-mode .print-break-inside-avoid,
+          body.printing-unified-mode #print-unified-report .print-avoid-break {
             page-break-inside: avoid !important;
             break-inside: avoid !important;
           }
@@ -637,57 +662,83 @@ export function UnifiedReportTab() {
       </Card>
 
       {/* ÁREA DE IMPRESSÃO E PRÉ-VISUALIZAÇÃO UNIFICADA */}
-      <div id="print-unified-report" className="space-y-8">
+      <div id="print-unified-report" className="w-full max-w-full space-y-8">
         {/* ============================================================== */}
-        {/* CAPA DO RELATÓRIO UNIFICADO (Página 1 do PDF)                  */}
+        {/* CAPA HÍBRIDA DO RELATÓRIO UNIFICADO                            */}
+        {/* Na tela: Card executivo elegante; Na impressão: Página 1 com quebra */}
         {/* ============================================================== */}
-        <div className="unified-report-cover hidden print:flex bg-gradient-to-b from-slate-50 to-white border-2 border-slate-300 rounded-lg p-12 text-center">
-          <div className="max-w-xl mx-auto space-y-6">
-            <div className="inline-block p-4 bg-primary/10 rounded-2xl mb-2">
-              <Layers className="w-16 h-16 text-primary mx-auto" />
+        <div className="unified-report-cover w-full bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-6 sm:p-10 shadow-sm print:shadow-none print:border-2 print:border-slate-300 print:rounded-lg print:p-12 print:text-center">
+          <div className="w-full max-w-3xl mx-auto space-y-6">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5 print:border-b-0 print:pb-0 print:block">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-primary/10 rounded-xl">
+                  <Layers className="w-8 h-8 text-primary" />
+                </div>
+                <div className="text-left print:text-center print:mt-4">
+                  <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 print:text-3xl">
+                    NEXUM SECURITY 360º
+                  </h1>
+                  <p className="text-xs font-medium text-slate-500 uppercase tracking-widest mt-0.5">
+                    Plataforma de Securitização de Crédito e Investimentos
+                  </p>
+                </div>
+              </div>
+              <Badge
+                variant="outline"
+                className="text-xs font-semibold py-1 px-3 border-primary/30 text-primary print:hidden"
+              >
+                Relatório Integrado
+              </Badge>
             </div>
 
-            <div>
-              <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">
-                NEXUM SECURITY 360º
-              </h1>
-              <p className="text-sm font-medium text-slate-500 uppercase tracking-widest mt-1">
-                Plataforma de Securitização de Crédito e Investimentos
-              </p>
-            </div>
-
-            <div className="py-6 border-y border-slate-300 space-y-2">
-              <h2 className="text-2xl font-bold text-slate-800">
+            <div className="py-4 border-y border-slate-200 dark:border-slate-800 space-y-1.5 text-center print:py-6 print:border-slate-300 print:space-y-2">
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-200 print:text-slate-900">
                 Relatório Financeiro & Operacional Unificado
               </h2>
-              <div className="text-sm text-slate-600 font-medium">
+              <div className="text-sm text-slate-600 dark:text-slate-400 font-medium">
                 Competência de Referência:{' '}
-                <strong className="text-slate-900 text-base">{selectedMonthLabel}</strong>
+                <strong className="text-slate-900 dark:text-slate-100 text-base">
+                  {selectedMonthLabel}
+                </strong>
               </div>
             </div>
 
-            <div className="text-left bg-slate-100 p-4 rounded-lg border border-slate-200 text-xs space-y-2">
-              <div className="font-semibold text-slate-800 uppercase tracking-wider mb-2">
-                Demonstrativos Integrados neste Documento:
+            <div className="text-left bg-slate-100/80 dark:bg-slate-900/50 p-4 sm:p-5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs space-y-2.5 print:bg-slate-100 print:border-slate-200">
+              <div className="font-semibold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                <FileBarChart className="w-4 h-4 text-primary" />
+                Demonstrativos Integrados neste Documento ({selectedReports.length}):
               </div>
-              <ul className="list-disc pl-5 space-y-1 text-slate-700">
+              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-700 dark:text-slate-300 print:block print:space-y-1">
                 {selectedReports.map((id) => {
                   const cfg = AVAILABLE_REPORTS.find((r) => r.id === id)
                   return (
-                    <li key={id}>
-                      <strong>{cfg?.title}:</strong> {cfg?.subtitle}
+                    <li key={id} className="flex items-start gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                      <span>
+                        <strong className="text-foreground">{cfg?.title}:</strong>{' '}
+                        <span className="text-muted-foreground">{cfg?.subtitle}</span>
+                      </span>
                     </li>
                   )
                 })}
               </ul>
             </div>
 
-            <div className="pt-4 text-xs text-slate-500 flex justify-between items-center border-t border-slate-200">
+            <div className="pt-3 text-[11px] sm:text-xs text-slate-500 flex flex-col sm:flex-row justify-between items-center gap-2 border-t border-slate-200 dark:border-slate-800 print:border-slate-200">
               <div>
-                Data de Emissão: <strong>{new Date().toLocaleDateString('pt-BR')}</strong> às{' '}
-                <strong>{new Date().toLocaleTimeString('pt-BR')}</strong>
+                Data de Emissão:{' '}
+                <strong className="text-foreground">
+                  {new Date().toLocaleDateString('pt-BR')}
+                </strong>{' '}
+                às{' '}
+                <strong className="text-foreground">
+                  {new Date().toLocaleTimeString('pt-BR')}
+                </strong>
               </div>
-              <div>Classificação: Confidencial / Administrativo</div>
+              <div className="flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-slate-400" />
+                Classificação: Confidencial / Administrativo
+              </div>
             </div>
           </div>
         </div>
@@ -698,184 +749,270 @@ export function UnifiedReportTab() {
 
         {/* 1. Rendimentos dos Investidores */}
         {selectedReports.includes('investor-yields') && (
-          <section className="unified-section-break space-y-4">
-            <div className="flex items-center justify-between border-b pb-2">
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-xs font-semibold">
-                  Seção 1
-                </Badge>
-                <h4 className="text-lg font-bold">Rendimentos dos Investidores</h4>
-              </div>
-              <Badge variant="secondary" className="font-mono text-xs">
-                {selectedMonthLabel}
-              </Badge>
-            </div>
-            <InvestorYieldsReportTab embedded={true} />
+          <section className="unified-section-break w-full max-w-full">
+            <Card className="w-full max-w-full shadow-sm overflow-hidden">
+              <CardHeader className="border-b bg-muted/30 pb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <Badge
+                      variant="outline"
+                      className="text-xs font-semibold bg-primary/10 text-primary border-primary/20"
+                    >
+                      Seção 1
+                    </Badge>
+                    <div>
+                      <CardTitle className="text-base sm:text-lg font-bold flex items-center gap-2">
+                        <TrendingUp className="w-4 h-4 text-blue-600" />
+                        Rendimentos dos Investidores
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Posição patrimonial, valor investido e rentabilidade mês a mês e acumulada.
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <Badge variant="secondary" className="font-mono text-xs w-fit">
+                    {selectedMonthLabel}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6 w-full max-w-full overflow-x-auto">
+                <InvestorYieldsReportTab embedded={true} />
+              </CardContent>
+            </Card>
           </section>
         )}
 
         {/* 2. Operações do Período */}
         {selectedReports.includes('period-operations') && (
-          <section className="unified-section-break space-y-4">
-            <div className="flex items-center justify-between border-b pb-2">
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-xs font-semibold">
-                  Seção {selectedReports.indexOf('period-operations') + 1}
-                </Badge>
-                <h4 className="text-lg font-bold">Operações do Período (Fiscal & Contábil)</h4>
-              </div>
-              <Badge variant="secondary" className="font-mono text-xs">
-                {selectedMonthLabel}
-              </Badge>
-            </div>
-            <PeriodOperationsReportTab embedded={true} />
+          <section className="unified-section-break w-full max-w-full">
+            <Card className="w-full max-w-full shadow-sm overflow-hidden">
+              <CardHeader className="border-b bg-muted/30 pb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <Badge
+                      variant="outline"
+                      className="text-xs font-semibold bg-primary/10 text-primary border-primary/20"
+                    >
+                      Seção {selectedReports.indexOf('period-operations') + 1}
+                    </Badge>
+                    <div>
+                      <CardTitle className="text-base sm:text-lg font-bold flex items-center gap-2">
+                        <Receipt className="w-4 h-4 text-emerald-600" />
+                        Operações do Período (Fiscal & Contábil)
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Antecipação de recebíveis, aquisições de CCBs, deságios e apuração
+                        tributária.
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <Badge variant="secondary" className="font-mono text-xs w-fit">
+                    {selectedMonthLabel}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6 w-full max-w-full overflow-x-auto">
+                <PeriodOperationsReportTab embedded={true} />
+              </CardContent>
+            </Card>
           </section>
         )}
 
         {/* 3. Extrato de Movimentações Bancárias */}
         {selectedReports.includes('bank-extract') && (
-          <section className="unified-section-break space-y-4">
-            <div className="flex items-center justify-between border-b pb-2">
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-xs font-semibold">
-                  Seção {selectedReports.indexOf('bank-extract') + 1}
-                </Badge>
-                <h4 className="text-lg font-bold">Extrato de Movimentações Bancárias</h4>
-              </div>
-              <Badge variant="secondary" className="font-mono text-xs">
-                {selectedMonthLabel}
-              </Badge>
-            </div>
-            <BankMovementExtractReportTab forcedMonth={selectedMonth} embedded={true} />
+          <section className="unified-section-break w-full max-w-full">
+            <Card className="w-full max-w-full shadow-sm overflow-hidden">
+              <CardHeader className="border-b bg-muted/30 pb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <Badge
+                      variant="outline"
+                      className="text-xs font-semibold bg-primary/10 text-primary border-primary/20"
+                    >
+                      Seção {selectedReports.indexOf('bank-extract') + 1}
+                    </Badge>
+                    <div>
+                      <CardTitle className="text-base sm:text-lg font-bold flex items-center gap-2">
+                        <Landmark className="w-4 h-4 text-indigo-600" />
+                        Extrato de Movimentações Bancárias
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Livro Caixa oficial com conciliação bancária, entradas, saídas e saldo
+                        corrido.
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <Badge variant="secondary" className="font-mono text-xs w-fit">
+                    {selectedMonthLabel}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6 w-full max-w-full overflow-x-auto">
+                <BankMovementExtractReportTab forcedMonth={selectedMonth} embedded={true} />
+              </CardContent>
+            </Card>
           </section>
         )}
 
         {/* 4. DRE Demonstrativo */}
         {selectedReports.includes('dre') && (
-          <section className="unified-section-break space-y-4">
-            <div className="flex items-center justify-between border-b pb-2">
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-xs font-semibold">
-                  Seção {selectedReports.indexOf('dre') + 1}
-                </Badge>
-                <h4 className="text-lg font-bold">Demonstração do Resultado do Exercício (DRE)</h4>
-              </div>
-              <Badge variant="secondary" className="font-mono text-xs">
-                {selectedMonthLabel}
-              </Badge>
-            </div>
-
-            {/* Resumo da DRE */}
-            <div className="grid gap-4 md:grid-cols-3 print-break-inside-avoid">
-              <Card className="border-l-4 border-l-emerald-500">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Total de Receitas
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold font-mono text-emerald-600">
-                    +{formatCurrency(dreDados?.totalReceitas || 0)}
+          <section className="unified-section-break w-full max-w-full">
+            <Card className="w-full max-w-full shadow-sm overflow-hidden">
+              <CardHeader className="border-b bg-muted/30 pb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <Badge
+                      variant="outline"
+                      className="text-xs font-semibold bg-primary/10 text-primary border-primary/20"
+                    >
+                      Seção {selectedReports.indexOf('dre') + 1}
+                    </Badge>
+                    <div>
+                      <CardTitle className="text-base sm:text-lg font-bold flex items-center gap-2">
+                        <Scale className="w-4 h-4 text-purple-600" />
+                        Demonstração do Resultado do Exercício (DRE)
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Receitas brutas, deduções, custos e resultado líquido contábil da
+                        competência.
+                      </CardDescription>
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
+                  <Badge variant="secondary" className="font-mono text-xs w-fit">
+                    {selectedMonthLabel}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6 space-y-6 w-full max-w-full">
+                {/* Resumo da DRE */}
+                <div className="grid gap-4 md:grid-cols-3 print-break-inside-avoid">
+                  <Card className="border-l-4 border-l-emerald-500 shadow-none">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Total de Receitas
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold font-mono text-emerald-600">
+                        +{formatCurrency(dreDados?.totalReceitas || 0)}
+                      </div>
+                    </CardContent>
+                  </Card>
 
-              <Card className="border-l-4 border-l-rose-500">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Total de Despesas
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold font-mono text-rose-600">
-                    -{formatCurrency(dreDados?.totalDespesas || 0)}
-                  </div>
-                </CardContent>
-              </Card>
+                  <Card className="border-l-4 border-l-rose-500 shadow-none">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Total de Despesas
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold font-mono text-rose-600">
+                        -{formatCurrency(dreDados?.totalDespesas || 0)}
+                      </div>
+                    </CardContent>
+                  </Card>
 
-              <Card
-                className={cn(
-                  'border-l-4',
-                  (dreDados?.resultado || 0) >= 0 ? 'border-l-emerald-600' : 'border-l-rose-600',
-                )}
-              >
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Resultado Líquido
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div
+                  <Card
                     className={cn(
-                      'text-2xl font-bold font-mono',
-                      (dreDados?.resultado || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600',
+                      'border-l-4 shadow-none',
+                      (dreDados?.resultado || 0) >= 0
+                        ? 'border-l-emerald-600'
+                        : 'border-l-rose-600',
                     )}
                   >
-                    {formatCurrency(dreDados?.resultado || 0)}
-                  </div>
-                  <p className="text-[11px] text-muted-foreground mt-1">
-                    {(dreDados?.resultado || 0) >= 0
-                      ? 'Superávit do Exercício'
-                      : 'Déficit do Exercício'}
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Tabela dos lançamentos DRE */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">
-                  Lançamentos da DRE ({selectedMonthLabel})
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0 sm:p-4">
-                <div className="rounded-md border overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead className="bg-muted/50 border-b">
-                      <tr>
-                        <th className="p-2 text-left">Data</th>
-                        <th className="p-2 text-left">Tipo</th>
-                        <th className="p-2 text-left">Categoria</th>
-                        <th className="p-2 text-left">Descrição</th>
-                        <th className="p-2 text-right">Valor (R$)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(dreDados?.lancamentos || []).map((l, i) => (
-                        <tr key={i} className="border-b hover:bg-muted/30">
-                          <td className="p-2 whitespace-nowrap font-medium">
-                            {new Date(l.date + 'T00:00:00').toLocaleDateString('pt-BR')}
-                          </td>
-                          <td className="p-2 capitalize">
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                'text-[10px]',
-                                l.tipo === 'receita'
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                  : 'bg-rose-50 text-rose-700 border-rose-200',
-                              )}
-                            >
-                              {l.tipo}
-                            </Badge>
-                          </td>
-                          <td className="p-2 font-medium">{l.categoria}</td>
-                          <td className="p-2 text-muted-foreground">{l.descricao}</td>
-                          <td
-                            className={cn(
-                              'p-2 text-right font-mono font-medium',
-                              l.tipo === 'receita' ? 'text-emerald-600' : 'text-rose-600',
-                            )}
-                          >
-                            {l.tipo === 'receita' ? '+' : '-'}
-                            {formatCurrency(l.valor)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Resultado Líquido
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div
+                        className={cn(
+                          'text-2xl font-bold font-mono',
+                          (dreDados?.resultado || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600',
+                        )}
+                      >
+                        {formatCurrency(dreDados?.resultado || 0)}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        {(dreDados?.resultado || 0) >= 0
+                          ? 'Superávit do Exercício'
+                          : 'Déficit do Exercício'}
+                      </p>
+                    </CardContent>
+                  </Card>
                 </div>
+
+                {/* Tabela dos lançamentos DRE padronizada com shadcn Table */}
+                <Card className="shadow-none">
+                  <CardHeader className="border-b pb-3">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-muted-foreground" />
+                      Lançamentos da DRE ({selectedMonthLabel})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <div className="w-full max-w-full overflow-x-auto">
+                      <Table className="w-full text-xs">
+                        <TableHeader>
+                          <TableRow className="bg-muted/50">
+                            <TableHead className="w-[100px]">Data</TableHead>
+                            <TableHead className="w-[110px]">Tipo</TableHead>
+                            <TableHead className="min-w-[180px]">Categoria</TableHead>
+                            <TableHead className="min-w-[260px]">Descrição</TableHead>
+                            <TableHead className="w-[130px] text-right">Valor (R$)</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {!dreDados?.lancamentos || dreDados.lancamentos.length === 0 ? (
+                            <TableRow>
+                              <TableCell
+                                colSpan={5}
+                                className="text-center py-6 text-muted-foreground"
+                              >
+                                Nenhum lançamento encontrado para a competência selecionada.
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            dreDados.lancamentos.map((l, i) => (
+                              <TableRow key={i} className="hover:bg-muted/30">
+                                <TableCell className="whitespace-nowrap font-medium">
+                                  {new Date(l.date + 'T00:00:00').toLocaleDateString('pt-BR')}
+                                </TableCell>
+                                <TableCell className="capitalize">
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      'text-[10px] font-medium',
+                                      l.tipo === 'receita'
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800'
+                                        : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800',
+                                    )}
+                                  >
+                                    {l.tipo}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="font-medium">{l.categoria}</TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  {l.descricao}
+                                </TableCell>
+                                <TableCell
+                                  className={cn(
+                                    'text-right font-mono font-medium whitespace-nowrap',
+                                    l.tipo === 'receita' ? 'text-emerald-600' : 'text-rose-600',
+                                  )}
+                                >
+                                  {l.tipo === 'receita' ? '+' : '-'}
+                                  {formatCurrency(l.valor)}
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
               </CardContent>
             </Card>
           </section>
@@ -883,148 +1020,178 @@ export function UnifiedReportTab() {
 
         {/* 5. DFC Demonstrativo */}
         {selectedReports.includes('dfc') && (
-          <section className="unified-section-break space-y-4">
-            <div className="flex items-center justify-between border-b pb-2">
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-xs font-semibold">
-                  Seção {selectedReports.indexOf('dfc') + 1}
-                </Badge>
-                <h4 className="text-lg font-bold">
-                  Demonstração do Fluxo de Caixa (DFC — FASB 95)
-                </h4>
-              </div>
-              <Badge variant="secondary" className="font-mono text-xs">
-                {selectedMonthLabel}
-              </Badge>
-            </div>
-
-            {/* Resumo da DFC */}
-            <div className="grid gap-4 md:grid-cols-4 print-break-inside-avoid">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Saldo Inicial de Caixa
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-xl font-bold font-mono">
-                    {formatCurrency(dfcDados?.saldoInicialCaixa || 0)}
+          <section className="unified-section-break w-full max-w-full">
+            <Card className="w-full max-w-full shadow-sm overflow-hidden">
+              <CardHeader className="border-b bg-muted/30 pb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <Badge
+                      variant="outline"
+                      className="text-xs font-semibold bg-primary/10 text-primary border-primary/20"
+                    >
+                      Seção {selectedReports.indexOf('dfc') + 1}
+                    </Badge>
+                    <div>
+                      <CardTitle className="text-base sm:text-lg font-bold flex items-center gap-2">
+                        <Activity className="w-4 h-4 text-emerald-600" />
+                        Demonstração do Fluxo de Caixa (DFC — FASB 95)
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Movimentações classificadas por operações, investimentos e financiamentos
+                        (método direto).
+                      </CardDescription>
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Atividades Operacionais
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div
-                    className={cn(
-                      'text-xl font-bold font-mono',
-                      (dfcDados?.operacional.liquido || 0) >= 0
-                        ? 'text-emerald-600'
-                        : 'text-rose-600',
-                    )}
-                  >
-                    {formatCurrency(dfcDados?.operacional.liquido || 0)}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Ativ. Financiamento
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div
-                    className={cn(
-                      'text-xl font-bold font-mono',
-                      (dfcDados?.financiamento.liquido || 0) >= 0
-                        ? 'text-emerald-600'
-                        : 'text-rose-600',
-                    )}
-                  >
-                    {formatCurrency(dfcDados?.financiamento.liquido || 0)}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-primary/5 border-primary">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs font-medium text-primary uppercase tracking-wider">
-                    Saldo Final em Caixa
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-xl font-bold font-mono text-primary">
-                    {formatCurrency(dfcDados?.saldoFinalLivroCaixa || 0)}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Tabela dos lançamentos DFC */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">
-                  Lançamentos do Fluxo de Caixa ({selectedMonthLabel})
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0 sm:p-4">
-                <div className="rounded-md border overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead className="bg-muted/50 border-b">
-                      <tr>
-                        <th className="p-2 text-left">Data</th>
-                        <th className="p-2 text-left">Seção (FASB 95)</th>
-                        <th className="p-2 text-left">Sinal</th>
-                        <th className="p-2 text-left">Categoria</th>
-                        <th className="p-2 text-left">Descrição</th>
-                        <th className="p-2 text-right">Valor (R$)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(dfcDados?.lancamentosPeriodo || []).map((l, i) => (
-                        <tr key={i} className="border-b hover:bg-muted/30">
-                          <td className="p-2 whitespace-nowrap font-medium">
-                            {new Date(l.date + 'T00:00:00').toLocaleDateString('pt-BR')}
-                          </td>
-                          <td className="p-2 uppercase font-mono text-[10px] text-muted-foreground">
-                            {l.secao}
-                          </td>
-                          <td className="p-2">
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                'text-[10px]',
-                                l.sinal === 'entrada'
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                  : 'bg-rose-50 text-rose-700 border-rose-200',
-                              )}
-                            >
-                              {l.sinal}
-                            </Badge>
-                          </td>
-                          <td className="p-2 font-medium">{l.categoria}</td>
-                          <td className="p-2 text-muted-foreground">{l.descricao}</td>
-                          <td
-                            className={cn(
-                              'p-2 text-right font-mono font-medium',
-                              l.sinal === 'entrada' ? 'text-emerald-600' : 'text-rose-600',
-                            )}
-                          >
-                            {l.sinal === 'entrada' ? '+' : '-'}
-                            {formatCurrency(l.valor)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <Badge variant="secondary" className="font-mono text-xs w-fit">
+                    {selectedMonthLabel}
+                  </Badge>
                 </div>
+              </CardHeader>
+              <CardContent className="pt-6 space-y-6 w-full max-w-full">
+                {/* Resumo da DFC */}
+                <div className="grid gap-4 md:grid-cols-4 print-break-inside-avoid">
+                  <Card className="shadow-none">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Saldo Inicial de Caixa
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-xl font-bold font-mono">
+                        {formatCurrency(dfcDados?.saldoInicialCaixa || 0)}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="shadow-none">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Atividades Operacionais
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div
+                        className={cn(
+                          'text-xl font-bold font-mono',
+                          (dfcDados?.operacional.liquido || 0) >= 0
+                            ? 'text-emerald-600'
+                            : 'text-rose-600',
+                        )}
+                      >
+                        {formatCurrency(dfcDados?.operacional.liquido || 0)}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="shadow-none">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Ativ. Financiamento
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div
+                        className={cn(
+                          'text-xl font-bold font-mono',
+                          (dfcDados?.financiamento.liquido || 0) >= 0
+                            ? 'text-emerald-600'
+                            : 'text-rose-600',
+                        )}
+                      >
+                        {formatCurrency(dfcDados?.financiamento.liquido || 0)}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-primary/5 border-primary shadow-none">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-xs font-medium text-primary uppercase tracking-wider">
+                        Saldo Final em Caixa
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-xl font-bold font-mono text-primary">
+                        {formatCurrency(dfcDados?.saldoFinalLivroCaixa || 0)}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Tabela dos lançamentos DFC padronizada com shadcn Table */}
+                <Card className="shadow-none">
+                  <CardHeader className="border-b pb-3">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-muted-foreground" />
+                      Lançamentos do Fluxo de Caixa ({selectedMonthLabel})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <div className="w-full max-w-full overflow-x-auto">
+                      <Table className="w-full text-xs">
+                        <TableHeader>
+                          <TableRow className="bg-muted/50">
+                            <TableHead className="w-[100px]">Data</TableHead>
+                            <TableHead className="w-[130px]">Seção (FASB 95)</TableHead>
+                            <TableHead className="w-[100px]">Sinal</TableHead>
+                            <TableHead className="min-w-[180px]">Categoria</TableHead>
+                            <TableHead className="min-w-[260px]">Descrição</TableHead>
+                            <TableHead className="w-[130px] text-right">Valor (R$)</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {!dfcDados?.lancamentosPeriodo ||
+                          dfcDados.lancamentosPeriodo.length === 0 ? (
+                            <TableRow>
+                              <TableCell
+                                colSpan={6}
+                                className="text-center py-6 text-muted-foreground"
+                              >
+                                Nenhum lançamento encontrado para a competência selecionada.
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            dfcDados.lancamentosPeriodo.map((l, i) => (
+                              <TableRow key={i} className="hover:bg-muted/30">
+                                <TableCell className="whitespace-nowrap font-medium">
+                                  {new Date(l.date + 'T00:00:00').toLocaleDateString('pt-BR')}
+                                </TableCell>
+                                <TableCell className="uppercase font-mono text-[10px] text-muted-foreground whitespace-nowrap">
+                                  {l.secao}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      'text-[10px] font-medium capitalize',
+                                      l.sinal === 'entrada'
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800'
+                                        : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800',
+                                    )}
+                                  >
+                                    {l.sinal}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="font-medium">{l.categoria}</TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  {l.descricao}
+                                </TableCell>
+                                <TableCell
+                                  className={cn(
+                                    'text-right font-mono font-medium whitespace-nowrap',
+                                    l.sinal === 'entrada' ? 'text-emerald-600' : 'text-rose-600',
+                                  )}
+                                >
+                                  {l.sinal === 'entrada' ? '+' : '-'}
+                                  {formatCurrency(l.valor)}
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
               </CardContent>
             </Card>
           </section>

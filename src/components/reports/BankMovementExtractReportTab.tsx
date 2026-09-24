@@ -280,144 +280,146 @@ export function BankMovementExtractReportTab({
 
   return (
     <div className="space-y-6">
-      {/* Estilos embutidos para impressão contínua em PDF sem cortes e thead repetido */}
-      <style>{`
-        @page {
-          size: A4 landscape;
-          margin: 10mm 8mm 10mm 8mm;
-        }
-
-        @media print {
-          html, body {
-            overflow: visible !important;
-            height: auto !important;
-            min-height: auto !important;
-            max-height: none !important;
-            background: white !important;
-            color: black !important;
+      {/* Estilos embutidos para impressão contínua em PDF sem cortes e thead repetido — desativado quando embutido no relatório unificado para evitar conflito de @page */}
+      {!embedded && (
+        <style>{`
+          @page {
+            size: A4 landscape;
+            margin: 10mm 8mm 10mm 8mm;
           }
 
-          body * {
-            visibility: hidden;
-          }
+          @media print {
+            html, body {
+              overflow: visible !important;
+              height: auto !important;
+              min-height: auto !important;
+              max-height: none !important;
+              background: white !important;
+              color: black !important;
+            }
 
-          #root,
-          #root > div,
-          main,
-          header,
-          nav,
-          aside,
-          [data-sidebar="inset"],
-          .flex,
-          .flex-1,
-          .space-y-6,
-          .space-y-4 {
-            overflow: visible !important;
-            height: auto !important;
-            min-height: auto !important;
-            max-height: none !important;
-            transform: none !important;
-            animation: none !important;
-          }
+            body * {
+              visibility: hidden;
+            }
 
-          #print-bank-extract-report,
-          #print-bank-extract-report * {
-            visibility: visible;
-          }
+            #root,
+            #root > div,
+            main,
+            header,
+            nav,
+            aside,
+            [data-sidebar="inset"],
+            .flex,
+            .flex-1,
+            .space-y-6,
+            .space-y-4 {
+              overflow: visible !important;
+              height: auto !important;
+              min-height: auto !important;
+              max-height: none !important;
+              transform: none !important;
+              animation: none !important;
+            }
 
-          #print-bank-extract-report .no-print,
-          #print-bank-extract-report .no-print * {
-            display: none !important;
-            visibility: hidden !important;
-          }
+            #print-bank-extract-report,
+            #print-bank-extract-report * {
+              visibility: visible;
+            }
 
-          #print-bank-extract-report {
-            position: static !important;
-            display: block !important;
-            width: 100% !important;
-            max-width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            font-size: 8.5px;
-            background: white !important;
-            color: black !important;
-            box-shadow: none !important;
-            overflow: visible !important;
-            height: auto !important;
-            min-height: auto !important;
-            max-height: none !important;
-          }
+            #print-bank-extract-report .no-print,
+            #print-bank-extract-report .no-print * {
+              display: none !important;
+              visibility: hidden !important;
+            }
 
-          .no-print {
-            display: none !important;
-          }
+            #print-bank-extract-report {
+              position: static !important;
+              display: block !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              font-size: 8.5px;
+              background: white !important;
+              color: black !important;
+              box-shadow: none !important;
+              overflow: visible !important;
+              height: auto !important;
+              min-height: auto !important;
+              max-height: none !important;
+            }
 
-          #print-bank-extract-report .shadow-sm,
-          #print-bank-extract-report .shadow-md,
-          #print-bank-extract-report .shadow-lg,
-          #print-bank-extract-report .shadow {
-            box-shadow: none !important;
-          }
+            .no-print {
+              display: none !important;
+            }
 
-          #print-bank-extract-report .overflow-x-auto,
-          #print-bank-extract-report .overflow-y-auto,
-          #print-bank-extract-report .overflow-hidden,
-          #print-bank-extract-report .overflow-auto,
-          #print-bank-extract-report div:has(> table) {
-            overflow: visible !important;
-            max-height: none !important;
-            height: auto !important;
-            display: block !important;
-          }
+            #print-bank-extract-report .shadow-sm,
+            #print-bank-extract-report .shadow-md,
+            #print-bank-extract-report .shadow-lg,
+            #print-bank-extract-report .shadow {
+              box-shadow: none !important;
+            }
 
-          #print-bank-extract-report table {
-            width: 100% !important;
-            border-collapse: collapse !important;
-            page-break-inside: auto !important;
-            break-inside: auto !important;
-          }
+            #print-bank-extract-report .overflow-x-auto,
+            #print-bank-extract-report .overflow-y-auto,
+            #print-bank-extract-report .overflow-hidden,
+            #print-bank-extract-report .overflow-auto,
+            #print-bank-extract-report div:has(> table) {
+              overflow: visible !important;
+              max-height: none !important;
+              height: auto !important;
+              display: block !important;
+            }
 
-          #print-bank-extract-report thead {
-            display: table-header-group !important;
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
-          }
+            #print-bank-extract-report table {
+              width: 100% !important;
+              border-collapse: collapse !important;
+              page-break-inside: auto !important;
+              break-inside: auto !important;
+            }
 
-          #print-bank-extract-report tbody {
-            display: table-row-group !important;
-          }
+            #print-bank-extract-report thead {
+              display: table-header-group !important;
+              break-inside: avoid !important;
+              page-break-inside: avoid !important;
+            }
 
-          #print-bank-extract-report thead th {
-            background-color: #f1f5f9 !important;
-            color: #0f172a !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
+            #print-bank-extract-report tbody {
+              display: table-row-group !important;
+            }
 
-          #print-bank-extract-report tfoot {
-            display: table-footer-group !important;
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
-          }
+            #print-bank-extract-report thead th {
+              background-color: #f1f5f9 !important;
+              color: #0f172a !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
 
-          #print-bank-extract-report tr {
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-          }
+            #print-bank-extract-report tfoot {
+              display: table-footer-group !important;
+              break-inside: avoid !important;
+              page-break-inside: avoid !important;
+            }
 
-          #print-bank-extract-report th,
-          #print-bank-extract-report td {
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-            padding: 3px 4px !important;
-          }
+            #print-bank-extract-report tr {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
 
-          .print-break-inside-avoid {
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
+            #print-bank-extract-report th,
+            #print-bank-extract-report td {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+              padding: 3px 4px !important;
+            }
+
+            .print-break-inside-avoid {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
           }
-        }
-      `}</style>
+        `}</style>
+      )}
 
       {/* Cabeçalho da Seção */}
       {!embedded && (
