@@ -21,10 +21,19 @@ export interface PeriodTaxCalculation {
   receitaBrutaCcbs: number
   receitaBrutaTotal: number
 
-  // Despesas de Captação Dedutíveis
-  despesasCaptacao: number
+  // Custos e Despesas Financeiras
+  despesasCaptacao: number // Juros de Debêntures do Período
+  tarifasBancarias: number // Tarifas Bancárias de Cobrança/Custódia
+  totalCustosDespesasFinanceiras: number // despesasCaptacao + tarifasBancarias
 
-  // Base PIS / COFINS
+  // Resultado Operacional Líquido (LAIR)
+  // LAIR = Receita Bruta Total - Despesas de Captação - Tarifas Bancárias
+  lair: number
+  isPrejuizoPeriodo: boolean // true se lair <= 0
+  valorPrejuizoFiscal: number // Math.max(0, -lair) se lair <= 0
+  baseLucroRealTributavel: number // Math.max(0, lair) -> 0 se prejuízo
+
+  // Base PIS / COFINS (mantida: cumulativo, deduz captação, trava base negativa)
   basePisCofinsOriginal: number
   basePisCofins: number // max(0, receitaBrutaTotal - despesasCaptacao)
   baseNegativaAviso: boolean
@@ -36,26 +45,25 @@ export interface PeriodTaxCalculation {
   valorCofins: number
   totalPisCofins: number
 
-  // Lucro Real (DRE do Período e Lucro Real Fiscal)
+  // DRE Referencial Histórico / Contábil
   receitasDre: number
   despesasDre: number
-  lucroReal: number // Resultado oficial do DRE (pode ser positivo ou negativo)
-  captacoesDoPeriodo: number // Captações do período (funding/passivo, não é receita tributável)
-  lucroRealFiscal: number // lucroReal - captacoesDoPeriodo (base fiscal de IRPJ/CSLL)
-  baseLucroRealTributavel: number // Math.max(0, lucroRealFiscal) -> 0 se prejuízo
-  isPrejuizoPeriodo: boolean // true se lucroRealFiscal <= 0
+  lucroReal: number // Resultado oficial do DRE contábil
+  captacoesDoPeriodo: number
+  lucroRealFiscal: number // mantido por compatibilidade com LAIR
 
-  // IRPJ & CSLL
+  // IRPJ & CSLL (Projeção de Impostos Lucro Real baseada no LAIR)
   aliquotaIrpj: number // 0.15 (15%)
-  valorIrpjBase: number // 0 se lucroReal <= 0
-  limiteExcedenteIrpj: number // 20000.00
-  baseAdicionalIrpj: number // max(0, baseLucroRealTributavel - 20000) -> 0 se prejuízo
+  valorIrpjBase: number // 0 se lair <= 0, senão lair * 0.15
+  mesesFiltro: number // Quantidade de meses cobertos pelo filtro (default 1)
+  limiteExcedenteIrpj: number // 20000.00 * mesesFiltro
+  baseAdicionalIrpj: number // max(0, lair - limiteExcedenteIrpj) se lair > 0
   aliquotaAdicionalIrpj: number // 0.10 (10%)
-  valorAdicionalIrpj: number // 0 se lucroReal <= 0
+  valorAdicionalIrpj: number // 0 se lair <= 0, senão baseAdicionalIrpj * 0.10
   valorIrpjTotal: number // valorIrpjBase + valorAdicionalIrpj
 
   aliquotaCsll: number // 0.09 (9%)
-  valorCsll: number // 0 se lucroReal <= 0
+  valorCsll: number // 0 se lair <= 0, senão lair * 0.09
 
   totalIrpjCsll: number
 
@@ -295,6 +303,7 @@ export async function fetchDreResultForPeriod(
   totalDespesas: number
   resultado: number
   totalCaptacoes: number
+  totalTarifasBancarias: number
 }> {
   const [
     movsRes,
@@ -600,37 +609,103 @@ export async function fetchDreResultForPeriod(
     .filter((l) => l.tipo === 'despesa')
     .reduce((s, l) => s + l.valor, 0)
 
+  // Apuração oficial das Tarifas Bancárias de Cobrança / Custódia do período:
+  // Fontes oficiais deduplicadas existentes no DRE:
+  // 1. `expenses` pagas no período com categoria/descrição de tarifa ou custódia
+  // 2. `treasury_transactions` de saída (type='out') com categoria/descrição de tarifa não vinculadas ao expenses
+  const isTarifaOrCustodia = (cat: string | null | undefined, desc: string | null | undefined) => {
+    const text = `${cat || ''} ${desc || ''}`.toLowerCase()
+    return (
+      text.includes('tarifa') ||
+      text.includes('custodia') ||
+      text.includes('custódia') ||
+      text.includes('taxa banc')
+    )
+  }
+
+  let totalTarifasBancarias = 0
+  ;(expsRes.data || []).forEach((exp) => {
+    if (exp.status !== 'paid') return
+    const dataLanc = normalizeDate(exp.payment_date || exp.due_date)
+    if (dataLanc < inicio || dataLanc > fim) return
+    if (isTarifaOrCustodia(exp.category, exp.description)) {
+      totalTarifasBancarias += Number(exp.amount || 0)
+    }
+  })
+
+  ;(tresRes.data || []).forEach((t) => {
+    if (t.type !== 'out') return
+    if (isTaxProvisionTransaction(t)) return
+    if (t.expense_id && expenseIdsInDre.has(t.expense_id)) return
+    const dataLanc = normalizeDate(t.date)
+    if (dataLanc < inicio || dataLanc > fim) return
+    if (isTarifaOrCustodia(t.category, t.description)) {
+      totalTarifasBancarias += Number(t.amount || 0)
+    }
+  })
+
   return {
     totalReceitas,
     totalDespesas,
     resultado: totalReceitas - totalDespesas,
     totalCaptacoes,
+    totalTarifasBancarias,
   }
 }
 
 /**
- * Computa a apuração tributária consolidada para securitizadora no período selecionado.
+ * Computa a apuração tributária consolidada para securitizadora no período selecionado,
+ * seguindo estritamente a estrutura:
+ * (+) RECEITAS DA OPERAÇÃO: Deságio Recebíveis + CCBs/Outros Ganhos = Receita Bruta Total
+ * (-) CUSTOS E DESPESAS FINANCEIRAS: (-) Despesas de Captação + (-) Tarifas Bancárias
+ * (=) RESULTADO OPERACIONAL LÍQUIDO (LAIR)
+ * PROJEÇÃO DE IMPOSTOS (LUCRO REAL):
+ * Se LAIR <= 0: IRPJ = 0, CSLL = 0, NOTA: Gerado Prejuízo Fiscal de [Valor] para compensação futura.
+ * Se LAIR > 0: CSLL (9%), IRPJ Base (15%), Adicional IRPJ (10% sobre excedente a R$ 20.000 × N meses).
+ * PIS (0,65%) e COFINS (4%) cumulativos mantidos com dedução de despesas de captação da base.
  */
 export function calculatePeriodTaxes(params: {
   receitaBrutaRecebiveis: number
   receitaBrutaCcbs: number
   despesasCaptacao: number
-  lucroReal: number
+  tarifasBancarias?: number
+  mesesFiltro?: number
+  lucroReal?: number
   captacoesDoPeriodo?: number
-  receitasDre: number
-  despesasDre: number
+  receitasDre?: number
+  despesasDre?: number
 }): PeriodTaxCalculation {
   const {
     receitaBrutaRecebiveis,
     receitaBrutaCcbs,
     despesasCaptacao,
-    lucroReal,
+    tarifasBancarias = 0,
+    mesesFiltro = 1,
+    lucroReal = 0,
     captacoesDoPeriodo = 0,
-    receitasDre,
-    despesasDre,
+    receitasDre = 0,
+    despesasDre = 0,
   } = params
 
+  const safeMesesFiltro = Math.max(1, mesesFiltro)
+  const safeTarifas = Math.max(0, Number(tarifasBancarias || 0))
+  const safeCaptacoes = Number(captacoesDoPeriodo || 0)
+
+  // (+) RECEITAS DA OPERAÇÃO
   const receitaBrutaTotal = Math.max(0, receitaBrutaRecebiveis + receitaBrutaCcbs)
+
+  // (-) CUSTOS E DESPESAS FINANCEIRAS
+  const totalCustosDespesasFinanceiras = despesasCaptacao + safeTarifas
+
+  // (=) RESULTADO OPERACIONAL LÍQUIDO (LAIR)
+  // Receita Bruta Total MENOS despesas de captação MENOS tarifas bancárias de cobrança/custódia
+  const lair = receitaBrutaTotal - despesasCaptacao - safeTarifas
+  const isPrejuizoPeriodo = lair <= 0
+  const valorPrejuizoFiscal = isPrejuizoPeriodo ? Math.abs(lair) : 0
+  const baseLucroRealTributavel = isPrejuizoPeriodo ? 0 : lair
+  const lucroRealFiscal = lair // A base tributária de IRPJ/CSLL passa a ser o LAIR
+
+  // PIS / COFINS CUMULATIVOS (mantidos: dedução de despesas de captação da base e trava de base negativa)
   const basePisCofinsOriginal = receitaBrutaTotal - despesasCaptacao
   const basePisCofins = Math.max(0, basePisCofinsOriginal)
   const baseNegativaAviso = basePisCofinsOriginal < 0
@@ -641,21 +716,14 @@ export function calculatePeriodTaxes(params: {
   const valorCofins = basePisCofins * aliquotaCofins
   const totalPisCofins = valorPis + valorCofins
 
-  // Lucro Real Fiscal e IRPJ / CSLL:
-  // Captação de debêntures é funding/passivo (não é receita operacional tributável).
-  // Deduz as captações do resultado DRE para obter o Lucro Real Fiscal.
-  // Se o período fecha em PREJUÍZO FISCAL (lucroRealFiscal <= 0), não há lucro real tributável:
-  // IRPJ Básico, Adicional de IRPJ e CSLL devem ser estritamente ZERADOS (R$ 0,00).
-  const safeCaptacoes = Number(captacoesDoPeriodo || 0)
-  const lucroRealFiscal = lucroReal - safeCaptacoes
-  const isPrejuizoPeriodo = lucroRealFiscal <= 0
-  const baseLucroRealTributavel = isPrejuizoPeriodo ? 0 : lucroRealFiscal
-
+  // PROJEÇÃO DE IMPOSTOS (LUCRO REAL)
+  // Se LAIR <= 0: IRPJ = 0, CSLL = 0
+  // Se LAIR > 0: CSLL 9%, IRPJ Base 15%, Adicional 10% sobre excedente a R$ 20.000 × N meses
   const aliquotaIrpj = 0.15
   const valorIrpjBase = isPrejuizoPeriodo ? 0 : baseLucroRealTributavel * aliquotaIrpj
 
-  // Adicional de IRPJ: 10% sobre a parcela do lucro fiscal que exceder R$ 20.000,00 por mês
-  const limiteExcedenteIrpj = 20000.0
+  // Limite proporcional de adicional de IRPJ: R$ 20.000,00 por mês coberto pelo filtro
+  const limiteExcedenteIrpj = 20000.0 * safeMesesFiltro
   const baseAdicionalIrpj = isPrejuizoPeriodo
     ? 0
     : Math.max(0, baseLucroRealTributavel - limiteExcedenteIrpj)
@@ -663,7 +731,7 @@ export function calculatePeriodTaxes(params: {
   const valorAdicionalIrpj = isPrejuizoPeriodo ? 0 : baseAdicionalIrpj * aliquotaAdicionalIrpj
   const valorIrpjTotal = valorIrpjBase + valorAdicionalIrpj
 
-  // CSLL: 9% sobre o Lucro Real Fiscal (zerado se prejuízo)
+  // CSLL: 9% sobre LAIR (zerado se LAIR <= 0)
   const aliquotaCsll = 0.09
   const valorCsll = isPrejuizoPeriodo ? 0 : baseLucroRealTributavel * aliquotaCsll
   const totalIrpjCsll = valorIrpjTotal + valorCsll
@@ -677,6 +745,12 @@ export function calculatePeriodTaxes(params: {
     receitaBrutaCcbs,
     receitaBrutaTotal,
     despesasCaptacao,
+    tarifasBancarias: safeTarifas,
+    totalCustosDespesasFinanceiras,
+    lair,
+    isPrejuizoPeriodo,
+    valorPrejuizoFiscal,
+    baseLucroRealTributavel,
     basePisCofinsOriginal,
     basePisCofins,
     baseNegativaAviso,
@@ -690,8 +764,7 @@ export function calculatePeriodTaxes(params: {
     lucroReal,
     captacoesDoPeriodo: safeCaptacoes,
     lucroRealFiscal,
-    baseLucroRealTributavel,
-    isPrejuizoPeriodo,
+    mesesFiltro: safeMesesFiltro,
     aliquotaIrpj,
     valorIrpjBase,
     limiteExcedenteIrpj,
