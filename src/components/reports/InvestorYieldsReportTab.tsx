@@ -1310,140 +1310,134 @@ export function InvestorYieldsReportTab({ embedded = false }: InvestorYieldsRepo
                       <TableHead className="text-center w-20 no-print">Aportes</TableHead>
                     </TableRow>
                   </TableHeader>
-                  <TableBody>
-                    {filteredGroups.map((g) => {
-                      const isExpanded = !!expandedKeys[g.key]
-                      const hasMultiple = g.investments.length > 1
+                  {filteredGroups.map((g) => {
+                    const isExpanded = !!expandedKeys[g.key]
+                    const hasMultiple = g.investments.length > 1
 
-                      return (
-                        <React.Fragment key={g.key}>
-                          <TableRow
-                            className={cn(
-                              'cursor-pointer transition-colors print-break-inside-avoid',
-                              isExpanded ? 'bg-muted/20 font-medium' : 'hover:bg-muted/30',
-                            )}
-                            onClick={() => toggleGroup(g.key)}
-                          >
-                            <TableCell className="text-center no-print p-2">
-                              {hasMultiple ? (
-                                isExpanded ? (
-                                  <ChevronDown className="h-4 w-4 text-muted-foreground inline" />
-                                ) : (
-                                  <ChevronRight className="h-4 w-4 text-muted-foreground inline" />
-                                )
+                    return (
+                      <TableBody key={g.key}>
+                        <TableRow
+                          className={cn(
+                            'cursor-pointer transition-colors print-break-inside-avoid',
+                            isExpanded ? 'bg-muted/20 font-medium' : 'hover:bg-muted/30',
+                          )}
+                          onClick={() => toggleGroup(g.key)}
+                        >
+                          <TableCell className="text-center no-print p-2">
+                            {hasMultiple ? (
+                              isExpanded ? (
+                                <ChevronDown className="h-4 w-4 text-muted-foreground inline" />
                               ) : (
-                                <span className="text-xs text-muted-foreground">•</span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <div className="font-semibold text-foreground">{g.name}</div>
-                              <div className="text-xs text-muted-foreground font-mono">
-                                {g.document || 'Documento não informado'}
+                                <ChevronRight className="h-4 w-4 text-muted-foreground inline" />
+                              )
+                            ) : (
+                              <span className="text-xs text-muted-foreground">•</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="font-semibold text-foreground">{g.name}</div>
+                            <div className="text-xs text-muted-foreground font-mono">
+                              {g.document || 'Documento não informado'}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {g.investments.length === 1 ? (
+                              formatDate(g.investments[0].investmentDate)
+                            ) : (
+                              <div className="text-xs">
+                                <span>{formatDate(g.firstInvestmentDate)}</span>
+                                {g.latestInvestmentDate !== g.firstInvestmentDate && (
+                                  <span className="text-muted-foreground block text-[10px]">
+                                    até {formatDate(g.latestInvestmentDate)}
+                                  </span>
+                                )}
                               </div>
-                            </TableCell>
-                            <TableCell>
-                              {g.investments.length === 1 ? (
-                                formatDate(g.investments[0].investmentDate)
-                              ) : (
-                                <div className="text-xs">
-                                  <span>{formatDate(g.firstInvestmentDate)}</span>
-                                  {g.latestInvestmentDate !== g.firstInvestmentDate && (
-                                    <span className="text-muted-foreground block text-[10px]">
-                                      até {formatDate(g.latestInvestmentDate)}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right font-mono font-medium">
-                              {formatCurrency(g.totalInvested)}
-                            </TableCell>
-                            <TableCell className="text-right font-mono font-semibold text-blue-600">
-                              {formatCurrency(g.totalYieldMonth)}
-                            </TableCell>
-                            <TableCell className="text-right font-mono font-bold text-emerald-600">
-                              {formatCurrency(g.totalYieldAccumulated)}
-                            </TableCell>
-                            <TableCell className="text-center no-print">
-                              <Badge variant="secondary" className="text-[11px] font-normal">
-                                {g.investments.length}
-                              </Badge>
-                            </TableCell>
-                          </TableRow>
-
-                          {/* Linha com os aportes detalhados do investidor: sempre renderizada para sair no PDF/impressão; na tela obedece isExpanded */}
-                          <TableRow
-                            key={`${g.key}-detail`}
-                            className={cn(
-                              'bg-muted/10 hover:bg-muted/10 print-break-inside-avoid investor-detail-row',
-                              !isExpanded && 'hidden print:table-row',
                             )}
-                          >
-                            <TableCell colSpan={7} className="p-3 sm:p-4 print:p-2">
-                              <div className="rounded-md border bg-background overflow-hidden print:border-slate-300">
-                                <div className="px-3 py-2 bg-muted/40 text-xs font-semibold text-muted-foreground border-b flex justify-between items-center print:bg-slate-100 print:text-slate-800">
-                                  <span>Contratos / Aportes Individualizados — {g.name}</span>
-                                  <span>{g.investments.length} contrato(s) ativo(s)</span>
-                                </div>
-                                <Table>
-                                  <TableHeader>
-                                    <TableRow className="text-xs print:bg-slate-50">
-                                      <TableHead className="min-w-[180px]">
-                                        Produto / Taxa
-                                      </TableHead>
-                                      <TableHead className="min-w-[110px]">
-                                        Data do Aporte
-                                      </TableHead>
-                                      <TableHead className="text-center min-w-[70px]">
-                                        Cotas
-                                      </TableHead>
-                                      <TableHead className="text-right min-w-[110px]">
-                                        Valor Aportado
-                                      </TableHead>
-                                      <TableHead className="text-right min-w-[110px] text-blue-700">
-                                        Rend. no Mês
-                                      </TableHead>
-                                      <TableHead className="text-right min-w-[120px] text-emerald-700">
-                                        Rend. Acumulado
-                                      </TableHead>
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-medium">
+                            {formatCurrency(g.totalInvested)}
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-semibold text-blue-600">
+                            {formatCurrency(g.totalYieldMonth)}
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-bold text-emerald-600">
+                            {formatCurrency(g.totalYieldAccumulated)}
+                          </TableCell>
+                          <TableCell className="text-center no-print">
+                            <Badge variant="secondary" className="text-[11px] font-normal">
+                              {g.investments.length}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+
+                        {/* Linha com os aportes detalhados do investidor: sempre renderizada para sair no PDF/impressão; na tela obedece isExpanded */}
+                        <TableRow
+                          key={`${g.key}-detail`}
+                          className={cn(
+                            'bg-muted/10 hover:bg-muted/10 print-break-inside-avoid investor-detail-row',
+                            !isExpanded && 'hidden print:table-row',
+                          )}
+                        >
+                          <TableCell colSpan={7} className="p-3 sm:p-4 print:p-2">
+                            <div className="rounded-md border bg-background overflow-hidden print:border-slate-300">
+                              <div className="px-3 py-2 bg-muted/40 text-xs font-semibold text-muted-foreground border-b flex justify-between items-center print:bg-slate-100 print:text-slate-800">
+                                <span>Contratos / Aportes Individualizados — {g.name}</span>
+                                <span>{g.investments.length} contrato(s) ativo(s)</span>
+                              </div>
+                              <Table>
+                                <TableHeader>
+                                  <TableRow className="text-xs print:bg-slate-50">
+                                    <TableHead className="min-w-[180px]">Produto / Taxa</TableHead>
+                                    <TableHead className="min-w-[110px]">Data do Aporte</TableHead>
+                                    <TableHead className="text-center min-w-[70px]">
+                                      Cotas
+                                    </TableHead>
+                                    <TableHead className="text-right min-w-[110px]">
+                                      Valor Aportado
+                                    </TableHead>
+                                    <TableHead className="text-right min-w-[110px] text-blue-700">
+                                      Rend. no Mês
+                                    </TableHead>
+                                    <TableHead className="text-right min-w-[120px] text-emerald-700">
+                                      Rend. Acumulado
+                                    </TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {g.investments.map((inv, invIndex) => (
+                                    <TableRow
+                                      key={inv.id || `${g.key}-inv-${invIndex}`}
+                                      className="text-xs print:border-b print:border-slate-200"
+                                    >
+                                      <TableCell className="font-medium">
+                                        {inv.productTitle}
+                                        <span className="block text-[11px] text-muted-foreground print:text-slate-600">
+                                          {inv.productRate} • {inv.productType}
+                                        </span>
+                                      </TableCell>
+                                      <TableCell>{formatDate(inv.investmentDate)}</TableCell>
+                                      <TableCell className="text-center font-mono">
+                                        {inv.activeQuotas}
+                                      </TableCell>
+                                      <TableCell className="text-right font-mono">
+                                        {formatCurrency(inv.investedAmount)}
+                                      </TableCell>
+                                      <TableCell className="text-right font-mono text-blue-600">
+                                        {formatCurrency(inv.yieldMonth)}
+                                      </TableCell>
+                                      <TableCell className="text-right font-mono text-emerald-600">
+                                        {formatCurrency(inv.yieldAccumulated)}
+                                      </TableCell>
                                     </TableRow>
-                                  </TableHeader>
-                                  <TableBody>
-                                    {g.investments.map((inv, invIndex) => (
-                                      <TableRow
-                                        key={inv.id || `${g.key}-inv-${invIndex}`}
-                                        className="text-xs print:border-b print:border-slate-200"
-                                      >
-                                        <TableCell className="font-medium">
-                                          {inv.productTitle}
-                                          <span className="block text-[11px] text-muted-foreground print:text-slate-600">
-                                            {inv.productRate} • {inv.productType}
-                                          </span>
-                                        </TableCell>
-                                        <TableCell>{formatDate(inv.investmentDate)}</TableCell>
-                                        <TableCell className="text-center font-mono">
-                                          {inv.activeQuotas}
-                                        </TableCell>
-                                        <TableCell className="text-right font-mono">
-                                          {formatCurrency(inv.investedAmount)}
-                                        </TableCell>
-                                        <TableCell className="text-right font-mono text-blue-600">
-                                          {formatCurrency(inv.yieldMonth)}
-                                        </TableCell>
-                                        <TableCell className="text-right font-mono text-emerald-600">
-                                          {formatCurrency(inv.yieldAccumulated)}
-                                        </TableCell>
-                                      </TableRow>
-                                    ))}
-                                  </TableBody>
-                                </Table>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        </React.Fragment>
-                      )
-                    })}
-                  </TableBody>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    )
+                  })}
 
                   {/* Linha de Totais no Rodapé */}
                   <tfoot>
