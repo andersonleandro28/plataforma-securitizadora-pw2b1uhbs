@@ -97,7 +97,7 @@ export function BankAccountStatement({
     return act ? act.id : accounts[0]?.id || null
   }, [accounts])
 
-  // Lança o saldo corrido por conta (tempo real das transações cronológicas da conta)
+  // Lança o saldo corrido por conta (ou global se todas as contas)
   const transactionsWithAccountBalance = useMemo(() => {
     // Ordena cronologicamente crescente para correr o saldo
     const chronological = [...transactions].sort(
@@ -106,6 +106,7 @@ export function BankAccountStatement({
 
     // Mapa de acumulador de saldo por conta bancária
     const runningBalances: Record<string, number> = {}
+    let globalRunning = 0
 
     const calculated = chronological.map((t) => {
       // Determina a conta bancária da transação
@@ -114,17 +115,18 @@ export function BankAccountStatement({
       const delta = t.type === 'in' ? t.value : -t.value
       const newBal = prevBal + delta
       runningBalances[accId] = newBal
+      globalRunning += delta
 
       return {
         ...t,
         computed_account_id: accId,
         account_running_balance: newBal,
+        global_running_balance: globalRunning,
       }
     })
 
     return calculated
   }, [transactions, activeAccountId])
-
   // Filtra por conta, mês e busca
   const filteredTransactions = useMemo(() => {
     return transactionsWithAccountBalance.filter((t) => {
@@ -192,7 +194,10 @@ export function BankAccountStatement({
       Categoria: t.category,
       Descrição: t.description,
       'Valor (R$)': t.type === 'in' ? t.value : -t.value,
-      'Saldo Acumulado da Conta (R$)': t.account_running_balance,
+      'Saldo Acumulado da Conta (R$)':
+        selectedAccountId === 'todas'
+          ? (t as any).global_running_balance
+          : t.account_running_balance,
     }))
     const labelConta = selectedAccount ? selectedAccount.bank_name.replace(/\s+/g, '_') : 'Todas'
     exportToCSV(
@@ -264,7 +269,6 @@ export function BankAccountStatement({
             </Card>
           )
         })}
-
         {/* Card de Visão Geral / Consolidado */}
         <Card
           onClick={() => {
@@ -289,10 +293,14 @@ export function BankAccountStatement({
               Saldo Total em Caixa
             </div>
             <div className="text-2xl font-bold font-mono text-blue-700">
-              {formatCurrency(Object.values(balances).reduce((sum, v) => sum + (v || 0), 0))}
+              {formatCurrency(
+                transactions.length > 0
+                  ? transactions[0].accumulated_balance
+                  : Object.values(balances).reduce((sum, v) => sum + (v || 0), 0),
+              )}
             </div>
           </CardContent>
-        </Card>
+        </Card>{' '}
       </div>
 
       {/* Barra de Filtros e Ferramentas do Extrato */}
@@ -567,10 +575,18 @@ export function BankAccountStatement({
                         </TableCell>
                         <TableCell
                           className={`text-right font-mono text-xs font-semibold ${
-                            t.account_running_balance >= 0 ? 'text-foreground' : 'text-rose-600'
+                            (selectedAccountId === 'todas'
+                              ? ((t as any).global_running_balance ?? t.account_running_balance)
+                              : t.account_running_balance) >= 0
+                              ? 'text-foreground'
+                              : 'text-rose-600'
                           }`}
                         >
-                          {formatCurrency(t.account_running_balance)}
+                          {formatCurrency(
+                            selectedAccountId === 'todas'
+                              ? ((t as any).global_running_balance ?? t.account_running_balance)
+                              : t.account_running_balance,
+                          )}
                         </TableCell>
                         {canWrite && (
                           <TableCell className="text-center py-2">

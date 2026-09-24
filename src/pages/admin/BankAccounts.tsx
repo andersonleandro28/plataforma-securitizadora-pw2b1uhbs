@@ -32,7 +32,6 @@ import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/use-auth'
 import { useAccounting } from '@/hooks/use-accounting'
-import { fetchBankAccountBalance } from '@/services/bank-transfers'
 import { BankTransferModal } from '@/components/admin/BankTransferModal'
 import { BankAccountStatement } from '@/components/admin/BankAccountStatement'
 import type { CompanyBankAccount } from '@/hooks/use-company-bank-accounts'
@@ -78,8 +77,8 @@ export default function BankAccounts() {
     notes: '',
   })
 
-  // Carrega contas e saldos em tempo real do Livro Caixa
-  const fetchAccountsAndBalances = useCallback(async () => {
+  // Carrega contas cadastradas da securitizadora
+  const fetchAccounts = useCallback(async () => {
     setLoading(true)
     try {
       const { data } = await supabase
@@ -89,34 +88,49 @@ export default function BankAccounts() {
 
       if (data) {
         setAccounts(data as CompanyBankAccount[])
-
-        // Busca saldos de cada conta em paralelo
-        const balPromises = (data as CompanyBankAccount[]).map(async (acc) => {
-          const bal = await fetchBankAccountBalance(acc.id)
-          return { id: acc.id, bal }
-        })
-
-        const balResults = await Promise.all(balPromises)
-        const balMap: Record<string, number> = {}
-        balResults.forEach((b) => {
-          balMap[b.id] = b.bal
-        })
-        setBalances(balMap)
       }
     } catch (err) {
-      console.error('Erro ao buscar contas e saldos:', err)
+      console.error('Erro ao buscar contas:', err)
     } finally {
       setLoading(false)
     }
   }, [])
 
+  // Calcula saldos de cada conta bancária e o consolidado a partir do Livro Caixa oficial (useAccounting)
   useEffect(() => {
-    fetchAccountsAndBalances()
+    if (!accounts.length) {
+      setBalances({})
+      return
+    }
+
+    const activeAcc = accounts.find((a) => a.is_active) || accounts[0]
+    const activeAccId = activeAcc?.id
+
+    const balMap: Record<string, number> = {}
+    accounts.forEach((acc) => {
+      balMap[acc.id] = 0
+    })
+
+    // Percorre as transações contábeis oficiais deduplicadas
+    // Lançamentos sem conta vinculada caem na conta principal/ativa
+    ;(accountingTransactions || []).forEach((t) => {
+      const accId = t.bank_account_id || activeAccId
+      if (accId) {
+        const delta = t.type === 'in' ? t.value : -t.value
+        balMap[accId] = (balMap[accId] ?? 0) + delta
+      }
+    })
+
+    setBalances(balMap)
+  }, [accounts, accountingTransactions])
+
+  useEffect(() => {
+    fetchAccounts()
     refetchAccounting()
-  }, [fetchAccountsAndBalances, refetchAccounting])
+  }, [fetchAccounts, refetchAccounting])
 
   const handleRefreshAll = () => {
-    fetchAccountsAndBalances()
+    fetchAccounts()
     refetchAccounting()
   }
 
