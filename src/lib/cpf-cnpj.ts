@@ -6,20 +6,44 @@ export const onlyDigits = (v: string): string => (v || '').replace(/\D/g, '')
 /** Aplica a máscara de CPF: 000.000.000-00 */
 export const maskCpf = (v: string): string => {
   const d = onlyDigits(v).slice(0, 11)
-  return d
-    .replace(/(\d{3})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d{1,2})$/, '$1-$2')
+  if (!d) return ''
+  if (d.length <= 3) return d
+  if (d.length <= 6) return d.replace(/(\d{3})(\d+)/, '$1.$2')
+  if (d.length <= 9) return d.replace(/(\d{3})(\d{3})(\d+)/, '$1.$2.$3')
+  return d.replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/, '$1.$2.$3-$4')
 }
 
 /** Aplica a máscara de CNPJ: 00.000.000/0001-00 */
 export const maskCnpj = (v: string): string => {
   const d = onlyDigits(v).slice(0, 14)
-  return d
-    .replace(/(\d{2})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d)/, '$1/$2')
-    .replace(/(\d{4})(\d{1,2})$/, '$1-$2')
+  if (!d) return ''
+  if (d.length <= 2) return d
+  if (d.length <= 5) return d.replace(/(\d{2})(\d+)/, '$1.$2')
+  if (d.length <= 8) return d.replace(/(\d{2})(\d{3})(\d+)/, '$1.$2.$3')
+  if (d.length <= 12) return d.replace(/(\d{2})(\d{3})(\d{3})(\d+)/, '$1.$2.$3/$4')
+  return d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{1,2})/, '$1.$2.$3/$4-$5')
+}
+
+/** Aplica a máscara de Telefone: (00) 0000-0000 (fixo, 10 dígitos) ou (00) 00000-0000 (celular, 11 dígitos) */
+export const maskPhone = (v: string): string => {
+  const d = onlyDigits(v).slice(0, 11)
+  if (!d) return ''
+  if (d.length <= 2) return `(${d}`
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`
+  if (d.length <= 10) {
+    // Telefone fixo (ex: (48) 3433-0000)
+    return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`
+  }
+  // Celular (11 dígitos: (48) 99999-0000)
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7, 11)}`
+}
+
+/** Aplica a máscara de CEP: 00000-000 */
+export const maskCep = (v: string): string => {
+  const d = onlyDigits(v).slice(0, 8)
+  if (!d) return ''
+  if (d.length <= 5) return d
+  return `${d.slice(0, 5)}-${d.slice(5)}`
 }
 
 /** Aplica a máscara adequada conforme o tipo de entidade (pf/pj). */

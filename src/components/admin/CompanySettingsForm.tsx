@@ -26,7 +26,15 @@ import {
 } from 'lucide-react'
 import { useCompanySettings } from '@/hooks/use-company-settings'
 import { CompanySettingsFormData, formatCompanyAddress } from '@/services/company-settings'
-import { maskCnpj, maskCpf, validateCnpj, validateCpf, onlyDigits } from '@/lib/cpf-cnpj'
+import {
+  maskCnpj,
+  maskCpf,
+  maskPhone,
+  maskCep,
+  validateCnpj,
+  validateCpf,
+  onlyDigits,
+} from '@/lib/cpf-cnpj'
 
 export function CompanySettingsForm() {
   const { settings, loading, updateSettings, refresh } = useCompanySettings()
@@ -71,8 +79,8 @@ export function CompanySettingsForm() {
         endereco_bairro: settings.endereco_bairro || '',
         endereco_cidade: settings.endereco_cidade || '',
         endereco_uf: settings.endereco_uf || '',
-        endereco_cep: settings.endereco_cep || '',
-        telefone: settings.telefone || '',
+        endereco_cep: settings.endereco_cep ? maskCep(settings.endereco_cep) : '',
+        telefone: settings.telefone ? maskPhone(settings.telefone) : '',
         email: settings.email || '',
         representante_nome: settings.representante_nome || '',
         representante_cargo: settings.representante_cargo || 'Sócio-Administrador',
@@ -108,9 +116,7 @@ export function CompanySettingsForm() {
           endereco_cidade: data.municipio || prev.endereco_cidade,
           endereco_uf: data.uf || prev.endereco_uf,
           endereco_cep: data.cep || prev.endereco_cep,
-          telefone: data.ddd_telefone_1
-            ? `(${data.ddd_telefone_1.substring(0, 2)}) ${data.ddd_telefone_1.substring(2)}`
-            : prev.telefone,
+          telefone: data.ddd_telefone_1 ? maskPhone(data.ddd_telefone_1) : prev.telefone,
           email: data.email?.toLowerCase() || prev.email,
           capital_social: data.capital_social ? Number(data.capital_social) : prev.capital_social,
         }))
@@ -181,9 +187,11 @@ export function CompanySettingsForm() {
       await updateSettings({
         ...formData,
         cnpj: maskCnpj(cleanCnpj),
+        telefone: formData.telefone ? maskPhone(formData.telefone) : null,
         representante_cpf: formData.representante_cpf
           ? maskCpf(onlyDigits(formData.representante_cpf))
           : null,
+        endereco_cep: formData.endereco_cep ? maskCep(formData.endereco_cep) : null,
       })
       toast.success(
         'Dados da Securitizadora atualizados com sucesso! Todos os novos contratos e documentos já utilizarão estas informações.',
@@ -361,12 +369,17 @@ export function CompanySettingsForm() {
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold">CPF do Representante</Label>
                 <Input
-                  value={formData.representante_cpf || ''}
-                  onChange={(e) =>
-                    setFormData({ ...formData, representante_cpf: maskCpf(e.target.value) })
-                  }
+                  value={formData.representante_cpf ?? ''}
+                  onChange={(e) => {
+                    const rawDigits = onlyDigits(e.target.value)
+                    setFormData((prev) => ({
+                      ...prev,
+                      representante_cpf: maskCpf(rawDigits),
+                    }))
+                  }}
                   placeholder="000.000.000-00"
                   maxLength={14}
+                  inputMode="numeric"
                 />
               </div>
             </div>
@@ -377,9 +390,17 @@ export function CompanySettingsForm() {
                   <Phone className="w-3.5 h-3.5 text-muted-foreground" /> Telefone / WhatsApp
                 </Label>
                 <Input
-                  value={formData.telefone || ''}
-                  onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
+                  value={formData.telefone ?? ''}
+                  onChange={(e) => {
+                    const rawDigits = onlyDigits(e.target.value)
+                    setFormData((prev) => ({
+                      ...prev,
+                      telefone: maskPhone(rawDigits),
+                    }))
+                  }}
                   placeholder="(00) 00000-0000"
+                  maxLength={15}
+                  inputMode="tel"
                 />
               </div>
 
@@ -432,10 +453,18 @@ export function CompanySettingsForm() {
                 )}
               </div>
               <Input
-                value={formData.endereco_cep || ''}
-                onChange={(e) => setFormData({ ...formData, endereco_cep: e.target.value })}
+                value={formData.endereco_cep ?? ''}
+                onChange={(e) => {
+                  const rawDigits = onlyDigits(e.target.value)
+                  setFormData((prev) => ({
+                    ...prev,
+                    endereco_cep: maskCep(rawDigits),
+                  }))
+                }}
                 onBlur={handleCepBlur}
                 placeholder="00000-000"
+                maxLength={9}
+                inputMode="numeric"
               />
             </div>
 
