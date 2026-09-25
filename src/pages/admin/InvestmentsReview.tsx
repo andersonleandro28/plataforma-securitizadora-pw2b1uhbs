@@ -46,6 +46,7 @@ import { formatDate, toISODate } from '@/lib/utils'
 import { InvestmentProofModal, InvestmentProof } from '@/components/admin/InvestmentProofModal'
 import { sendNotification } from '@/services/notifications'
 import { evaluateGracePeriod } from '@/lib/redemption-utils'
+import { getOrGenerateSubscriptionContract } from '@/services/subscription-contract'
 
 export default function InvestmentsReview() {
   const { user } = useAuth()
@@ -68,6 +69,7 @@ export default function InvestmentsReview() {
   const [proofModalOpen, setProofModalOpen] = useState(false)
   const [selectedProof, setSelectedProof] = useState<InvestmentProof | null>(null)
   const [selectedProofInv, setSelectedProofInv] = useState<any>(null)
+  const [generatingContractId, setGeneratingContractId] = useState<string | null>(null)
 
   // Novos States de Reprovação e Exclusão de Aportes
   const [rejectInvOpen, setRejectInvOpen] = useState(false)
@@ -372,6 +374,25 @@ export default function InvestmentsReview() {
     setSelectedProof(proof)
     setSelectedProofInv(inv)
     setProofModalOpen(true)
+  }
+
+  const handleOpenContract = async (inv: any) => {
+    setGeneratingContractId(inv.id)
+    try {
+      const url = await getOrGenerateSubscriptionContract({
+        investmentId: inv.id,
+        existingUrl: inv.contract_url,
+        forceRegenerate: false,
+        openInNewTab: true,
+      })
+      if (!inv.contract_url && url) {
+        fetchData()
+      }
+    } catch {
+      // Toast já tratado
+    } finally {
+      setGeneratingContractId(null)
+    }
   }
 
   const handleEditDates = (inv: any) => {
@@ -970,6 +991,23 @@ export default function InvestmentsReview() {
                               )}
                           </TableCell>
                           <TableCell className="text-right space-x-1.5 whitespace-nowrap">
+                            {/* Ver / Gerar Contrato de Subscrição de Debêntures */}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-primary hover:text-primary hover:bg-primary/10 border-primary/30"
+                              onClick={() => handleOpenContract(inv)}
+                              disabled={generatingContractId === inv.id}
+                              title="Visualizar ou emitir Termo de Subscrição de Debêntures em PDF"
+                            >
+                              <FileText className="w-4 h-4 mr-1.5" />
+                              {generatingContractId === inv.id
+                                ? 'Gerando...'
+                                : inv.contract_url
+                                  ? 'Contrato'
+                                  : 'Emitir Contrato'}
+                            </Button>
+
                             {/* Ver Comprovante (visível quando o aporte possui anexo) */}
                             {proofsMap[inv.id] && (
                               <Button

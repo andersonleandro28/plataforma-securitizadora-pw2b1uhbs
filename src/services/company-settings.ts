@@ -22,6 +22,8 @@ export interface CompanySettings {
   representante_cpf?: string | null
   capital_social?: number | null
   registro_regulador?: string | null
+  debenture_numero_escritura_padrao?: string | null
+  debenture_serie_padrao?: string | null
   created_at?: string
   updated_at?: string
   updated_by?: string | null
@@ -53,6 +55,8 @@ export const DEFAULT_COMPANY_SETTINGS: CompanySettings = {
   representante_cpf: '000.000.000-00',
   capital_social: 1000000.0,
   registro_regulador: 'Resolução CVM nº 60/2021',
+  debenture_numero_escritura_padrao: '1ª Escritura de Emissão Pública de Debêntures',
+  debenture_serie_padrao: '1ª Série',
 }
 
 // Cache em memória compartilhado na sessão do browser
@@ -128,6 +132,8 @@ export async function saveCompanySettings(
     representante_cpf: formData.representante_cpf?.trim() || null,
     capital_social: Number(formData.capital_social) || 0,
     registro_regulador: formData.registro_regulador?.trim() || null,
+    debenture_numero_escritura_padrao: formData.debenture_numero_escritura_padrao?.trim() || null,
+    debenture_serie_padrao: formData.debenture_serie_padrao?.trim() || null,
     updated_at: new Date().toISOString(),
     updated_by: user.id,
   }

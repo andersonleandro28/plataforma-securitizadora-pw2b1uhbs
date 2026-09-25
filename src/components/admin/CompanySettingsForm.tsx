@@ -17,6 +17,7 @@ import {
   Save,
   Loader2,
   FileCheck2,
+  FileText,
   MapPin,
   UserCheck,
   Phone,
@@ -62,6 +63,8 @@ export function CompanySettingsForm() {
     representante_cpf: '',
     capital_social: 0,
     registro_regulador: '',
+    debenture_numero_escritura_padrao: '',
+    debenture_serie_padrao: '',
   })
 
   // Sincroniza formulário com dados carregados
@@ -87,6 +90,8 @@ export function CompanySettingsForm() {
         representante_cpf: settings.representante_cpf ? maskCpf(settings.representante_cpf) : '',
         capital_social: settings.capital_social || 0,
         registro_regulador: settings.registro_regulador || '',
+        debenture_numero_escritura_padrao: settings.debenture_numero_escritura_padrao || '',
+        debenture_serie_padrao: settings.debenture_serie_padrao || '',
       })
     }
   }, [settings])
@@ -535,6 +540,51 @@ export function CompanySettingsForm() {
                 placeholder="SC"
                 maxLength={2}
               />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Bloco 3.1: Emissão e Escritura de Debêntures (Padrão) */}
+      <Card className="shadow-sm">
+        <CardHeader className="pb-4 border-b">
+          <CardTitle className="text-base font-bold flex items-center gap-2">
+            <FileText className="w-4 h-4 text-primary" />
+            Parâmetros Padrão de Debêntures e Escritura
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Configurações padrão para o Termo de Subscrição de Debêntures quando não houver
+            especificação na série/emissão
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-4 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Número da Escritura Padrão</Label>
+              <Input
+                value={formData.debenture_numero_escritura_padrao || ''}
+                onChange={(e) =>
+                  setFormData({ ...formData, debenture_numero_escritura_padrao: e.target.value })
+                }
+                placeholder="Ex: 1ª Escritura de Emissão Pública de Debêntures"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Exibido no cabeçalho e preâmbulo do contrato de subscrição.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Série da Debênture Padrão</Label>
+              <Input
+                value={formData.debenture_serie_padrao || ''}
+                onChange={(e) =>
+                  setFormData({ ...formData, debenture_serie_padrao: e.target.value })
+                }
+                placeholder="Ex: 1ª Série"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Utilizado na qualificação da emissão quando a série não for especificada.
+              </p>
             </div>
           </div>
         </CardContent>

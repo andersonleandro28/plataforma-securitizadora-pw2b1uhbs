@@ -34,6 +34,8 @@ export interface SeriesData {
 
 export interface DeedData {
   issuer_name: string
+  numero_escritura?: string
+  numero_emissao?: string
   total_volume: string
   issue_date: string
   series: SeriesData[]
@@ -58,6 +60,8 @@ export function ManualDeedDialog({ open, onOpenChange, onSuccess }: ManualDeedDi
   const [saving, setSaving] = useState(false)
   const [data, setData] = useState<DeedData>({
     issuer_name: '',
+    numero_escritura: '1ª Escritura de Emissão Pública',
+    numero_emissao: '1ª Emissão',
     total_volume: '',
     issue_date: new Date().toISOString().split('T')[0],
     series: [{ ...defaultSeries }],
@@ -66,6 +70,8 @@ export function ManualDeedDialog({ open, onOpenChange, onSuccess }: ManualDeedDi
   const resetForm = () => {
     setData({
       issuer_name: '',
+      numero_escritura: '1ª Escritura de Emissão Pública',
+      numero_emissao: '1ª Emissão',
       total_volume: '',
       issue_date: new Date().toISOString().split('T')[0],
       series: [{ ...defaultSeries }],
@@ -98,10 +104,11 @@ export function ManualDeedDialog({ open, onOpenChange, onSuccess }: ManualDeedDi
 
     setSaving(true)
     try {
-      const { data: debData, error: debErr } = await supabase
-        .from('debentures')
+      const { data: debData, error: debErr } = await (supabase.from('debentures') as any)
         .insert({
           issuer_name: data.issuer_name,
+          numero_escritura: data.numero_escritura || '1ª Escritura de Emissão Pública',
+          numero_emissao: data.numero_emissao || '1ª Emissão',
           total_volume: Number(data.total_volume) || 0,
           issue_date: data.issue_date || null,
         })
@@ -188,6 +195,22 @@ export function ManualDeedDialog({ open, onOpenChange, onSuccess }: ManualDeedDi
                   placeholder="Ex: Securitizadora S.A."
                   value={data.issuer_name}
                   onChange={(e) => setData({ ...data, issuer_name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Número da Escritura</Label>
+                <Input
+                  placeholder="Ex: 1ª Escritura de Emissão Pública"
+                  value={data.numero_escritura}
+                  onChange={(e) => setData({ ...data, numero_escritura: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Número da Emissão</Label>
+                <Input
+                  placeholder="Ex: 1ª Emissão"
+                  value={data.numero_emissao}
+                  onChange={(e) => setData({ ...data, numero_emissao: e.target.value })}
                 />
               </div>
               <div className="space-y-1.5">

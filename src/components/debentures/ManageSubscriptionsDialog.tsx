@@ -16,9 +16,10 @@ import {
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Trash2, Edit2, Save, X, Plus, Loader2, DollarSign } from 'lucide-react'
+import { Trash2, Edit2, Save, X, Plus, Loader2, DollarSign, FileText } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import { getOrGenerateSubscriptionContract } from '@/services/subscription-contract'
 import { useAuth } from '@/hooks/use-auth'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatDate, toISODate } from '@/lib/utils'
@@ -46,6 +47,7 @@ export function ManageSubscriptionsDialog({
 
   const [interestOpen, setInterestOpen] = useState(false)
   const [interestForm, setInterestForm] = useState<any>(null)
+  const [loadingContractSubId, setLoadingContractSubId] = useState<string | null>(null)
 
   useEffect(() => {
     if (series) {
@@ -258,6 +260,28 @@ export function ManageSubscriptionsDialog({
       date: new Date().toISOString().split('T')[0],
     })
     setInterestOpen(true)
+  }
+
+  const handleOpenSubscriptionContract = async (sub: any) => {
+    if (!sub.investment_id) {
+      toast.info(
+        'Esta subscrição não possui vínculo direto a um aporte online para emissão automatizada.',
+      )
+      return
+    }
+    setLoadingContractSubId(sub.id)
+    try {
+      await getOrGenerateSubscriptionContract({
+        investmentId: sub.investment_id,
+        existingUrl: null,
+        forceRegenerate: false,
+        openInNewTab: true,
+      })
+    } catch {
+      // Toast disparado
+    } finally {
+      setLoadingContractSubId(null)
+    }
   }
 
   const handlePayInterest = async () => {
@@ -585,12 +609,27 @@ export function ManageSubscriptionsDialog({
                         <TableCell className="text-right space-x-1 whitespace-nowrap">
                           {activeTab === 'ativos' ? (
                             <>
+                              {sub.investment_id && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-primary hover:bg-primary/10"
+                                  onClick={() => handleOpenSubscriptionContract(sub)}
+                                  disabled={
+                                    !!editingId || loading || loadingContractSubId === sub.id
+                                  }
+                                  title="Ver Contrato de Subscrição (PDF)"
+                                >
+                                  <FileText className="h-4 w-4" />
+                                </Button>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="icon"
                                 className="h-8 w-8 text-muted-foreground hover:text-primary"
                                 onClick={() => startEdit(sub)}
                                 disabled={!!editingId || loading}
+                                title="Editar"
                               >
                                 <Edit2 className="h-4 w-4" />
                               </Button>

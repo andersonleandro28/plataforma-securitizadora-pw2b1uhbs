@@ -41,6 +41,7 @@ import {
 } from '@/lib/manual-yield-calculator'
 import { evaluateGracePeriod } from '@/lib/redemption-utils'
 import { InvestorRedemptionDialog } from '@/components/investor/InvestorRedemptionDialog'
+import { getOrGenerateSubscriptionContract } from '@/services/subscription-contract'
 import { InvestorRedemptionStatement } from '@/components/investor/InvestorRedemptionStatement'
 import { InvestorTaxReport } from '@/components/investor/InvestorTaxReport'
 
@@ -84,13 +85,35 @@ interface InvestmentListProps {
   data: any[]
   pendingRedemptionsByInv?: Record<string, number>
   onOpenRedeemModal?: (inv: any) => void
+  onContractGenerated?: () => void
 }
 
 function InvestmentList({
   data,
   pendingRedemptionsByInv = {},
   onOpenRedeemModal,
+  onContractGenerated,
 }: InvestmentListProps) {
+  const [loadingContractId, setLoadingContractId] = useState<string | null>(null)
+
+  const handleOpenContract = async (inv: any) => {
+    setLoadingContractId(inv.id)
+    try {
+      const url = await getOrGenerateSubscriptionContract({
+        investmentId: inv.id,
+        existingUrl: inv.contract_url,
+        forceRegenerate: false,
+        openInNewTab: true,
+      })
+      if (!inv.contract_url && url && onContractGenerated) {
+        onContractGenerated()
+      }
+    } catch {
+      // Toast já disparado no service
+    } finally {
+      setLoadingContractId(null)
+    }
+  }
   if (data.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center p-12 text-center bg-muted/30 border border-dashed rounded-lg">
@@ -188,18 +211,21 @@ function InvestmentList({
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
                     Contrato
                   </p>
-                  {inv.contract_url ? (
-                    <a
-                      href={inv.contract_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline flex items-center gap-1 font-medium"
-                    >
-                      <FileText className="h-3.5 w-3.5" /> Ver PDF
-                    </a>
-                  ) : (
-                    <span className="text-muted-foreground">-</span>
-                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs gap-1.5 text-primary hover:bg-primary/10 border-primary/30"
+                    disabled={loadingContractId === inv.id}
+                    onClick={() => handleOpenContract(inv)}
+                    title="Visualizar ou baixar Termo de Subscrição de Debêntures em PDF"
+                  >
+                    <FileText className="h-3.5 w-3.5 text-primary" />
+                    {loadingContractId === inv.id
+                      ? 'Gerando...'
+                      : inv.contract_url
+                        ? 'Ver Contrato'
+                        : 'Emitir Contrato'}
+                  </Button>
                 </div>
               </div>
 
@@ -701,11 +727,12 @@ export function InvestorDashboard() {
                 data={activeInvestments}
                 pendingRedemptionsByInv={pendingRedemptionsByInv}
                 onOpenRedeemModal={handleOpenRedeemModal}
+                onContractGenerated={fetchData}
               />
             </TabsContent>
 
             <TabsContent value="resgatados" className="m-0">
-              <InvestmentList data={redeemedInvestments} />
+              <InvestmentList data={redeemedInvestments} onContractGenerated={fetchData} />
             </TabsContent>
 
             <TabsContent value="extrato-resgates" className="m-0">
@@ -731,7 +758,7 @@ export function InvestorDashboard() {
             </TabsContent>
 
             <TabsContent value="cancelados" className="m-0">
-              <InvestmentList data={cancelledInvestments} />
+              <InvestmentList data={cancelledInvestments} onContractGenerated={fetchData} />
             </TabsContent>
           </div>
         </Tabs>

@@ -34,8 +34,11 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { formatDate } from '@/lib/utils'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ProductDialog } from '@/components/admin/ProductDialog'
+import { useCompanySettings } from '@/hooks/use-company-settings'
+import { buildSecuritizadoraPreambulo } from '@/services/company-settings'
 
 export default function Investments() {
+  const { settings: companySettings } = useCompanySettings()
   const { profile, user } = useAuth()
   const navigate = useNavigate()
   const [products, setProducts] = useState<any[]>([])
@@ -523,37 +526,63 @@ export default function Investments() {
                         TERMO DE INVESTIMENTO EM DEBÊNTURES
                       </h3>
 
-                      <div className="space-y-1 bg-white p-3 border rounded shadow-sm">
-                        <p>
-                          <strong>CEDENTE/EMISSORA:</strong> Sea Connection Investimentos S.A.
+                      <div className="bg-primary/5 p-3 border border-primary/20 rounded text-xs space-y-1">
+                        <p className="font-bold text-primary">
+                          ESCRITURA DE EMISSÃO:{' '}
+                          <span className="font-normal text-foreground">
+                            {companySettings?.debenture_numero_escritura_padrao ||
+                              '1ª Escritura de Emissão Pública de Debêntures'}
+                          </span>
                         </p>
-                        <p>
-                          <strong>INVESTIDOR:</strong>{' '}
-                          {(profile as any)?.full_name || (profile as any)?.pj_company_name},
-                          CPF/CNPJ: {(profile as any)?.document_number}
+                        <p className="font-bold text-primary">
+                          SÉRIE:{' '}
+                          <span className="font-normal text-foreground">
+                            {investProduct.debenture_series?.series_number
+                              ? `Série ${investProduct.debenture_series.series_number}`
+                              : companySettings?.debenture_serie_padrao || '1ª Série'}
+                          </span>
                         </p>
-                        <p>
-                          <strong>ENDEREÇO:</strong> {(profile as any)?.address_street},{' '}
-                          {(profile as any)?.address_number} - {(profile as any)?.address_city}/
-                          {(profile as any)?.address_state}
+                      </div>
+
+                      <div className="space-y-1 bg-white dark:bg-card p-3 border rounded shadow-sm text-xs">
+                        <p className="text-justify leading-relaxed">
+                          <strong>EMISSORA:</strong>{' '}
+                          {buildSecuritizadoraPreambulo(companySettings, 'EMISSORA')}
                         </p>
-                        <p>
-                          <strong>E-MAIL:</strong> {(profile as any)?.email}
-                        </p>
-                        <p>
-                          <strong>PRODUTO:</strong> {investProduct.title}
+                        <p className="text-justify leading-relaxed pt-2">
+                          <strong>INVESTIDOR/DEBENTURISTA:</strong>{' '}
+                          {(profile as any)?.full_name ||
+                            (profile as any)?.pj_company_name ||
+                            'Investidor'}
+                          , inscrito no CPF/CNPJ nº {(profile as any)?.document_number || 'N/A'},
+                          com endereço em {(profile as any)?.address_street || 'Conforme cadastro'},
+                          nº {(profile as any)?.address_number || 'S/N'},{' '}
+                          {(profile as any)?.address_city || ''}/
+                          {(profile as any)?.address_state || ''}, e-mail{' '}
+                          {(profile as any)?.email || 'N/A'}.
                         </p>
                       </div>
 
                       <div>
-                        <h4 className="font-bold">CLÁUSULA 1 - DO OBJETO</h4>
-                        <p>
-                          O presente termo tem como objeto a subscrição, pelo INVESTIDOR, de{' '}
-                          {quotasToBuy} cotas do produto {investProduct.title}, no valor unitário de{' '}
+                        <h4 className="font-bold text-primary">
+                          CLÁUSULA 1 - DO OBJETO E DA SUBSCRIÇÃO
+                        </h4>
+                        <p className="text-xs text-justify">
+                          O presente instrumento tem por objeto a subscrição, pelo INVESTIDOR, de{' '}
+                          {quotasToBuy} ({quotasToBuy === 1 ? 'uma cota' : quotasToBuy + ' cotas'})
+                          debênture(s) privada(s), nominativa(s) e escritural(is) vinculada(s) à{' '}
+                          {investProduct.debenture_series?.series_number
+                            ? `Série ${investProduct.debenture_series.series_number}`
+                            : companySettings?.debenture_serie_padrao || '1ª Série'}{' '}
+                          da{' '}
+                          {companySettings?.debenture_numero_escritura_padrao ||
+                            '1ª Escritura de Emissão Pública de Debêntures'}
+                          , emitida sob a denominação de &quot;{investProduct.title}&quot;, com
+                          valor nominal unitário de{' '}
                           {formatCurrency(
                             investProduct.quota_value || investProduct.min_investment,
                           )}
-                          , totalizando o montante de{' '}
+                          , perfazendo o montante total de{' '}
                           {formatCurrency(
                             quotasToBuy *
                               (investProduct.quota_value || investProduct.min_investment),
@@ -563,54 +592,96 @@ export default function Investments() {
                       </div>
 
                       <div>
-                        <h4 className="font-bold">CLÁUSULA 2 - DO VALOR E INTEGRALIZAÇÃO</h4>
-                        <p>
+                        <h4 className="font-bold text-primary">CLÁUSULA 2 - DA INTEGRALIZAÇÃO</h4>
+                        <p className="text-xs text-justify">
                           O INVESTIDOR compromete-se a integralizar o valor total de{' '}
                           {formatCurrency(
                             quotasToBuy *
                               (investProduct.quota_value || investProduct.min_investment),
                           )}{' '}
-                          via transferência bancária (PIX/TED) para a conta da emissora informada na
-                          plataforma, sob pena de cancelamento automático desta subscrição caso não
-                          compensado no prazo estipulado.
+                          em moeda corrente nacional via transferência bancária (PIX/TED) para a
+                          conta corrente de titularidade da EMISSORA, sob pena de cancelamento
+                          automático do presente termo caso os fundos não sejam compensados no prazo
+                          estipulado.
                         </p>
                       </div>
 
                       <div>
-                        <h4 className="font-bold">CLÁUSULA 3 - DA RENTABILIDADE E PRAZOS</h4>
-                        <p>
-                          O investimento terá a rentabilidade alvo de {investProduct.rate}, com
-                          prazo de vencimento fixado para {investProduct.term}. O resgate antecipado
-                          obedece ao prazo de carência mínimo de{' '}
-                          {investProduct.min_grace_period_months || 0} meses e ao regulamento
-                          específico da emissão.
+                        <h4 className="font-bold text-primary">
+                          CLÁUSULA 3 - DA REMUNERAÇÃO E REGIME DE JUROS
+                        </h4>
+                        <p className="text-xs text-justify">
+                          Sobre o valor subscrito incidirá a remuneração contratada correspondente à
+                          taxa de {investProduct.rate} (
+                          {investProduct.debenture_series?.indexer || 'Pré-fixado'}), apurada a
+                          partir da data de integralização do aporte. O regime de capitalização
+                          aplicável é{' '}
+                          {investProduct.interest_type === 'composto'
+                            ? 'Juros Compostos'
+                            : 'Juros Simples'}
+                          , calculado pro rata die.
                         </p>
                       </div>
 
                       <div>
-                        <h4 className="font-bold">CLÁUSULA 4 - DOS RISCOS</h4>
-                        <p>
+                        <h4 className="font-bold text-primary">
+                          CLÁUSULA 4 - DO PRAZO, CARÊNCIA E RESGATE
+                        </h4>
+                        <p className="text-xs text-justify">
+                          O prazo de vigência desta debênture é fixado para {investProduct.term}.
+                          Aplica-se o prazo de carência mínima obrigatória de{' '}
+                          {investProduct.min_grace_period_months || 0} meses. Decorrida a carência,
+                          o investidor poderá solicitar resgate através da plataforma, observadas as
+                          regras de liquidação e eventuais deságios estabelecidos no regulamento da
+                          emissão.
+                        </p>
+                      </div>
+
+                      <div>
+                        <h4 className="font-bold text-primary">
+                          CLÁUSULA 5 - DA ESCRITURA E LEGISLAÇÃO APLICÁVEL
+                        </h4>
+                        <p className="text-xs text-justify">
+                          A presente subscrição sujeita-se às condições da respectiva Escritura de
+                          Emissão e subordina-se à Lei Federal nº 6.404/76 (arts. 52 e ss.), à Lei
+                          Federal nº 6.385/76 (normas CVM) e ao marco securitizatório brasileiro. Os
+                          debenturistas gozam de todas as garantias e direitos previstos em lei.
+                        </p>
+                      </div>
+
+                      <div>
+                        <h4 className="font-bold text-primary">
+                          CLÁUSULA 6 - DA TRIBUTAÇÃO (IRRF)
+                        </h4>
+                        <p className="text-xs text-justify">
+                          Os rendimentos estão sujeitos à incidência do Imposto de Renda Retido na
+                          Fonte (IRRF) pela tabela regressiva de renda fixa (Lei 11.033/2004),
+                          retido na fonte no momento de cada resgate. As rentabilidades contratadas
+                          são informadas em valores brutos.
+                        </p>
+                      </div>
+
+                      <div>
+                        <h4 className="font-bold text-primary">
+                          CLÁUSULA 7 - DA CIÊNCIA DE RISCOS
+                        </h4>
+                        <p className="text-xs text-justify">
                           O INVESTIDOR declara expressa ciência de que o investimento em debêntures
-                          está sujeito a riscos de mercado, liquidez e de crédito, não contando com
-                          garantia do Fundo Garantidor de Créditos (FGC).
+                          privadas constitui aplicação de renda fixa emitida por securitizadora, não
+                          contando com cobertura do Fundo Garantidor de Créditos (FGC).
                         </p>
                       </div>
 
                       <div>
-                        <h4 className="font-bold">CLÁUSULA 5 - DA PROTEÇÃO DE DADOS (LGPD)</h4>
-                        <p>
-                          O INVESTIDOR autoriza o tratamento de seus dados pessoais para as
-                          finalidades de execução deste contrato, auditoria e compliance, nos termos
-                          da Lei Geral de Proteção de Dados (Lei 13.709/2018).
-                        </p>
-                      </div>
-
-                      <div>
-                        <h4 className="font-bold">CLÁUSULA 6 - DO FORO</h4>
-                        <p>
-                          As partes elegem o foro da Comarca de Criciúma/SC para dirimir quaisquer
-                          dúvidas oriundas deste termo, com renúncia expressa a qualquer outro, por
-                          mais privilegiado que seja.
+                        <h4 className="font-bold text-primary">
+                          CLÁUSULA 8 - DA PROTEÇÃO DE DADOS (LGPD) E FORO
+                        </h4>
+                        <p className="text-xs text-justify">
+                          As partes autorizam reciprocamente o tratamento de dados pessoais conforme
+                          a Lei 13.709/2018 (LGPD) e elegem o Foro da Comarca de{' '}
+                          {companySettings?.endereco_cidade || 'Criciúma'}, Estado de{' '}
+                          {companySettings?.endereco_uf || 'SC'}, para dirimir quaisquer
+                          controvérsias decorrentes deste Instrumento.
                         </p>
                       </div>
 
