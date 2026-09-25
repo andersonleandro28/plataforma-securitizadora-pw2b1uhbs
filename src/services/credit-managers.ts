@@ -34,8 +34,16 @@ export interface ManagerCommissionItem {
   paidValue: number
   discountValue: number
   commissionRatePct: number
+  isHistoricalRate: boolean
   commissionAmount: number
   status: string
+}
+
+export interface ManagerCommissionPayment {
+  expenseId: string
+  paidAt: string
+  amount: number
+  bankAccountId?: string | null
 }
 
 export interface ManagerCommissionSummary {
@@ -47,6 +55,8 @@ export interface ManagerCommissionSummary {
   anticipationsDiscount: number
   ccbDiscount: number
   totalCommission: number
+  isPaid: boolean
+  paymentDetails?: ManagerCommissionPayment | null
   items: ManagerCommissionItem[]
 }
 
@@ -192,6 +202,7 @@ export async function fetchCommissionsForPeriod(
       issue_date,
       status,
       manager_id,
+      commission_rate_applied,
       profiles!credit_operations_borrower_id_fkey ( full_name, pj_company_name ),
       operation_calculations (
         net_value,
@@ -213,6 +224,7 @@ export async function fetchCommissionsForPeriod(
       status,
       created_at,
       manager_id,
+      commission_rate_applied,
       ccb_solicitacoes (
         id,
         borrower_data
@@ -222,6 +234,32 @@ export async function fetchCommissionsForPeriod(
     .not('status', 'in', '("cancelado","excluido","Cancelado","Excluído")')
 
   if (ccbErr) throw ccbErr
+
+  // 4. Buscar pagamentos de comissão já registrados como despesas para a competência
+  // Padrão de descrição: "Comissão de gerentes — [nome] — competência MM/AAAA"
+  const [compYear, compMonth] = selectedMonth.split('-')
+  const compLabel = `${compMonth}/${compYear}`
+  const { data: paidExpenses, error: expErr } = await (supabase.from('expenses') as any)
+    .select('id, description, amount, payment_date, due_date, status, bank_account_id')
+    .eq('category', 'Comissões de Gerentes')
+    .ilike('description', `%competência ${compLabel}%`)
+
+  if (expErr) throw expErr
+
+  const paymentByManagerId = new Map<string, ManagerCommissionPayment>()
+  ;(paidExpenses || []).forEach((exp: any) => {
+    // Tenta correlacionar pelo gerente no mapa
+    for (const m of managers) {
+      if (exp.description.includes(m.full_name) || exp.description.includes(m.cpf)) {
+        paymentByManagerId.set(m.id, {
+          expenseId: exp.id,
+          paidAt: exp.payment_date || exp.due_date,
+          amount: Number(exp.amount) || 0,
+          bankAccountId: exp.bank_account_id,
+        })
+      }
+    }
+  })
 
   // Filtrar pela competência (YYYY-MM)
   const periodCreditOps = (creditOpsData || []).filter((op: any) => {
@@ -238,6 +276,7 @@ export async function fetchCommissionsForPeriod(
   const managerSummariesMap = new Map<string, ManagerCommissionSummary>()
 
   managers.forEach((m) => {
+    const payment = paymentByManagerId.get(m.id) || null
     managerSummariesMap.set(m.id, {
       manager: m,
       totalOperations: 0,
@@ -247,6 +286,8 @@ export async function fetchCommissionsForPeriod(
       anticipationsDiscount: 0,
       ccbDiscount: 0,
       totalCommission: 0,
+      isPaid: Boolean(payment),
+      paymentDetails: payment,
       items: [],
     })
   })
@@ -275,7 +316,14 @@ export async function fetchCommissionsForPeriod(
     }
 
     const mgr = managerMap.get(op.manager_id)!
-    const ratePct = Number(mgr.commission_anticipation_pct || 0)
+    // MELHORIA 3: Alíquota histórica se gravada, ou fallback para percentual atual
+    const hasHistorical =
+      op.commission_rate_applied !== null &&
+      op.commission_rate_applied !== undefined &&
+      !isNaN(Number(op.commission_rate_applied))
+    const ratePct = hasHistorical
+      ? Number(op.commission_rate_applied)
+      : Number(mgr.commission_anticipation_pct || 0)
     const commAmount = (discountVal * ratePct) / 100
 
     const summary = managerSummariesMap.get(mgr.id)!
@@ -294,6 +342,7 @@ export async function fetchCommissionsForPeriod(
       paidValue: paidVal,
       discountValue: discountVal,
       commissionRatePct: ratePct,
+      isHistoricalRate: hasHistorical,
       commissionAmount: commAmount,
       status: op.status,
     })
@@ -326,7 +375,14 @@ export async function fetchCommissionsForPeriod(
     }
 
     const mgr = managerMap.get(rec.manager_id)!
-    const ratePct = Number(mgr.commission_ccb_pct || 0)
+    // MELHORIA 3: Alíquota histórica se gravada, ou fallback para percentual atual
+    const hasHistorical =
+      rec.commission_rate_applied !== null &&
+      rec.commission_rate_applied !== undefined &&
+      !isNaN(Number(rec.commission_rate_applied))
+    const ratePct = hasHistorical
+      ? Number(rec.commission_rate_applied)
+      : Number(mgr.commission_ccb_pct || 0)
     const commAmount = (discountVal * ratePct) / 100
 
     const summary = managerSummariesMap.get(mgr.id)!
@@ -345,6 +401,7 @@ export async function fetchCommissionsForPeriod(
       paidValue: paidVal,
       discountValue: discountVal,
       commissionRatePct: ratePct,
+      isHistoricalRate: hasHistorical,
       commissionAmount: commAmount,
       status: rec.status,
     })
@@ -374,4 +431,89 @@ export async function fetchCommissionsForPeriod(
       totalCommission: grandCommission,
     },
   }
+}
+
+export interface RegisterCommissionPaymentParams {
+  managerId: string
+  managerName: string
+  periodMonth: string // YYYY-MM
+  amount: number
+  bankAccountId: string
+  paymentDate?: string
+}
+
+/**
+ * Registra o pagamento da comissão de um gerente como despesa real no sistema
+ * (tabela `expenses` e consequentemente Livro Caixa / Contabilidade).
+ * Previne duplicidade para o mesmo gerente e competência.
+ */
+export async function registerManagerCommissionExpense(
+  params: RegisterCommissionPaymentParams,
+): Promise<{ expenseId: string }> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  const [year, month] = params.periodMonth.split('-')
+  const competenceLabel = `${month}/${year}`
+  const description = `Comissão de gerentes — ${params.managerName} — competência ${competenceLabel}`
+  const effectiveDate = params.paymentDate || new Date().toISOString().split('T')[0]
+
+  // Verificação de duplicidade
+  const { data: existing, error: checkErr } = await (supabase.from('expenses') as any)
+    .select('id, description, status')
+    .eq('category', 'Comissões de Gerentes')
+    .ilike('description', `%${params.managerName}%competência ${competenceLabel}%`)
+    .maybeSingle()
+
+  if (checkErr) throw checkErr
+
+  if (existing) {
+    throw new Error(
+      `Já existe uma despesa registrada para ${params.managerName} referente à competência ${competenceLabel}.`,
+    )
+  }
+
+  const payload: any = {
+    description,
+    category: 'Comissões de Gerentes',
+    amount: Number(params.amount.toFixed(2)),
+    due_date: effectiveDate,
+    payment_date: effectiveDate,
+    status: 'paid',
+    type: 'despesa_administrativa',
+    bank_account_id: params.bankAccountId,
+    created_by: user?.id || null,
+  }
+
+  const { data: inserted, error: insertErr } = await (supabase.from('expenses') as any)
+    .insert(payload)
+    .select('id')
+    .single()
+
+  if (insertErr) {
+    console.error('Erro ao registrar despesa de comissão:', insertErr)
+    throw insertErr
+  }
+
+  // Registrar auditoria
+  try {
+    await (supabase.from('audit_logs') as any).insert({
+      user_id: user?.id,
+      action: 'REGISTER_COMMISSION_EXPENSE',
+      entity_type: 'expenses',
+      entity_id: inserted.id,
+      details: {
+        manager_id: params.managerId,
+        manager_name: params.managerName,
+        period: params.periodMonth,
+        amount: params.amount,
+        bank_account_id: params.bankAccountId,
+      },
+    })
+  } catch (auditErr) {
+    console.warn('Falha ao gravar audit_log de comissão:', auditErr)
+  }
+
+  return { expenseId: inserted.id }
 }

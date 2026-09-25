@@ -209,10 +209,17 @@ export default function CcbPurchases() {
     const tomador_id = selectedCcb?.user_id
 
     const { acq, profit, tir, prov } = calculateMetrics()
+    const selectedManager = creditManagers.find((m) => m.id === form.manager_id)
+    const historicalRate =
+      selectedManager && form.manager_id !== 'none'
+        ? Number(selectedManager.commission_ccb_pct || 0)
+        : null
+
     const payload: any = {
       ccb_id: form.ccb_id,
       tomador_id: tomador_id,
       manager_id: form.manager_id && form.manager_id !== 'none' ? form.manager_id : null,
+      commission_rate_applied: historicalRate,
       acquisition_value: acq,
       boleto_count: Number(form.boleto_count),
       boleto_unit_value: Number(form.boleto_unit_value),
@@ -702,6 +709,27 @@ export default function CcbPurchases() {
                       ))}
                   </SelectContent>
                 </Select>
+
+                {/* Exibição clara do % aplicado vigente na data da operação */}
+                {form.manager_id && form.manager_id !== 'none' ? (
+                  <div className="flex items-center justify-between p-2 rounded bg-primary/5 border border-primary/20 text-xs">
+                    <span className="text-muted-foreground">
+                      Percentual de comissão vigente (CCB):
+                    </span>
+                    <span className="font-semibold text-primary">
+                      {creditManagers.find((m) => m.id === form.manager_id)?.commission_ccb_pct ??
+                        0}
+                      %
+                      <span className="text-[10px] text-muted-foreground font-normal ml-1">
+                        (será gravado nesta operação)
+                      </span>
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground italic">
+                    Nenhuma comissão será gerada para esta operação.
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

@@ -22,6 +22,7 @@ import {
   Sparkles,
   TrendingUp,
   Receipt,
+  Users,
   Landmark,
   Scale,
   Activity,
@@ -43,12 +44,20 @@ import { exportToCSV } from '@/lib/export-utils'
 import { BankMovementExtractReportTab } from '@/components/reports/BankMovementExtractReportTab'
 import { InvestorYieldsReportTab } from '@/components/reports/InvestorYieldsReportTab'
 import { PeriodOperationsReportTab } from '@/components/reports/PeriodOperationsReportTab'
+import { fetchCommissionsForPeriod, ManagerCommissionSummary } from '@/services/credit-managers'
+import { maskCpf } from '@/lib/cpf-cnpj'
 import { useDre } from '@/hooks/use-dre'
 import { useDfc } from '@/hooks/use-dfc'
 import { useAccounting } from '@/hooks/use-accounting'
 import { cn } from '@/lib/utils'
 
-export type ReportTypeKey = 'investor-yields' | 'period-operations' | 'bank-extract' | 'dre' | 'dfc'
+export type ReportTypeKey =
+  | 'investor-yields'
+  | 'period-operations'
+  | 'credit-managers'
+  | 'bank-extract'
+  | 'dre'
+  | 'dfc'
 
 interface AvailableReportConfig {
   id: ReportTypeKey
@@ -72,6 +81,13 @@ const AVAILABLE_REPORTS: AvailableReportConfig[] = [
     subtitle: 'Antecipação de recebíveis, aquisições de CCBs, deságios e apuração tributária.',
     category: 'Operações & Ativo',
     icon: Receipt,
+  },
+  {
+    id: 'credit-managers',
+    title: 'Comissões de Gerentes de Crédito',
+    subtitle: 'Apuração mensal de comissões por originador sobre deságios de antecipações e CCBs.',
+    category: 'Originação & Comercial',
+    icon: Users,
   },
   {
     id: 'bank-extract',
@@ -148,10 +164,27 @@ export function UnifiedReportTab() {
     return { monthStart: firstDay, monthEnd: lastDay }
   }, [selectedMonth])
 
-  // Carrega DRE e DFC para inclusão no unificado se selecionados
+  // Carrega DRE, DFC e Comissões de Gerentes para inclusão no unificado se selecionados
   const { dados: dreDados, refetch: refetchDre } = useDre()
   const { dados: dfcDados, refetch: refetchDfc } = useDfc()
   const { data: accountingData, refetch: refetchAccounting } = useAccounting()
+
+  const [commissionsData, setCommissionsData] = useState<{
+    summaries: ManagerCommissionSummary[]
+    unassignedTotals: { count: number; discount: number }
+    grandTotals: { operationsCount: number; totalDiscount: number; totalCommission: number }
+  } | null>(null)
+  const [loadingCommissions, setLoadingCommissions] = useState(false)
+
+  useEffect(() => {
+    if (selectedReports.includes('credit-managers')) {
+      setLoadingCommissions(true)
+      fetchCommissionsForPeriod(selectedMonth)
+        .then((res) => setCommissionsData(res))
+        .catch((err) => console.error('Erro ao carregar comissões unificadas:', err))
+        .finally(() => setLoadingCommissions(false))
+    }
+  }, [selectedReports, selectedMonth])
 
   useEffect(() => {
     if (selectedReports.includes('dre')) {
@@ -223,6 +256,77 @@ export function UnifiedReportTab() {
 
     unifiedRows.push({}) // linha em branco separadora
 
+    // Seção Comissões de Gerentes de Crédito
+    if (selectedReports.includes('credit-managers') && commissionsData) {
+      unifiedRows.push({
+        'RELATÓRIO UNIFICADO': '=== SEÇÃO: COMISSÕES DE GERENTES DE CRÉDITO ===',
+        COMPETÊNCIA: `Operações: ${commissionsData.grandTotals.operationsCount} | Deságio: R$ ${commissionsData.grandTotals.totalDiscount.toFixed(2)} | Comissão Total: R$ ${commissionsData.grandTotals.totalCommission.toFixed(2)}`,
+      })
+
+      commissionsData.summaries.forEach((s) => {
+        if (s.items.length === 0) {
+          unifiedRows.push({
+            'RELATÓRIO UNIFICADO': 'Comissões de Gerentes',
+            COMPETÊNCIA: selectedMonth,
+            'DATA DE GERAÇÃO': '—',
+            'RELATÓRIOS INCLUÍDOS': s.manager.full_name,
+            COLUNA_1: maskCpf(s.manager.cpf),
+            COLUNA_2: 'Sem operações no período',
+            COLUNA_3: '0.00',
+            COLUNA_4: '0.00',
+            COLUNA_5: '0.00',
+            COLUNA_6: s.isPaid ? 'Pago' : 'Pendente',
+          })
+        } else {
+          s.items.forEach((item) => {
+            unifiedRows.push({
+              'RELATÓRIO UNIFICADO': 'Comissões de Gerentes',
+              COMPETÊNCIA: selectedMonth,
+              'DATA DE GERAÇÃO': item.operationDate || '—',
+              'RELATÓRIOS INCLUÍDOS': s.manager.full_name,
+              COLUNA_1: maskCpf(s.manager.cpf),
+              COLUNA_2: `${item.operationType === 'antecipacao' ? 'Antecipação' : 'CCB'} - ${item.contractOrIdentifier} (${item.clientName})`,
+              COLUNA_3: item.discountValue.toFixed(2),
+              COLUNA_4: `${item.commissionRatePct.toFixed(2)}%${item.isHistoricalRate ? ' (histórico)' : ''}`,
+              COLUNA_5: item.commissionAmount.toFixed(2),
+              COLUNA_6: s.isPaid ? 'Pago' : 'Pendente',
+            })
+          })
+        }
+
+        // Subtotal gerente
+        unifiedRows.push({
+          'RELATÓRIO UNIFICADO': 'Comissões de Gerentes (Subtotal)',
+          COMPETÊNCIA: selectedMonth,
+          'DATA DE GERAÇÃO': '—',
+          'RELATÓRIOS INCLUÍDOS': `SUBTOTAL — ${s.manager.full_name}`,
+          COLUNA_1: maskCpf(s.manager.cpf),
+          COLUNA_2: `${s.totalOperations} op(s)`,
+          COLUNA_3: s.totalDiscount.toFixed(2),
+          COLUNA_4: '—',
+          COLUNA_5: s.totalCommission.toFixed(2),
+          COLUNA_6: s.isPaid ? 'Pago' : 'Pendente',
+        })
+      })
+
+      if (commissionsData.unassignedTotals.count > 0) {
+        unifiedRows.push({
+          'RELATÓRIO UNIFICADO': 'Sem indicação de gerente',
+          COMPETÊNCIA: selectedMonth,
+          'DATA DE GERAÇÃO': '—',
+          'RELATÓRIOS INCLUÍDOS': 'Operações sem gerente vinculado',
+          COLUNA_1: '—',
+          COLUNA_2: `${commissionsData.unassignedTotals.count} op(s)`,
+          COLUNA_3: commissionsData.unassignedTotals.discount.toFixed(2),
+          COLUNA_4: '0%',
+          COLUNA_5: '0.00',
+          COLUNA_6: 'Isento',
+        })
+      }
+
+      unifiedRows.push({})
+    }
+
     // 1. Extrato de Movimentações Bancárias (Livro Caixa)
     if (selectedReports.includes('bank-extract') && accountingData) {
       unifiedRows.push({
@@ -293,6 +397,7 @@ export function UnifiedReportTab() {
     exportToCSV(unifiedRows, `Relatorio_Unificado_Nexum_${selectedMonth}.csv`)
   }, [
     selectedReports,
+    commissionsData,
     accountingData,
     dreDados,
     dfcDados,
@@ -607,6 +712,231 @@ export function UnifiedReportTab() {
               </CardHeader>
               <CardContent className="pt-6 w-full max-w-full overflow-x-auto">
                 <PeriodOperationsReportTab embedded={true} />
+              </CardContent>
+            </Card>
+          </section>
+        )}
+
+        {/* Seção: Comissões de Gerentes de Crédito */}
+        {selectedReports.includes('credit-managers') && (
+          <section className="unified-section-break w-full max-w-full">
+            <Card className="w-full max-w-full shadow-sm overflow-hidden">
+              <CardHeader className="border-b bg-muted/30 pb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <Badge
+                      variant="outline"
+                      className="text-xs font-semibold bg-primary/10 text-primary border-primary/20"
+                    >
+                      Seção {selectedReports.indexOf('credit-managers') + 1}
+                    </Badge>
+                    <div>
+                      <CardTitle className="text-base sm:text-lg font-bold flex items-center gap-2">
+                        <Users className="w-4 h-4 text-primary" />
+                        Comissões de Gerentes de Crédito
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Apuração nominal e percentual de comissões por originador sobre o deságio de
+                        operações e CCBs.
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <Badge variant="secondary" className="font-mono text-xs w-fit">
+                    {selectedMonthLabel}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6 space-y-6 w-full max-w-full">
+                {/* Cards de Resumo Executivo */}
+                <div className="grid gap-4 md:grid-cols-3 print-break-inside-avoid">
+                  <Card className="shadow-none">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Total de Operações com Gerente
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold font-mono">
+                        {commissionsData?.grandTotals.operationsCount ?? 0} op(s)
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="shadow-none">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Deságio Total Originado
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold font-mono text-foreground">
+                        {formatCurrency(commissionsData?.grandTotals.totalDiscount ?? 0)}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Base de cálculo do comissionamento
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-primary/5 border-primary shadow-none">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-xs font-medium text-primary uppercase tracking-wider">
+                        Comissão Total Apurada
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold font-mono text-emerald-600">
+                        {formatCurrency(commissionsData?.grandTotals.totalCommission ?? 0)}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Devida aos originadores da competência
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Tabela por Gerente */}
+                <Card className="shadow-none">
+                  <CardHeader className="border-b pb-3">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-muted-foreground" />
+                      Detalhamento por Gerente de Crédito ({selectedMonthLabel})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <div className="w-full max-w-full overflow-x-auto">
+                      <Table className="w-full text-xs">
+                        <TableHeader>
+                          <TableRow className="bg-muted/50">
+                            <TableHead className="min-w-[180px]">Gerente de Crédito</TableHead>
+                            <TableHead className="w-[120px]">CPF</TableHead>
+                            <TableHead className="w-[80px] text-center">Nº Operações</TableHead>
+                            <TableHead className="w-[140px] text-right">
+                              Deságio Originado
+                            </TableHead>
+                            <TableHead className="w-[110px] text-center">% Aplicado</TableHead>
+                            <TableHead className="w-[140px] text-right">Comissão Total</TableHead>
+                            <TableHead className="w-[90px] text-center">Status</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {loadingCommissions ? (
+                            <TableRow>
+                              <TableCell
+                                colSpan={7}
+                                className="text-center py-6 text-muted-foreground"
+                              >
+                                Carregando apuração de comissões...
+                              </TableCell>
+                            </TableRow>
+                          ) : !commissionsData?.summaries ||
+                            commissionsData.summaries.length === 0 ? (
+                            <TableRow>
+                              <TableCell
+                                colSpan={7}
+                                className="text-center py-6 text-muted-foreground"
+                              >
+                                Nenhum gerente cadastrado ou sem movimentações no período.
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            <>
+                              {commissionsData.summaries.map((s) => (
+                                <TableRow key={s.manager.id} className="hover:bg-muted/30">
+                                  <TableCell className="font-medium">
+                                    {s.manager.full_name}
+                                  </TableCell>
+                                  <TableCell className="font-mono text-muted-foreground">
+                                    {maskCpf(s.manager.cpf)}
+                                  </TableCell>
+                                  <TableCell className="text-center font-semibold">
+                                    {s.totalOperations}
+                                  </TableCell>
+                                  <TableCell className="text-right font-mono text-foreground font-medium">
+                                    {formatCurrency(s.totalDiscount)}
+                                  </TableCell>
+                                  <TableCell className="text-center font-mono text-muted-foreground">
+                                    {s.items.length > 0 ? (
+                                      <span className="inline-flex items-center gap-1 justify-center">
+                                        {Array.from(
+                                          new Set(s.items.map((it) => it.commissionRatePct)),
+                                        ).join('%, ')}
+                                        %
+                                        {s.items.some((it) => it.isHistoricalRate) && (
+                                          <Badge
+                                            variant="secondary"
+                                            className="text-[9px] px-1 py-0 h-4 bg-primary/10 text-primary border border-primary/20"
+                                          >
+                                            histórico
+                                          </Badge>
+                                        )}
+                                      </span>
+                                    ) : (
+                                      `${s.manager.commission_anticipation_pct}% / ${s.manager.commission_ccb_pct}%`
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="text-right font-mono font-bold text-emerald-600">
+                                    {formatCurrency(s.totalCommission)}
+                                  </TableCell>
+                                  <TableCell className="text-center">
+                                    {s.isPaid ? (
+                                      <Badge
+                                        variant="outline"
+                                        className="border-emerald-500 text-emerald-700 bg-emerald-50 text-[10px]"
+                                      >
+                                        Pago
+                                      </Badge>
+                                    ) : s.totalCommission > 0 ? (
+                                      <Badge
+                                        variant="outline"
+                                        className="border-amber-400 text-amber-700 bg-amber-50 text-[10px]"
+                                      >
+                                        Pendente
+                                      </Badge>
+                                    ) : (
+                                      <span className="text-muted-foreground">—</span>
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+
+                              {/* Linha Total da Seção */}
+                              <TableRow className="bg-muted/60 font-semibold border-t-2">
+                                <TableCell colSpan={2} className="uppercase text-[11px]">
+                                  Total de Comissões do Período:
+                                </TableCell>
+                                <TableCell className="text-center font-mono">
+                                  {commissionsData.grandTotals.operationsCount}
+                                </TableCell>
+                                <TableCell className="text-right font-mono text-foreground">
+                                  {formatCurrency(commissionsData.grandTotals.totalDiscount)}
+                                </TableCell>
+                                <TableCell></TableCell>
+                                <TableCell className="text-right font-mono text-emerald-600 text-sm">
+                                  {formatCurrency(commissionsData.grandTotals.totalCommission)}
+                                </TableCell>
+                                <TableCell></TableCell>
+                              </TableRow>
+                            </>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Nota de valor sem indicação de gerente */}
+                {commissionsData && commissionsData.unassignedTotals.count > 0 && (
+                  <div className="p-3 bg-muted/30 border rounded-md text-xs text-muted-foreground flex items-center justify-between print-break-inside-avoid">
+                    <span>
+                      <strong>Nota de Originação:</strong> Constam{' '}
+                      <strong>{commissionsData.unassignedTotals.count} operações</strong> no período
+                      registradas como <em>&quot;Sem indicação de gerente&quot;</em>, correspondendo
+                      a um deságio de {formatCurrency(commissionsData.unassignedTotals.discount)}{' '}
+                      sobre o qual não incide pagamento de comissão.
+                    </span>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </section>

@@ -561,12 +561,19 @@ export function AdminNewOperationDialog({
           ? installmentsList[installmentsList.length - 1]?.dueDate || installmentsList[0].dueDate
           : formData.dueDate
 
-      // 1. Criar operação de crédito
+      // 1. Criar operação de crédito (com alíquota histórica vigente do gerente)
+      const selectedManager = creditManagers.find((m) => m.id === selectedManagerId)
+      const historicalCommissionRate =
+        selectedManager && selectedManagerId !== 'none'
+          ? Number(selectedManager.commission_anticipation_pct || 0)
+          : null
+
       const { data: op, error: opErr } = await supabase
         .from('credit_operations')
         .insert({
           borrower_id: selectedBorrowerId,
           manager_id: selectedManagerId && selectedManagerId !== 'none' ? selectedManagerId : null,
+          commission_rate_applied: historicalCommissionRate,
           receivable_type: formData.receivableType,
           receivable_type_other: formData.receivableTypeOther || null,
           cedente: formData.cedente,
@@ -827,7 +834,7 @@ export function AdminNewOperationDialog({
               </div>
 
               {/* Seletor de Gerente de Crédito */}
-              <div className="p-3 bg-muted/20 border rounded-lg space-y-1.5">
+              <div className="p-3 bg-muted/20 border rounded-lg space-y-2">
                 <div className="flex items-center justify-between">
                   <Label
                     htmlFor="op-manager"
@@ -854,6 +861,27 @@ export function AdminNewOperationDialog({
                     ))}
                   </SelectContent>
                 </Select>
+
+                {/* Exibição clara do % aplicado vigente na data da operação */}
+                {selectedManagerId && selectedManagerId !== 'none' ? (
+                  <div className="flex items-center justify-between p-2 rounded bg-primary/5 border border-primary/20 text-xs">
+                    <span className="text-muted-foreground">
+                      Percentual de comissão vigente (antecipação):
+                    </span>
+                    <span className="font-semibold text-primary">
+                      {creditManagers.find((m) => m.id === selectedManagerId)
+                        ?.commission_anticipation_pct ?? 0}
+                      %
+                      <span className="text-[10px] text-muted-foreground font-normal ml-1">
+                        (será gravado nesta operação)
+                      </span>
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground italic">
+                    Nenhuma comissão será gerada para esta operação.
+                  </p>
+                )}
               </div>
 
               <div className="grid md:grid-cols-2 gap-4">

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card'
 import {
   Table,
@@ -60,7 +60,10 @@ import {
   updateCreditManager,
   toggleCreditManagerActive,
   fetchCommissionsForPeriod,
+  registerManagerCommissionExpense,
 } from '@/services/credit-managers'
+import { CompanyBankAccountSelect } from '@/components/admin/CompanyBankAccountSelect'
+import { useCompanyBankAccounts } from '@/hooks/use-company-bank-accounts'
 
 export default function CreditManagers() {
   const { activeRole } = useAuth()
@@ -86,11 +89,21 @@ export default function CreditManagers() {
     grandTotals: { operationsCount: 0, totalDiscount: 0, totalCommission: 0 },
   })
 
+  // Contas bancárias da empresa (para registrar pagamento de comissão no Livro Caixa)
+  const { accounts: bankAccounts } = useCompanyBankAccounts()
+
   // Diálogo de criação/edição de Gerente
   const [managerModalOpen, setManagerModalOpen] = useState(false)
   const [editingManagerId, setEditingManagerId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [expandedManagers, setExpandedManagers] = useState<Record<string, boolean>>({})
+
+  // Diálogo de Registro de Pagamento de Comissão (Livro Caixa)
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false)
+  const [payingSummary, setPayingSummary] = useState<ManagerCommissionSummary | null>(null)
+  const [paymentBankAccountId, setPaymentBankAccountId] = useState<string>('')
+  const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0])
+  const [registeringPayment, setRegisteringPayment] = useState(false)
 
   const [formData, setFormData] = useState<CreditManagerFormData>({
     full_name: '',
@@ -238,6 +251,60 @@ export default function CreditManagers() {
       ...prev,
       [mgrId]: !prev[mgrId],
     }))
+  }
+
+  // Abrir modal de pagamento de comissão
+  const handleOpenPayment = (s: ManagerCommissionSummary, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (isReadOnly) return
+    if (s.totalCommission <= 0) {
+      toast.error('Este gerente não possui comissão a pagar no período.')
+      return
+    }
+    if (s.isPaid) {
+      toast.info('A comissão desta competência já foi registrada como despesa.')
+      return
+    }
+    const defaultAcc = bankAccounts.find((b) => b.is_active)?.id || bankAccounts[0]?.id || ''
+    setPayingSummary(s)
+    setPaymentBankAccountId(defaultAcc)
+    setPaymentDate(new Date().toISOString().split('T')[0])
+    setPaymentModalOpen(true)
+  }
+
+  // Confirmar pagamento no Livro Caixa
+  const handleConfirmPayment = async () => {
+    if (!payingSummary) return
+    if (!paymentBankAccountId) {
+      toast.error('Selecione a conta bancária da empresa para a saída do caixa.')
+      return
+    }
+    if (!paymentDate) {
+      toast.error('Informe a data de pagamento da despesa.')
+      return
+    }
+
+    setRegisteringPayment(true)
+    try {
+      await registerManagerCommissionExpense({
+        managerId: payingSummary.manager.id,
+        managerName: payingSummary.manager.full_name,
+        periodMonth: selectedMonth,
+        amount: payingSummary.totalCommission,
+        bankAccountId: paymentBankAccountId,
+        paymentDate: paymentDate,
+      })
+      toast.success(
+        `Pagamento de ${formatCurrency(payingSummary.totalCommission)} para ${payingSummary.manager.full_name} registrado com sucesso no Livro Caixa!`,
+      )
+      setPaymentModalOpen(false)
+      setPayingSummary(null)
+      loadCommissions()
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao registrar pagamento de comissão.')
+    } finally {
+      setRegisteringPayment(false)
+    }
   }
 
   // Exportar comissões para CSV
@@ -509,7 +576,8 @@ export default function CreditManagers() {
                         <TableHead className="text-center">Operações</TableHead>
                         <TableHead className="text-right">Deságio Originado</TableHead>
                         <TableHead className="text-right">Comissão Devida</TableHead>
-                        <TableHead className="text-center">Status</TableHead>
+                        <TableHead className="text-center">Status Pagamento</TableHead>
+                        <TableHead className="text-right pr-4">Ação</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -518,9 +586,8 @@ export default function CreditManagers() {
                         const hasItems = s.items.length > 0
 
                         return (
-                          <>
+                          <React.Fragment key={s.manager.id}>
                             <TableRow
-                              key={s.manager.id}
                               className={`cursor-pointer transition-colors ${
                                 hasItems ? 'hover:bg-muted/50' : 'opacity-80'
                               }`}
@@ -557,28 +624,55 @@ export default function CreditManagers() {
                                 {formatCurrency(s.totalCommission)}
                               </TableCell>
                               <TableCell className="text-center">
-                                {s.manager.is_active ? (
+                                {s.isPaid ? (
                                   <Badge
                                     variant="outline"
-                                    className="border-emerald-500 text-emerald-600 bg-emerald-50 text-[10px]"
+                                    className="border-emerald-500 text-emerald-700 bg-emerald-50 text-[11px] font-semibold flex items-center gap-1 mx-auto w-fit"
                                   >
-                                    Ativo
+                                    <CheckCircle2 className="w-3 h-3" /> Pago
+                                  </Badge>
+                                ) : s.totalCommission > 0 ? (
+                                  <Badge
+                                    variant="outline"
+                                    className="border-amber-400 text-amber-700 bg-amber-50 text-[11px] font-medium mx-auto w-fit"
+                                  >
+                                    Pendente
                                   </Badge>
                                 ) : (
-                                  <Badge
-                                    variant="outline"
-                                    className="border-zinc-300 text-zinc-500 bg-zinc-50 text-[10px]"
-                                  >
-                                    Inativo
-                                  </Badge>
+                                  <span className="text-xs text-muted-foreground">—</span>
                                 )}
+                              </TableCell>
+                              <TableCell
+                                className="text-right pr-4"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {!isReadOnly &&
+                                  s.totalCommission > 0 &&
+                                  (s.isPaid ? (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      disabled
+                                      className="text-xs text-emerald-700 h-8"
+                                    >
+                                      <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> No Caixa
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      onClick={(e) => handleOpenPayment(s, e)}
+                                      className="text-xs h-8 bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
+                                    >
+                                      <DollarSign className="w-3.5 h-3.5" /> Pagar Comissão
+                                    </Button>
+                                  ))}
                               </TableCell>
                             </TableRow>
 
                             {/* Subtabela de itens detalhados do gerente */}
                             {isExpanded && hasItems && (
-                              <TableRow key={`${s.manager.id}-details`} className="bg-muted/20">
-                                <TableCell colSpan={9} className="p-4">
+                              <TableRow className="bg-muted/20">
+                                <TableCell colSpan={10} className="p-4">
                                   <div className="rounded-md border bg-background p-3 space-y-2">
                                     <div className="flex items-center justify-between border-b pb-2">
                                       <span className="text-xs font-semibold text-primary uppercase tracking-wider flex items-center gap-1.5">
@@ -603,7 +697,9 @@ export default function CreditManagers() {
                                             Valor Líquido
                                           </TableHead>
                                           <TableHead className="text-right">Deságio</TableHead>
-                                          <TableHead className="text-center">% Comis.</TableHead>
+                                          <TableHead className="text-center">
+                                            % Comis. Aplicado
+                                          </TableHead>
                                           <TableHead className="text-right">Comissão</TableHead>
                                           <TableHead className="text-center">Status</TableHead>
                                         </TableRow>
@@ -640,7 +736,18 @@ export default function CreditManagers() {
                                               {formatCurrency(it.discountValue)}
                                             </TableCell>
                                             <TableCell className="text-center font-mono text-[11px]">
-                                              {it.commissionRatePct}%
+                                              <span className="inline-flex items-center gap-1">
+                                                {it.commissionRatePct}%
+                                                {it.isHistoricalRate && (
+                                                  <Badge
+                                                    variant="secondary"
+                                                    className="text-[9px] px-1 py-0 h-4 bg-primary/10 text-primary border border-primary/20"
+                                                    title="Alíquota histórica vigente na data da operação"
+                                                  >
+                                                    histórico
+                                                  </Badge>
+                                                )}
+                                              </span>
                                             </TableCell>
                                             <TableCell className="text-right font-mono text-xs font-semibold text-emerald-600">
                                               {formatCurrency(it.commissionAmount)}
@@ -661,7 +768,7 @@ export default function CreditManagers() {
                                 </TableCell>
                               </TableRow>
                             )}
-                          </>
+                          </React.Fragment>
                         )
                       })}
 
@@ -680,7 +787,7 @@ export default function CreditManagers() {
                         <TableCell className="text-right font-mono text-emerald-600 text-base">
                           {formatCurrency(commissionsData.grandTotals.totalCommission)}
                         </TableCell>
-                        <TableCell></TableCell>
+                        <TableCell colSpan={2}></TableCell>
                       </TableRow>
                     </TableBody>
                   </Table>
@@ -866,7 +973,10 @@ export default function CreditManagers() {
                 </h4>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
                   Percentual pago ao gerente incidente sobre o spread / deságio nominal das
-                  operações trazidas.
+                  operações trazidas.{' '}
+                  <strong>
+                    Alterar este percentual não afeta operações já registradas no histórico.
+                  </strong>
                 </p>
               </div>
 
@@ -961,6 +1071,104 @@ export default function CreditManagers() {
             <Button onClick={handleSaveManager} disabled={saving}>
               {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {editingManagerId ? 'Salvar Alterações' : 'Cadastrar Gerente'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ======================================================== */}
+      {/* DIÁLOGO: REGISTRAR PAGAMENTO DE COMISSÃO (LIVRO CAIXA)  */}
+      {/* ======================================================== */}
+      <Dialog
+        open={paymentModalOpen}
+        onOpenChange={(open) => {
+          setPaymentModalOpen(open)
+          if (!open) setPayingSummary(null)
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-emerald-600" />
+              Registrar Pagamento de Comissão
+            </DialogTitle>
+            <DialogDescription>
+              Registra uma despesa administrativa real no Livro Caixa na categoria{' '}
+              <strong>Comissões de Gerentes</strong>, liquidando a apuração do mês.
+            </DialogDescription>
+          </DialogHeader>
+
+          {payingSummary && (
+            <div className="space-y-4 py-2">
+              <div className="bg-muted/40 p-3 rounded-lg border space-y-1.5 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Gerente:</span>
+                  <span className="font-semibold text-foreground">
+                    {payingSummary.manager.full_name}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">CPF:</span>
+                  <span className="font-mono">{maskCpf(payingSummary.manager.cpf)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Competência:</span>
+                  <span className="font-semibold">{selectedMonth}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Operações apuradas:</span>
+                  <span>{payingSummary.totalOperations} op(s)</span>
+                </div>
+                <div className="flex justify-between pt-1 border-t text-sm font-bold">
+                  <span className="text-foreground">Valor da Comissão:</span>
+                  <span className="text-emerald-600 font-mono">
+                    {formatCurrency(payingSummary.totalCommission)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="pay-date">Data do Pagamento *</Label>
+                <Input
+                  id="pay-date"
+                  type="date"
+                  value={paymentDate}
+                  onChange={(e) => setPaymentDate(e.target.value)}
+                />
+              </div>
+
+              <CompanyBankAccountSelect
+                value={paymentBankAccountId}
+                onChange={setPaymentBankAccountId}
+                label="Conta Bancária de Saída (Caixa) *"
+                required
+              />
+
+              <p className="text-[11px] text-muted-foreground">
+                Ao confirmar, um lançamento de despesa será gravado com status <strong>Pago</strong>{' '}
+                e refletirá diretamente na conciliação contábil, DRE e Extrato Bancário.
+              </p>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setPaymentModalOpen(false)
+                setPayingSummary(null)
+              }}
+              disabled={registeringPayment}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleConfirmPayment}
+              disabled={registeringPayment || !paymentBankAccountId}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {registeringPayment && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Confirmar Pagamento
             </Button>
           </DialogFooter>
         </DialogContent>
