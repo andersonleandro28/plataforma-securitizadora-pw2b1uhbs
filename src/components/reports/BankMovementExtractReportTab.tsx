@@ -1,4 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useCompanySettings } from '@/hooks/use-company-settings'
+import { formatCompanyAddress } from '@/services/company-settings'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import {
   Table,
@@ -61,6 +63,13 @@ export function BankMovementExtractReportTab({
   forcedMonth,
   embedded = false,
 }: BankMovementExtractReportTabProps = {}) {
+  const { settings } = useCompanySettings()
+  const secRazaoSocial = settings?.razao_social || 'Nexum Securitizadora S.A.'
+  const secNomeFantasia = settings?.nome_fantasia || 'Nexum Security 360º'
+  const secCnpj = settings?.cnpj || '00.000.000/0001-00'
+  const secEndereco = settings ? formatCompanyAddress(settings) : 'São Paulo - SP | Brasil'
+  const secContato = [settings?.telefone, settings?.email].filter(Boolean).join(' • ')
+
   const { data: rawTransactions, loading, error, refetch } = useAccounting()
   const { accounts } = useCompanyBankAccounts()
 
@@ -537,13 +546,21 @@ export function BankMovementExtractReportTab({
         <div className="hidden print:block border-b pb-4 mb-4">
           <div className="flex justify-between items-start">
             <div>
-              <h1 className="text-2xl font-bold">NEXUM SECURITY 360º</h1>
-              <h2 className="text-lg font-semibold text-muted-foreground">
+              <h1 className="text-2xl font-bold">{secRazaoSocial}</h1>
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                {secNomeFantasia} — Securitizadora de Créditos & Emissora de Debêntures
+              </div>
+              <h2 className="text-lg font-semibold text-foreground mt-1">
                 Extrato de Movimentações Bancárias (Livro Caixa Oficial)
               </h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
+              <div className="text-[11px] text-muted-foreground mt-0.5 space-x-2">
+                <span>CNPJ: {secCnpj}</span>
+                {secEndereco && <span>• {secEndereco}</span>}
+                {secContato && <span>• {secContato}</span>}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
                 Conta:{' '}
-                <strong>
+                <strong className="text-foreground">
                   {selectedAccount
                     ? `${selectedAccount.bank_name} (Ag: ${selectedAccount.branch || 'S/A'} - C/C: ${selectedAccount.account_number})`
                     : 'Consolidado Geral (Todas as Contas)'}
