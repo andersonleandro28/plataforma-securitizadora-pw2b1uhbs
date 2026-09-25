@@ -79,11 +79,39 @@ Deno.serve(async (req: Request) => {
 
     if (error || !inv) throw new Error('Investimento não encontrado')
 
-    // If contract_url already exists and forceRegenerate is false, return existing url directly
+    // Extrai o filePath relativo se inv.contract_url existir
+    const existingFileName = `Termo_Subscricao_${inv.id.substring(0, 8)}.pdf`
+    const defaultFilePath = `${inv.user_id}/${existingFileName}`
+
+    // If contract_url already exists and forceRegenerate is false, re-deriva signedUrl e filePath
     if (inv.contract_url && !forceRegenerate && !sendEmail) {
-      return new Response(JSON.stringify({ success: true, url: inv.contract_url, cached: true }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      // Extrai path relativo a partir de qualquer domínio legado
+      let parsedPath = defaultFilePath
+      const match = inv.contract_url.match(/investment-docs\/(.+?)(\?|$)/)
+      if (match?.[1]) {
+        parsedPath = match[1].replace(/^\/+/, '')
+      }
+
+      const { data: signedData } = await supabase.storage
+        .from('investment-docs')
+        .createSignedUrl(parsedPath, 3600)
+
+      const { data: publicUrlData } = supabase.storage
+        .from('investment-docs')
+        .getPublicUrl(parsedPath)
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          url: signedData?.signedUrl || publicUrlData.publicUrl,
+          signedUrl: signedData?.signedUrl,
+          filePath: parsedPath,
+          cached: true,
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        },
+      )
     }
 
     const prod = inv.investment_products || {}
@@ -512,6 +540,10 @@ Deno.serve(async (req: Request) => {
     const { data: publicUrlData } = supabase.storage.from('investment-docs').getPublicUrl(filePath)
     const publicUrl = publicUrlData.publicUrl
 
+    const { data: signedData } = await supabase.storage
+      .from('investment-docs')
+      .createSignedUrl(filePath, 3600)
+
     // 5. Atualizar tabela investments com o contract_url
     await supabase.from('investments').update({ contract_url: publicUrl }).eq('id', investmentId)
 
@@ -565,9 +597,17 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    return new Response(JSON.stringify({ success: true, url: publicUrl }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    return new Response(
+      JSON.stringify({
+        success: true,
+        url: signedData?.signedUrl || publicUrl,
+        signedUrl: signedData?.signedUrl,
+        filePath,
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      },
+    )
   } catch (err: any) {
     console.error('Erro na função generate-subscription-term:', err)
     return new Response(JSON.stringify({ error: err.message }), {

@@ -12,10 +12,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { FileUpload } from '@/components/operations/FileUpload'
-import { ArrowLeft, Landmark, Loader2, Send } from 'lucide-react'
+import { ArrowLeft, Landmark, Loader2, Send, Download } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/use-auth'
+import { getOrGenerateSubscriptionContract } from '@/services/subscription-contract'
 
 export default function InvestmentCheckout() {
   const { id } = useParams()
@@ -28,6 +29,25 @@ export default function InvestmentCheckout() {
   const [transferDate, setTransferDate] = useState(new Date().toLocaleDateString('en-CA'))
   const [transferValue, setTransferValue] = useState('')
   const [files, setFiles] = useState<File[]>([])
+  const [openingContract, setOpeningContract] = useState(false)
+
+  const handleOpenContract = async (downloadDirectly = false) => {
+    if (!investment?.id) return
+    setOpeningContract(true)
+    try {
+      await getOrGenerateSubscriptionContract({
+        investmentId: investment.id,
+        existingUrl: investment.contract_url,
+        forceRegenerate: false,
+        openInNewTab: !downloadDirectly,
+        downloadDirectly,
+      })
+    } catch {
+      // Toast disparado pelo service
+    } finally {
+      setOpeningContract(false)
+    }
+  }
 
   useEffect(() => {
     const load = async () => {
@@ -121,13 +141,27 @@ export default function InvestmentCheckout() {
               Seu contrato foi gerado e está disponível para download.
             </p>
           </div>
-          <Button
-            variant="outline"
-            className="bg-white border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-            onClick={() => window.open(investment.contract_url, '_blank')}
-          >
-            Ver Documento
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              className="bg-white border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+              onClick={() => handleOpenContract(false)}
+              disabled={openingContract}
+            >
+              {openingContract ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null}
+              Ver Documento
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="bg-white border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+              onClick={() => handleOpenContract(true)}
+              disabled={openingContract}
+              title="Baixar Contrato em PDF"
+            >
+              <Download className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       )}
 

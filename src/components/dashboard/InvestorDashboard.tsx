@@ -9,6 +9,7 @@ import {
   ArrowDownToLine,
   Clock,
   ShieldAlert,
+  Download,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -96,14 +97,15 @@ function InvestmentList({
 }: InvestmentListProps) {
   const [loadingContractId, setLoadingContractId] = useState<string | null>(null)
 
-  const handleOpenContract = async (inv: any) => {
+  const handleOpenContract = async (inv: any, downloadDirectly = false) => {
     setLoadingContractId(inv.id)
     try {
       const url = await getOrGenerateSubscriptionContract({
         investmentId: inv.id,
         existingUrl: inv.contract_url,
         forceRegenerate: false,
-        openInNewTab: true,
+        openInNewTab: !downloadDirectly,
+        downloadDirectly,
       })
       if (!inv.contract_url && url && onContractGenerated) {
         onContractGenerated()
@@ -211,21 +213,33 @@ function InvestmentList({
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
                     Contrato
                   </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs gap-1.5 text-primary hover:bg-primary/10 border-primary/30"
-                    disabled={loadingContractId === inv.id}
-                    onClick={() => handleOpenContract(inv)}
-                    title="Visualizar ou baixar Termo de Subscrição de Debêntures em PDF"
-                  >
-                    <FileText className="h-3.5 w-3.5 text-primary" />
-                    {loadingContractId === inv.id
-                      ? 'Gerando...'
-                      : inv.contract_url
-                        ? 'Ver Contrato'
-                        : 'Emitir Contrato'}
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1.5 text-primary hover:bg-primary/10 border-primary/30"
+                      disabled={loadingContractId === inv.id}
+                      onClick={() => handleOpenContract(inv, false)}
+                      title="Visualizar Termo de Subscrição de Debêntures em PDF"
+                    >
+                      <FileText className="h-3.5 w-3.5 text-primary" />
+                      {loadingContractId === inv.id
+                        ? 'Gerando...'
+                        : inv.contract_url
+                          ? 'Ver Contrato'
+                          : 'Emitir Contrato'}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:text-primary"
+                      disabled={loadingContractId === inv.id}
+                      onClick={() => handleOpenContract(inv, true)}
+                      title="Baixar Contrato (PDF) diretamente no dispositivo"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
               </div>
 

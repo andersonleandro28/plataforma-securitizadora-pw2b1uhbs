@@ -262,7 +262,7 @@ export function ManageSubscriptionsDialog({
     setInterestOpen(true)
   }
 
-  const handleOpenSubscriptionContract = async (sub: any) => {
+  const handleOpenSubscriptionContract = async (sub: any, downloadDirectly = false) => {
     if (!sub.investment_id) {
       toast.info(
         'Esta subscrição não possui vínculo direto a um aporte online para emissão automatizada.',
@@ -275,7 +275,8 @@ export function ManageSubscriptionsDialog({
         investmentId: sub.investment_id,
         existingUrl: null,
         forceRegenerate: false,
-        openInNewTab: true,
+        openInNewTab: !downloadDirectly,
+        downloadDirectly,
       })
     } catch {
       // Toast disparado
@@ -614,7 +615,7 @@ export function ManageSubscriptionsDialog({
                                   variant="ghost"
                                   size="icon"
                                   className="h-8 w-8 text-primary hover:bg-primary/10"
-                                  onClick={() => handleOpenSubscriptionContract(sub)}
+                                  onClick={() => handleOpenSubscriptionContract(sub, false)}
                                   disabled={
                                     !!editingId || loading || loadingContractSubId === sub.id
                                   }

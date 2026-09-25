@@ -47,6 +47,7 @@ import { InvestmentProofModal, InvestmentProof } from '@/components/admin/Invest
 import { sendNotification } from '@/services/notifications'
 import { evaluateGracePeriod } from '@/lib/redemption-utils'
 import { getOrGenerateSubscriptionContract } from '@/services/subscription-contract'
+import { Download } from 'lucide-react'
 
 export default function InvestmentsReview() {
   const { user } = useAuth()
@@ -376,14 +377,15 @@ export default function InvestmentsReview() {
     setProofModalOpen(true)
   }
 
-  const handleOpenContract = async (inv: any) => {
+  const handleOpenContract = async (inv: any, downloadDirectly = false) => {
     setGeneratingContractId(inv.id)
     try {
       const url = await getOrGenerateSubscriptionContract({
         investmentId: inv.id,
         existingUrl: inv.contract_url,
         forceRegenerate: false,
-        openInNewTab: true,
+        openInNewTab: !downloadDirectly,
+        downloadDirectly,
       })
       if (!inv.contract_url && url) {
         fetchData()
@@ -996,7 +998,7 @@ export default function InvestmentsReview() {
                               variant="outline"
                               size="sm"
                               className="text-primary hover:text-primary hover:bg-primary/10 border-primary/30"
-                              onClick={() => handleOpenContract(inv)}
+                              onClick={() => handleOpenContract(inv, false)}
                               disabled={generatingContractId === inv.id}
                               title="Visualizar ou emitir Termo de Subscrição de Debêntures em PDF"
                             >
@@ -1006,6 +1008,18 @@ export default function InvestmentsReview() {
                                 : inv.contract_url
                                   ? 'Contrato'
                                   : 'Emitir Contrato'}
+                            </Button>
+
+                            {/* Download direto do PDF */}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-muted-foreground hover:text-primary px-2"
+                              onClick={() => handleOpenContract(inv, true)}
+                              disabled={generatingContractId === inv.id}
+                              title="Baixar Contrato (PDF) diretamente no dispositivo"
+                            >
+                              <Download className="w-4 h-4" />
                             </Button>
 
                             {/* Ver Comprovante (visível quando o aporte possui anexo) */}
