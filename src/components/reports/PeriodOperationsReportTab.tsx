@@ -22,6 +22,8 @@ import {
 import { supabase } from '@/lib/supabase/client'
 import { exportToCSV } from '@/lib/export-utils'
 import { formatDate, cn } from '@/lib/utils'
+import { useCompanySettings } from '@/hooks/use-company-settings'
+import { formatCompanyAddress } from '@/services/company-settings'
 import {
   fetchInvestorYieldsForMonth,
   fetchDreResultForPeriod,
@@ -138,6 +140,13 @@ export interface PeriodOperationsReportTabProps {
 export function PeriodOperationsReportTab({
   embedded = false,
 }: PeriodOperationsReportTabProps = {}) {
+  const { settings } = useCompanySettings()
+  const secRazaoSocial = settings?.razao_social || 'Nexum Securitizadora S.A.'
+  const secNomeFantasia = settings?.nome_fantasia || 'Nexum Security 360º'
+  const secCnpj = settings?.cnpj || '00.000.000/0001-00'
+  const secEndereco = settings ? formatCompanyAddress(settings) : 'São Paulo - SP | Brasil'
+  const secContato = [settings?.telefone, settings?.email].filter(Boolean).join(' • ')
+
   const [receivablesOps, setReceivablesOps] = useState<ReceivablesOperationItem[]>([])
   const [ccbOps, setCcbOps] = useState<CcbOperationItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -1388,11 +1397,19 @@ export function PeriodOperationsReportTab({
         <div className="hidden print:block border-b pb-4 mb-4">
           <div className="flex justify-between items-start">
             <div>
-              <h1 className="text-2xl font-bold">NEXUM SECURITY 360º</h1>
-              <h2 className="text-lg font-semibold text-muted-foreground">
+              <h1 className="text-2xl font-bold">{secRazaoSocial}</h1>
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                {secNomeFantasia} — Securitizadora de Créditos & Emissora de Debêntures
+              </div>
+              <h2 className="text-lg font-semibold text-foreground mt-1">
                 Relatório de Operações do Período — Base Fiscal e Contábil
               </h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
+              <div className="text-[11px] text-muted-foreground mt-0.5 space-x-2">
+                <span>CNPJ: {secCnpj}</span>
+                {secEndereco && <span>• {secEndereco}</span>}
+                {secContato && <span>• {secContato}</span>}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
                 Operações de Antecipação de Recebíveis e Aquisições de CCBs
               </p>
             </div>

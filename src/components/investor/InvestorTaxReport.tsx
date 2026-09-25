@@ -31,6 +31,8 @@ import {
 } from '@/components/ui/table'
 import { generateAnnualTaxReport, TaxReportAnnualData } from '@/lib/tax-report-utils'
 import type { ManualYieldEntry } from '@/services/manual-yield'
+import { useCompanySettings } from '@/hooks/use-company-settings'
+import { formatCompanyAddress } from '@/services/company-settings'
 
 interface InvestorTaxReportProps {
   investorProfile: any
@@ -48,6 +50,13 @@ export function InvestorTaxReport({
   redemptions,
   manualYieldMap = {},
 }: InvestorTaxReportProps) {
+  const { settings } = useCompanySettings()
+  const secRazaoSocial = settings?.razao_social || 'Nexum Securitizadora S.A.'
+  const secNomeFantasia = settings?.nome_fantasia || 'Nexum Security 360º'
+  const secCnpj = settings?.cnpj || '00.000.000/0001-00'
+  const secEndereco = settings ? formatCompanyAddress(settings) : 'São Paulo - SP | Brasil'
+  const secContato = [settings?.telefone, settings?.email].filter(Boolean).join(' • ')
+
   const currentYear = new Date().getFullYear()
   const [selectedYear, setSelectedYear] = useState<number>(currentYear)
 
@@ -145,15 +154,16 @@ export function InvestorTaxReport({
           <div className="border-b pb-6 space-y-4">
             <div className="flex justify-between items-start">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded bg-primary flex items-center justify-center text-primary-foreground font-bold text-xl">
-                  S
+                <div className="w-10 h-10 rounded bg-primary flex items-center justify-center text-primary-foreground font-bold text-xl uppercase">
+                  {secNomeFantasia?.charAt(0) || 'S'}
                 </div>
                 <div>
                   <h1 className="text-xl font-bold tracking-tight text-foreground uppercase">
-                    Nexum Security 360º
+                    {secRazaoSocial}
                   </h1>
                   <p className="text-xs text-muted-foreground">
-                    Securitizadora S.A. • CNPJ / Cadastro Financeiro Institucional
+                    {secNomeFantasia} • CNPJ: {secCnpj}
+                    {secEndereco && ` • ${secEndereco}`}
                   </p>
                 </div>
               </div>
@@ -187,17 +197,25 @@ export function InvestorTaxReport({
               </span>
               <div>
                 <span className="text-muted-foreground">Razão Social: </span>
-                <span className="font-medium text-foreground">Nexum Securitizadora S.A.</span>
+                <span className="font-medium text-foreground">{secRazaoSocial}</span>
               </div>
               <div>
-                <span className="text-muted-foreground">Atividade: </span>
-                <span className="font-medium text-foreground">
-                  Securitização de Créditos e Emissão de Títulos
-                </span>
+                <span className="text-muted-foreground">CNPJ: </span>
+                <span className="font-mono font-medium text-foreground">{secCnpj}</span>
               </div>
               <div>
-                <span className="text-muted-foreground">Plataforma: </span>
-                <span className="font-medium text-foreground">Nexum Security 360º</span>
+                <span className="text-muted-foreground">Endereço: </span>
+                <span className="font-medium text-foreground">{secEndereco}</span>
+              </div>
+              {secContato && (
+                <div>
+                  <span className="text-muted-foreground">Contato: </span>
+                  <span className="font-medium text-foreground">{secContato}</span>
+                </div>
+              )}
+              <div>
+                <span className="text-muted-foreground">Plataforma / Nome Fantasia: </span>
+                <span className="font-medium text-foreground">{secNomeFantasia}</span>
               </div>
             </div>
 
