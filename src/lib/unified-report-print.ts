@@ -6,10 +6,12 @@
  * eliminando qualquer conflito de @page, @media print ou orientação de abas de fundo.
  */
 
+import { CompanySettings, formatCompanyAddress } from '@/services/company-settings'
+
 export interface PrintUnifiedReportOptions {
   title?: string
+  settings?: Partial<CompanySettings> | null
 }
-
 /**
  * Coleta todo o HTML do elemento alvo do relatório unificado,
  * clona-o para um iframe isolado com folhas de estilo próprias embutidas
@@ -21,6 +23,15 @@ export function printIsolatedUnifiedReport(
   options: PrintUnifiedReportOptions = {},
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    const s = options.settings
+    const secRazaoSocial = s?.razao_social || 'NEXUM SECURITIZADORA S.A.'
+    const secNomeFantasia = s?.nome_fantasia || 'NEXUM SECURITY 360º'
+    const secCnpj = s?.cnpj || '00.000.000/0001-00'
+    const secEndereco = s ? formatCompanyAddress(s) : 'São Paulo - SP | Brasil'
+    const secContato = [s?.telefone, s?.email].filter(Boolean).join(' • ')
+    const secRepresentante = s?.representante_nome
+      ? `${s.representante_nome}${s.representante_cargo ? ` (${s.representante_cargo})` : ''}`
+      : ''
     try {
       // Remove iframe residual se existir de tentativa anterior
       const existingIframe = document.getElementById('nexum-isolated-print-frame')
@@ -59,6 +70,25 @@ export function printIsolatedUnifiedReport(
       // Remove elementos marcados com .no-print do clone
       const noPrintElements = clonedContent.querySelectorAll('.no-print')
       noPrintElements.forEach((el) => el.remove())
+
+      // Injeta/atualiza os dados oficiais da securitizadora no clone da capa, se existirem placeholders
+      const coverTitleEl = clonedContent.querySelector('.cover-title-group h1')
+      if (coverTitleEl && secRazaoSocial) {
+        coverTitleEl.textContent = secRazaoSocial
+      }
+      const coverSubtitleEl = clonedContent.querySelector('.cover-title-group p')
+      if (coverSubtitleEl) {
+        coverSubtitleEl.textContent = `${secNomeFantasia} — Securitizadora de Créditos & Emissora de Debêntures`
+      }
+      const coverDetailsEl = clonedContent.querySelector('.cover-company-details')
+      if (coverDetailsEl) {
+        coverDetailsEl.innerHTML = `
+          <span>CNPJ: ${secCnpj} ${s?.registro_regulador ? `• ${s.registro_regulador}` : ''}</span>
+          ${secEndereco ? `<span>${secEndereco}</span>` : ''}
+          ${secContato ? `<span>${secContato}</span>` : ''}
+          ${secRepresentante ? `<span>Representante Legal: ${secRepresentante}</span>` : ''}
+        `
+      }
 
       // Força linhas de detalhamento do investidor (.investor-detail-row) que possam ter a classe hidden para ficarem visíveis na tabela clonada
       const investorDetailRows = clonedContent.querySelectorAll('.investor-detail-row')
@@ -153,20 +183,34 @@ export function printIsolatedUnifiedReport(
         }
 
         .cover-title-group h1 {
-          font-size: 20pt;
+          font-size: 18pt;
           font-weight: 800;
           letter-spacing: 0.5pt;
           color: #0f172a;
           line-height: 1.1;
         }
 
+        .cover-title-group .sub-razao {
+          font-size: 9.5pt;
+          font-weight: 700;
+          color: #1e293b;
+          margin-top: 2pt;
+        }
+
         .cover-title-group p {
-          font-size: 8.5pt;
-          font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 1.5pt;
+          font-size: 8pt;
+          font-weight: 500;
           color: #64748b;
           margin-top: 3pt;
+        }
+
+        .cover-company-badge {
+          display: flex;
+          flex-direction: column;
+          gap: 2pt;
+          margin-top: 6pt;
+          font-size: 7.5pt;
+          color: #64748b;
         }
 
         .cover-main-badge {

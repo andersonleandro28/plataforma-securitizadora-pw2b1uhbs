@@ -342,7 +342,9 @@ export default function CreditManagers() {
   const handlePrintReceipt = (s: ManagerCommissionSummary, e: React.MouseEvent) => {
     e.stopPropagation()
     if (!s.isPaid) {
-      toast.warning('O recibo com quitação fica disponível apenas para comissões já pagas e registradas no Livro Caixa.')
+      toast.warning(
+        'O recibo com quitação fica disponível apenas para comissões já pagas e registradas no Livro Caixa.',
+      )
       return
     }
 
@@ -358,7 +360,6 @@ export default function CreditManagers() {
       bankAccountLabel: bankLabel,
       paymentDate: s.paymentDetails?.paidAt,
     })
-  }
   }
 
   // Exportar comissões para CSV
@@ -723,17 +724,15 @@ export default function CreditManagers() {
                                     </Button>
                                   )}
 
-                                  {!isReadOnly &&
-                                    s.totalCommission > 0 &&
-                                    !s.isPaid && (
-                                      <Button
-                                        size="sm"
-                                        onClick={(e) => handleOpenPayment(s, e)}
-                                        className="text-xs h-8 bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
-                                      >
-                                        <DollarSign className="w-3.5 h-3.5" /> Pagar Comissão
-                                      </Button>
-                                    )}
+                                  {!isReadOnly && s.totalCommission > 0 && !s.isPaid && (
+                                    <Button
+                                      size="sm"
+                                      onClick={(e) => handleOpenPayment(s, e)}
+                                      className="text-xs h-8 bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
+                                    >
+                                      <DollarSign className="w-3.5 h-3.5" /> Pagar Comissão
+                                    </Button>
+                                  )}
                                 </div>
                               </TableCell>
                             </TableRow>

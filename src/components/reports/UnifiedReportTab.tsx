@@ -49,6 +49,8 @@ import { maskCpf } from '@/lib/cpf-cnpj'
 import { useDre } from '@/hooks/use-dre'
 import { useDfc } from '@/hooks/use-dfc'
 import { useAccounting } from '@/hooks/use-accounting'
+import { useCompanySettings } from '@/hooks/use-company-settings'
+import { formatCompanyAddress } from '@/services/company-settings'
 import { cn } from '@/lib/utils'
 
 export type ReportTypeKey =
@@ -168,6 +170,16 @@ export function UnifiedReportTab() {
   const { dados: dreDados, refetch: refetchDre } = useDre()
   const { dados: dfcDados, refetch: refetchDfc } = useDfc()
   const { data: accountingData, refetch: refetchAccounting } = useAccounting()
+  const { settings } = useCompanySettings()
+
+  const secRazaoSocial = settings?.razao_social || 'Nexum Securitizadora S.A.'
+  const secNomeFantasia = settings?.nome_fantasia || 'Nexum Security 360º'
+  const secCnpj = settings?.cnpj || '00.000.000/0001-00'
+  const secEndereco = settings ? formatCompanyAddress(settings) : 'São Paulo - SP | Brasil'
+  const secContato = [settings?.telefone, settings?.email].filter(Boolean).join(' • ')
+  const secRepresentante = settings?.representante_nome
+    ? `${settings.representante_nome}${settings.representante_cargo ? ` (${settings.representante_cargo})` : ''}`
+    : ''
 
   const [commissionsData, setCommissionsData] = useState<{
     summaries: ManagerCommissionSummary[]
@@ -224,7 +236,8 @@ export function UnifiedReportTab() {
     setIsPrinting(true)
     try {
       await printIsolatedUnifiedReport(printContainerRef.current, {
-        title: `Relatório Financeiro & Operacional Unificado — ${selectedMonthLabel} — Nexum Security 360º`,
+        title: `Relatório Financeiro & Operacional Unificado — ${selectedMonthLabel} — ${secNomeFantasia}`,
+        settings,
       })
     } catch (err) {
       console.error('Falha ao gerar impressão isolada do relatório unificado:', err)
@@ -240,16 +253,16 @@ export function UnifiedReportTab() {
     const unifiedRows: Record<string, any>[] = []
     const generationDateStr = new Date().toLocaleString('pt-BR')
 
-    // Linha de Capa
+    // Linha de Capa com dados da Securitizadora
     unifiedRows.push({
-      'RELATÓRIO UNIFICADO': 'NEXUM SECURITY 360º — RELATÓRIO EXECUTIVO INTEGRADO',
+      'RELATÓRIO UNIFICADO': `${secRazaoSocial.toUpperCase()} — RELATÓRIO EXECUTIVO INTEGRADO`,
       COMPETÊNCIA: selectedMonthLabel,
       'DATA DE GERAÇÃO': generationDateStr,
       'RELATÓRIOS INCLUÍDOS': selectedReports.join(', '),
-      COLUNA_1: '',
-      COLUNA_2: '',
-      COLUNA_3: '',
-      COLUNA_4: '',
+      COLUNA_1: `CNPJ: ${secCnpj}`,
+      COLUNA_2: secEndereco,
+      COLUNA_3: secContato || '',
+      COLUNA_4: secRepresentante ? `Rep: ${secRepresentante}` : '',
       COLUNA_5: '',
       COLUNA_6: '',
     })
@@ -394,7 +407,7 @@ export function UnifiedReportTab() {
       unifiedRows.push({})
     }
 
-    exportToCSV(unifiedRows, `Relatorio_Unificado_Nexum_${selectedMonth}.csv`)
+    exportToCSV(unifiedRows, `Relatorio_Unificado_${selectedMonth}.csv`)
   }, [
     selectedReports,
     commissionsData,
@@ -405,6 +418,11 @@ export function UnifiedReportTab() {
     selectedMonthLabel,
     monthStart,
     monthEnd,
+    secRazaoSocial,
+    secCnpj,
+    secEndereco,
+    secContato,
+    secRepresentante,
   ])
 
   return (
@@ -573,13 +591,26 @@ export function UnifiedReportTab() {
                 <div className="cover-logo-box p-3 bg-primary/10 rounded-xl">
                   <Layers className="w-8 h-8 text-primary" />
                 </div>
-                <div className="cover-title-group text-left">
+                <div className="cover-title-group text-left space-y-1">
                   <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
-                    NEXUM SECURITY 360º
+                    {secRazaoSocial}
                   </h1>
-                  <p className="text-xs font-medium text-slate-500 uppercase tracking-widest mt-0.5">
-                    Plataforma de Securitização de Crédito e Investimentos
+                  <p className="text-xs font-semibold text-primary uppercase tracking-widest">
+                    {secNomeFantasia} — Securitizadora de Créditos & Emissora de Debêntures
                   </p>
+                  <div className="cover-company-details text-[11px] text-muted-foreground flex flex-wrap gap-x-3 gap-y-0.5 pt-1">
+                    <span>
+                      CNPJ: <strong className="font-mono text-foreground">{secCnpj}</strong>
+                      {settings?.registro_regulador ? ` • ${settings.registro_regulador}` : ''}
+                    </span>
+                    {secEndereco && <span>{secEndereco}</span>}
+                    {secContato && <span>{secContato}</span>}
+                    {secRepresentante && (
+                      <span className="w-full text-foreground/80">
+                        Representante Legal: <strong>{secRepresentante}</strong>
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
               <Badge

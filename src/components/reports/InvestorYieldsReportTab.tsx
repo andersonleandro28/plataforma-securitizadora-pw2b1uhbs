@@ -20,6 +20,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { supabase } from '@/lib/supabase/client'
+import { useCompanySettings } from '@/hooks/use-company-settings'
+import { formatCompanyAddress } from '@/services/company-settings'
 import { parseProductRate, computeInterestYield } from '@/lib/yield-calculator'
 import { exportToCSV } from '@/lib/export-utils'
 import { formatDate, cn } from '@/lib/utils'
@@ -168,6 +170,12 @@ export interface InvestorYieldsReportTabProps {
 }
 
 export function InvestorYieldsReportTab({ embedded = false }: InvestorYieldsReportTabProps = {}) {
+  const { settings } = useCompanySettings()
+  const secRazaoSocial = settings?.razao_social || 'Nexum Securitizadora S.A.'
+  const secNomeFantasia = settings?.nome_fantasia || 'Nexum Security 360º'
+  const secCnpj = settings?.cnpj || '00.000.000/0001-00'
+  const secEndereco = settings ? formatCompanyAddress(settings) : 'São Paulo - SP | Brasil'
+  const secContato = [settings?.telefone, settings?.email].filter(Boolean).join(' • ')
   const [rawSubs, setRawSubs] = useState<RawSubscription[]>([])
   const [productsBySeries, setProductsBySeries] = useState<Record<string, ProductInfo>>({})
   const [manualEntries, setManualEntries] = useState<ManualEntry[]>([])
@@ -1105,10 +1113,18 @@ export function InvestorYieldsReportTab({ embedded = false }: InvestorYieldsRepo
         <div className="hidden print:block border-b pb-4 mb-4">
           <div className="flex justify-between items-start">
             <div>
-              <h1 className="text-2xl font-bold">NEXUM SECURITY 360º</h1>
-              <h2 className="text-lg font-semibold text-muted-foreground">
+              <h1 className="text-2xl font-bold">{secRazaoSocial}</h1>
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                {secNomeFantasia} — Securitizadora de Créditos & Emissora de Debêntures
+              </div>
+              <h2 className="text-lg font-semibold text-foreground mt-1">
                 Relatório de Rendimentos dos Investidores
               </h2>
+              <div className="text-[11px] text-muted-foreground mt-0.5 space-x-2">
+                <span>CNPJ: {secCnpj}</span>
+                {secEndereco && <span>• {secEndereco}</span>}
+                {secContato && <span>• {secContato}</span>}
+              </div>
             </div>
             <div className="text-right text-xs text-muted-foreground">
               <div>
