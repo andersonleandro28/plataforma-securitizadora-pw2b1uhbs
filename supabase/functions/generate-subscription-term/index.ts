@@ -20,6 +20,28 @@ Deno.serve(async (req: Request) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
     const supabase = createClient(supabaseUrl, supabaseKey)
 
+    // Fetch company settings (singleton)
+    const { data: companyData } = await supabase
+      .from('company_settings')
+      .select('*')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    const secRazao = companyData?.razao_social || 'Nexum Securitizadora S.A.'
+    const secCnpj = companyData?.cnpj || '00.000.000/0001-00'
+    const secCidade = companyData?.endereco_cidade || 'Criciúma'
+    const secUf = companyData?.endereco_uf || 'SC'
+    const secEndParts = [
+      companyData?.endereco_logradouro
+        ? `${companyData.endereco_logradouro}${companyData.endereco_numero ? ', ' + companyData.endereco_numero : ''}`
+        : '',
+      companyData?.endereco_bairro,
+      `${secCidade}/${secUf}`,
+      companyData?.endereco_cep ? `CEP: ${companyData.endereco_cep}` : '',
+    ].filter(Boolean)
+    const secEndereco = secEndParts.length > 0 ? secEndParts.join(' - ') : 'Sede Social'
+
     const { data: inv, error } = await supabase
       .from('investments')
       .select('*, profiles(*), investment_products(*)')
@@ -76,7 +98,8 @@ Deno.serve(async (req: Request) => {
     const total = inv.total_value
 
     const content = `
-CEDENTE/EMISSORA: Sea Connection Investimentos S.A.
+CEDENTE/EMISSORA: ${secRazao} (CNPJ: ${secCnpj})
+ENDEREÇO EMISSORA: ${secEndereco}
 INVESTIDOR: ${inv.profiles?.full_name || inv.profiles?.pj_company_name || 'N/A'}
 CPF/CNPJ: ${inv.profiles?.document_number || 'N/A'}
 E-MAIL: ${inv.profiles?.email || 'N/A'}
@@ -88,7 +111,7 @@ CLÁUSULA 1 - DO OBJETO
 O presente termo tem como objeto a subscrição, pelo INVESTIDOR, de ${inv.quotas} cotas do produto ${inv.investment_products?.title}, no valor unitário de R$ ${pu.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}, totalizando o montante de R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.
 
 CLÁUSULA 2 - DO VALOR E INTEGRALIZAÇÃO
-O INVESTIDOR compromete-se a integralizar o valor total de R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} via transferência bancária (PIX/TED) para a conta da emissora, sob pena de cancelamento desta subscrição caso o valor não seja compensado.
+O INVESTIDOR compromete-se a integralizar o valor total de R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} via transferência bancária (PIX/TED) para a conta da emissora (${secRazao}), sob pena de cancelamento desta subscrição caso o valor não seja compensado.
 
 CLÁUSULA 3 - DA RENTABILIDADE E PRAZOS
 O investimento terá a rentabilidade alvo de ${inv.investment_products?.rate || 'N/A'}, com prazo de vencimento para ${inv.investment_products?.term || 'N/A'}. O resgate antecipado obedece ao prazo de carência mínimo de ${inv.investment_products?.min_grace_period_months || 0} meses e ao regulamento específico da emissão.
@@ -100,7 +123,7 @@ CLÁUSULA 5 - DA PROTEÇÃO DE DADOS (LGPD)
 O INVESTIDOR autoriza o tratamento de seus dados pessoais para as finalidades de execução deste contrato, auditoria e compliance, nos termos da Lei Geral de Proteção de Dados (Lei 13.709/2018).
 
 CLÁUSULA 6 - DO FORO
-As partes elegem o foro da Comarca de Criciúma/SC para dirimir quaisquer dúvidas oriundas deste termo, com renúncia expressa a qualquer outro, por mais privilegiado que seja.
+As partes elegem o foro da Comarca de ${secCidade}/${secUf} para dirimir quaisquer dúvidas oriundas deste termo, com renúncia expressa a qualquer outro, por mais privilegiado que seja.
 
 Assinatura Eletrônica vinculada ao acesso autenticado na Plataforma Securitizadora.
 Data/Hora do Aceite: ${new Date(Date.now() - 3 * 3600000).toLocaleString('pt-BR')}
@@ -160,7 +183,7 @@ ID Subscrição: ${inv.id}
               <p>Sua subscrição foi formalizada digitalmente com sucesso. Segue em anexo o <strong>Termo de Investimento em Debêntures</strong>.</p>
               <p>O próximo passo é realizar a transferência (PIX/TED) para concluir a integralização da sua cota, utilizando a aba de investimentos da plataforma.</p>
               <br/>
-              <p>Atenciosamente,<br/>Equipe Sea Connection Investimentos S.A.</p>
+              <p>Atenciosamente,<br/>Equipe ${secRazao}</p>
             </div>
           `,
           attachments: [

@@ -140,6 +140,33 @@ Deno.serve(async (req: Request) => {
     // Service role for administrative inserts
     const supabase = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '')
 
+    // Fetch company settings (singleton)
+    const { data: companyData } = await supabase
+      .from('company_settings')
+      .select('*')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    const secRazao = companyData?.razao_social || 'NEXUM SECURITIZADORA S.A.'
+    const secCnpj = companyData?.cnpj || '00.000.000/0001-00'
+    const secEndParts = [
+      companyData?.endereco_logradouro
+        ? `${companyData.endereco_logradouro}${companyData.endereco_numero ? ', ' + companyData.endereco_numero : ''}${companyData.endereco_complemento ? ' - ' + companyData.endereco_complemento : ''}`
+        : '',
+      companyData?.endereco_bairro,
+      companyData?.endereco_cidade || companyData?.endereco_uf
+        ? `${companyData?.endereco_cidade || ''}/${companyData?.endereco_uf || ''}`
+        : '',
+      companyData?.endereco_cep ? `CEP: ${companyData.endereco_cep}` : '',
+    ].filter(Boolean)
+    const secEndereco = secEndParts.length > 0 ? secEndParts.join(' - ') : 'Sede Social'
+    const secRepNome = companyData?.representante_nome || ''
+    const secRepCargo = companyData?.representante_cargo || 'Sócio-Administrador'
+    const secRepCpf = companyData?.representante_cpf
+      ? ` (CPF: ${companyData.representante_cpf})`
+      : ''
+
     // Fetch operation and relations
     const { data: op, error: opError } = await supabase
       .from('credit_operations')
@@ -182,18 +209,29 @@ Deno.serve(async (req: Request) => {
     let currentY = 841.89 - margin
 
     // [CABEÇALHO]
-    page.drawText('SECURITIZADORA', { x: margin, y: currentY, font: fontBold, size: 14 })
-    currentY -= 30
+    page.drawText(secRazao.toUpperCase(), { x: margin, y: currentY, font: fontBold, size: 13 })
+    currentY -= 16
+    page.drawText(`CNPJ: ${secCnpj} | ${secEndereco}`, { x: margin, y: currentY, font, size: 9 })
+    currentY -= 24
     const title = `ADITIVO AO CONTRATO MÃE DE CESSÃO DE CRÉDITO Nº ${op.id.split('-')[0].toUpperCase()} - V${nextVersion}`
     page.drawText(title, { x: margin, y: currentY, font: fontBold, size: 12 })
-    currentY -= 20
+    currentY -= 18
     const opDate = new Date(new Date().getTime() - 3 * 3600000).toLocaleDateString('pt-BR')
     page.drawText(`Data da Operação: ${opDate}`, { x: margin, y: currentY, font, size })
-    currentY -= 30
+    currentY -= 25
 
-    // [QUALIFICAÇÃO DO CEDENTE]
-    page.drawText('[QUALIFICAÇÃO DO CEDENTE]', { x: margin, y: currentY, font: fontBold, size })
-    currentY -= 20
+    // [PREÂMBULO / QUALIFICAÇÃO DAS PARTES]
+    page.drawText('[QUALIFICAÇÃO DAS PARTES]', { x: margin, y: currentY, font: fontBold, size })
+    currentY -= 18
+
+    // CESSIONÁRIA / SECURITIZADORA
+    let secPreambuloTexto = `CESSIONÁRIA: ${secRazao}, inscrita no CNPJ sob o nº ${secCnpj}, com sede em ${secEndereco}`
+    if (secRepNome) {
+      secPreambuloTexto += `, neste ato representada por seu ${secRepCargo}, ${secRepNome}${secRepCpf}`
+    }
+    secPreambuloTexto += '.'
+    currentY = drawTextWrap(secPreambuloTexto, margin, currentY, maxWidth, font, size - 1, page)
+    currentY -= 10
 
     // 4. MAPEAMENTO DE CAMPOS (PLACEHOLDERS)
     const prof = Array.isArray(op.profiles) ? op.profiles[0] : op.profiles
@@ -458,7 +496,7 @@ Deno.serve(async (req: Request) => {
     })
     currentY -= 15
     page.drawText('Assinatura do Cedente', { x: margin, y: currentY, font, size: 9 })
-    page.drawText('Assinatura da Securitizadora', { x: margin + 250, y: currentY, font, size: 9 })
+    page.drawText(`Assinatura: ${secRazao}`, { x: margin + 250, y: currentY, font, size: 9 })
 
     // Rodapé
     const hash = crypto.randomUUID()

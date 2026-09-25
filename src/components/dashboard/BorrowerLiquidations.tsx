@@ -76,15 +76,26 @@ export function BorrowerLiquidations() {
       .eq('is_active', true)
       .limit(1)
 
-    // Fallback if no specific company account, fetch from user if applicable or just use mock
+    // Obter dados da securitizadora para preenchimento de favorecido
+    const { data: compSettings } = await (supabase.from('company_settings') as any)
+      .select('*')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    const secName = compSettings?.razao_social || 'Nexum Securitizadora S.A.'
+    const secDoc = compSettings?.cnpj || '00.000.000/0001-00'
+    const secCity = compSettings?.endereco_cidade || 'Criciuma'
+
+    // Fallback if no specific company account, fetch from company_settings
     const account = accounts?.[0] || {
       bank_code: '000',
-      bank_name: 'Securitizadora S/A',
+      bank_name: secName,
       branch: '0001',
       account_number: '12345-6',
-      owner_name: 'Securitizadora S/A',
-      owner_document: '00.000.000/0001-00',
-      pix_key: 'contato@securitizadora.local',
+      owner_name: secName,
+      owner_document: secDoc,
+      pix_key: compSettings?.email || 'contato@nexumsecurity.com.br',
     }
     setBankInfo(account)
 
@@ -94,8 +105,8 @@ export function BorrowerLiquidations() {
       const payload = generatePixPayload(
         account.pix_key,
         calc.total,
-        'Securitizadora',
-        'Sao Paulo',
+        secName.substring(0, 25),
+        secCity.substring(0, 15),
         txid,
         `Cessao ${op.id.substring(0, 8)}`,
       )

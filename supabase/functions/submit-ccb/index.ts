@@ -146,6 +146,17 @@ Deno.serve(async (req: Request) => {
 
     // 2. Geração e Upload do PDF em background/Try-Catch isolado
     try {
+      // Obter dados da securitizadora para o cabeçalho oficial
+      const { data: compSettings } = await supabaseAdmin
+        .from('company_settings')
+        .select('*')
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+
+      const secHeaderName = compSettings?.razao_social || 'NEXUM SECURITIZADORA S.A.'
+      const secHeaderCnpj = compSettings?.cnpj ? `CNPJ: ${compSettings.cnpj}` : ''
+
       const pdfDoc = await PDFDocument.create()
       const page = pdfDoc.addPage([841.89, 595.28])
       const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
@@ -162,18 +173,27 @@ Deno.serve(async (req: Request) => {
         })
       }
 
-      page.drawText('BDIGITAL', {
+      page.drawText(secHeaderName.toUpperCase(), {
         x: margin,
         y: currentY,
         font: fontBold,
-        size: 24,
-        color: rgb(0, 0.4, 0.7),
+        size: 14,
+        color: rgb(0, 0.3, 0.6),
       })
-      page.drawText('DOSSIÊ CCB - SOLICITAÇÃO COMPLETA', {
-        x: margin + 150,
-        y: currentY + 4,
+      if (secHeaderCnpj) {
+        page.drawText(secHeaderCnpj, {
+          x: margin,
+          y: currentY - 14,
+          font,
+          size: 9,
+          color: rgb(0.3, 0.3, 0.3),
+        })
+      }
+      page.drawText('DOSSIÊ CCB - PROPOSTA / CÉDULA DE CRÉDITO BANCÁRIO', {
+        x: margin + 320,
+        y: currentY + 2,
         font: fontBold,
-        size: 16,
+        size: 13,
       })
       currentY -= 30
 

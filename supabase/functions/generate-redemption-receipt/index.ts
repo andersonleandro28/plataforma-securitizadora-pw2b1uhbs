@@ -17,6 +17,28 @@ Deno.serve(async (req: Request) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
     const supabase = createClient(supabaseUrl, supabaseKey)
 
+    // Fetch company settings (singleton)
+    const { data: companyData } = await supabase
+      .from('company_settings')
+      .select('*')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    const secRazao = companyData?.razao_social || 'Nexum Securitizadora S.A.'
+    const secCnpj = companyData?.cnpj || '00.000.000/0001-00'
+    const secCidade = companyData?.endereco_cidade || 'Criciúma'
+    const secUf = companyData?.endereco_uf || 'SC'
+    const secEndParts = [
+      companyData?.endereco_logradouro
+        ? `${companyData.endereco_logradouro}${companyData.endereco_numero ? ', ' + companyData.endereco_numero : ''}`
+        : '',
+      companyData?.endereco_bairro,
+      `${secCidade}/${secUf}`,
+      companyData?.endereco_cep ? `CEP: ${companyData.endereco_cep}` : '',
+    ].filter(Boolean)
+    const secEndereco = secEndParts.length > 0 ? secEndParts.join(' - ') : 'Sede Social'
+
     const { data: red, error } = await supabase
       .from('investment_redemptions')
       .select('*, investments(*, investment_products(*)), profiles(*)')
@@ -30,17 +52,31 @@ Deno.serve(async (req: Request) => {
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
     const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
 
+    page.drawText(secRazao.toUpperCase(), {
+      x: 50,
+      y: 800,
+      font: fontBold,
+      size: 13,
+    })
+    page.drawText(`CNPJ: ${secCnpj} | ${secEndereco}`, {
+      x: 50,
+      y: 785,
+      font,
+      size: 9,
+      color: rgb(0.3, 0.3, 0.3),
+    })
+
     page.drawText('COMPROVANTE DE LIQUIDAÇÃO DE RESGATE', {
       x: 50,
-      y: 790,
+      y: 755,
       font: fontBold,
-      size: 16,
+      size: 15,
     })
     page.drawText(`ID do Resgate: ${red.id.split('-')[0].toUpperCase()}`, {
       x: 50,
-      y: 760,
+      y: 730,
       font,
-      size: 12,
+      size: 11,
     })
     page.drawText(
       `Data da Liquidação: ${new Date(red.updated_at || red.created_at).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`,
@@ -135,7 +171,7 @@ Deno.serve(async (req: Request) => {
     page.drawLine({ start: { x: 50, y: curY }, end: { x: 545, y: curY }, thickness: 1 })
     curY -= 20
     page.drawText(
-      'Este documento é emitido digitalmente pela Plataforma Securitizadora e serve como recibo legal de liquidação.',
+      `Este documento é emitido digitalmente por ${secRazao} e serve como recibo legal de quitação/liquidação.`,
       { x: 50, y: curY, font, size: 9, color: rgb(0.3, 0.3, 0.3) },
     )
 

@@ -645,6 +645,16 @@ export function AdminNewCcbDialog({ open, onOpenChange, onSuccess }: AdminNewCcb
 
       // 2. Tentar gerar espelho PDF do Dossiê CCB
       try {
+        // Carregar dados da securitizadora para o cabeçalho oficial
+        const { data: compSettings } = await (supabase.from('company_settings') as any)
+          .select('*')
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle()
+
+        const secHeaderName = compSettings?.razao_social || 'NEXUM SECURITIZADORA S.A.'
+        const secHeaderCnpj = compSettings?.cnpj ? `CNPJ: ${compSettings.cnpj}` : ''
+
         const pdfDoc = await PDFDocument.create()
         const page = pdfDoc.addPage([841.89, 595.28])
         const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
@@ -661,18 +671,27 @@ export function AdminNewCcbDialog({ open, onOpenChange, onSuccess }: AdminNewCcb
           })
         }
 
-        page.drawText('BDIGITAL - NEXUM SECURITIZADORA', {
+        page.drawText(secHeaderName.toUpperCase(), {
           x: margin,
           y: currentY,
           font: fontBold,
-          size: 22,
-          color: rgb(0, 0.4, 0.7),
+          size: 16,
+          color: rgb(0, 0.3, 0.6),
         })
-        page.drawText('DOSSIÊ CCB - LANÇAMENTO INTERNO', {
-          x: margin + 420,
-          y: currentY + 4,
+        if (secHeaderCnpj) {
+          page.drawText(secHeaderCnpj, {
+            x: margin,
+            y: currentY - 15,
+            font,
+            size: 9,
+            color: rgb(0.3, 0.3, 0.3),
+          })
+        }
+        page.drawText('DOSSIÊ CCB - LANÇAMENTO INTERNO / PROPOSTA', {
+          x: margin + 350,
+          y: currentY + 2,
           font: fontBold,
-          size: 14,
+          size: 13,
         })
         currentY -= 30
 

@@ -152,14 +152,24 @@ export default function MyCcbInstallments() {
         .eq('is_active', true)
         .limit(1)
 
+      const { data: compSettings } = await (supabase.from('company_settings') as any)
+        .select('*')
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+
+      const secName = compSettings?.razao_social || 'Nexum Securitizadora S.A.'
+      const secDoc = compSettings?.cnpj || '00.000.000/0001-00'
+      const secCity = compSettings?.endereco_cidade || 'Criciuma'
+
       const account = accounts?.[0] || {
         bank_code: '000',
-        bank_name: 'Securitizadora S/A',
+        bank_name: secName,
         branch: '0001',
         account_number: '12345-6',
-        owner_name: 'Securitizadora S/A',
-        owner_document: '00.000.000/0001-00',
-        pix_key: 'contato@securitizadora.local',
+        owner_name: secName,
+        owner_document: secDoc,
+        pix_key: compSettings?.email || 'contato@nexumsecurity.com.br',
       }
 
       const calc = calculateUpdatedValue(Number(boleto.unit_value), boleto.due_date)
@@ -170,8 +180,8 @@ export default function MyCcbInstallments() {
       const payload = generatePixPayload(
         account.pix_key,
         calc.total,
-        account.owner_name || 'Securitizadora',
-        'Sao Paulo',
+        (account.owner_name || secName).substring(0, 25),
+        secCity.substring(0, 15),
         txid,
         `Parcela ${idx + 1}`,
       )

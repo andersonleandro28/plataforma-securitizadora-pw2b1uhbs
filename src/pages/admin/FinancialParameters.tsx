@@ -1,20 +1,25 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CcbParametersForm } from '@/components/admin/CcbParametersForm'
 import { GlobalParametersForm } from '@/components/admin/GlobalParametersForm'
-import { Landmark, FileText } from 'lucide-react'
+import { CompanySettingsForm } from '@/components/admin/CompanySettingsForm'
+import { Landmark, FileText, Building2 } from 'lucide-react'
 
 export default function FinancialParameters() {
   return (
     <div className="max-w-5xl mx-auto space-y-6 animate-fade-in-up pb-12">
       <div>
-        <h1 className="text-3xl font-bold">Parâmetros Financeiros</h1>
+        <h1 className="text-3xl font-bold">Parâmetros & Configurações</h1>
         <p className="text-muted-foreground">
-          Gerencie as taxas, custos e configurações de todas as operações financeiras da plataforma.
+          Gerencie os dados cadastrais da securitizadora, taxas, custos e configurações de todas as
+          operações da plataforma.
         </p>
       </div>
 
-      <Tabs defaultValue="ccb" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 mb-6">
+      <Tabs defaultValue="empresa" className="w-full">
+        <TabsList className="grid w-full grid-cols-3 mb-6">
+          <TabsTrigger value="empresa" className="gap-2">
+            <Building2 className="h-4 w-4" /> Dados da Securitizadora
+          </TabsTrigger>
           <TabsTrigger value="ccb" className="gap-2">
             <FileText className="h-4 w-4" /> Configuração de CCB
           </TabsTrigger>
@@ -22,6 +27,10 @@ export default function FinancialParameters() {
             <Landmark className="h-4 w-4" /> Parâmetros Gerais
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="empresa" className="mt-0 focus-visible:outline-none">
+          <CompanySettingsForm />
+        </TabsContent>
 
         <TabsContent value="ccb" className="mt-0 focus-visible:outline-none">
           <CcbParametersForm />
