@@ -781,6 +781,19 @@ export default function Expenses() {
                   }
                   setSupForm({ ...supForm, document_number: formatted })
                 }}
+                onBlur={() => {
+                  const docDigits = onlyDigits(supForm.document_number)
+                  if (!docDigits) return
+                  if (docDigits.length === 11 && !validateCpf(docDigits)) {
+                    toast.error('CPF inválido. Verifique os dígitos verificadores.')
+                  } else if (docDigits.length === 14 && !validateCnpj(docDigits)) {
+                    toast.error('CNPJ inválido. Verifique os dígitos verificadores.')
+                  } else if (docDigits.length !== 11 && docDigits.length !== 14) {
+                    toast.error(
+                      'Documento incompleto (deve ter 11 dígitos para CPF ou 14 para CNPJ).',
+                    )
+                  }
+                }}
                 placeholder="00.000.000/0000-00 ou 000.000.000-00"
               />
             </div>

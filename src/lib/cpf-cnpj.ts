@@ -51,44 +51,53 @@ export const maskDocument = (v: string, type: 'pf' | 'pj' | null | undefined): s
   type === 'pj' ? maskCnpj(v) : maskCpf(v)
 
 /** Valida os dígitos verificadores de um CPF (algoritmo oficial). */
-export const validateCpf = (v: string): boolean => {
+export const validateCpf = (v: string | null | undefined): boolean => {
+  if (!v) return false
   const d = onlyDigits(v)
   if (d.length !== 11) return false
-  // Rejeita CPFs com todos os dígitos iguais (ex: 111.111.111-11)
+  // Rejeita CPFs com todos os dígitos iguais (ex: 111.111.111-11, 000.000.000-00)
   if (/^(\d)\1{10}$/.test(d)) return false
 
   let sum = 0
-  for (let i = 0; i < 9; i++) sum += parseInt(d[i], 10) * (10 - i)
+  for (let i = 0; i < 9; i++) {
+    sum += parseInt(d.charAt(i), 10) * (10 - i)
+  }
   let rev = 11 - (sum % 11)
-  if (rev >= 10) rev = 0
-  if (rev !== parseInt(d[9], 10)) return false
+  if (rev === 10 || rev === 11) rev = 0
+  if (rev !== parseInt(d.charAt(9), 10)) return false
 
   sum = 0
-  for (let i = 0; i < 10; i++) sum += parseInt(d[i], 10) * (11 - i)
+  for (let i = 0; i < 10; i++) {
+    sum += parseInt(d.charAt(i), 10) * (11 - i)
+  }
   rev = 11 - (sum % 11)
-  if (rev >= 10) rev = 0
-  if (rev !== parseInt(d[10], 10)) return false
+  if (rev === 10 || rev === 11) rev = 0
+  if (rev !== parseInt(d.charAt(10), 10)) return false
 
   return true
 }
 
-/** Valida os dígitos verificadores de um CNPJ (algoritmo oficial). */
-export const validateCnpj = (v: string): boolean => {
+/** Valida os dígitos verificadores de um CNPJ (algoritmo oficial módulo 11). */
+export const validateCnpj = (v: string | null | undefined): boolean => {
+  if (!v) return false
   const d = onlyDigits(v)
   if (d.length !== 14) return false
+  // Rejeita sequências repetidas (ex: 00000000000000, 11111111111111)
   if (/^(\d)\1{13}$/.test(d)) return false
 
   const calc = (len: number): number => {
     const weights =
       len === 12 ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2] : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
     let sum = 0
-    for (let i = 0; i < len; i++) sum += parseInt(d[i], 10) * weights[i]
+    for (let i = 0; i < len; i++) {
+      sum += parseInt(d.charAt(i), 10) * weights[i]
+    }
     const r = sum % 11
     return r < 2 ? 0 : 11 - r
   }
 
-  if (calc(12) !== parseInt(d[12], 10)) return false
-  if (calc(13) !== parseInt(d[13], 10)) return false
+  if (calc(12) !== parseInt(d.charAt(12), 10)) return false
+  if (calc(13) !== parseInt(d.charAt(13), 10)) return false
 
   return true
 }

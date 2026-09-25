@@ -63,7 +63,10 @@ import {
   registerManagerCommissionExpense,
 } from '@/services/credit-managers'
 import { CompanyBankAccountSelect } from '@/components/admin/CompanyBankAccountSelect'
-import { useCompanyBankAccounts } from '@/hooks/use-company-bank-accounts'
+import { useCompanyBankAccounts, formatBankAccountLabel } from '@/hooks/use-company-bank-accounts'
+import { useCompanySettings } from '@/hooks/use-company-settings'
+import { printIsolatedManagerReceipt } from '@/lib/manager-commission-receipt'
+import { FileCheck2 } from 'lucide-react'
 
 export default function CreditManagers() {
   const { activeRole } = useAuth()
@@ -91,6 +94,7 @@ export default function CreditManagers() {
 
   // Contas bancárias da empresa (para registrar pagamento de comissão no Livro Caixa)
   const { accounts: bankAccounts } = useCompanyBankAccounts()
+  const { settings } = useCompanySettings()
 
   // Diálogo de criação/edição de Gerente
   const [managerModalOpen, setManagerModalOpen] = useState(false)
@@ -206,7 +210,7 @@ export default function CreditManagers() {
 
     const cpfDigits = onlyDigits(formData.cpf)
     if (!cpfDigits || cpfDigits.length !== 11 || !validateCpf(cpfDigits)) {
-      toast.error('Informe um CPF válido com 11 dígitos.')
+      toast.error('CPF inválido. Verifique os dígitos verificadores informados.')
       return
     }
 
@@ -286,25 +290,75 @@ export default function CreditManagers() {
 
     setRegisteringPayment(true)
     try {
+      const summaryToPay = payingSummary
+      const paidDate = paymentDate
+      const bankId = paymentBankAccountId
+
       await registerManagerCommissionExpense({
-        managerId: payingSummary.manager.id,
-        managerName: payingSummary.manager.full_name,
+        managerId: summaryToPay.manager.id,
+        managerName: summaryToPay.manager.full_name,
         periodMonth: selectedMonth,
-        amount: payingSummary.totalCommission,
-        bankAccountId: paymentBankAccountId,
-        paymentDate: paymentDate,
+        amount: summaryToPay.totalCommission,
+        bankAccountId: bankId,
+        paymentDate: paidDate,
       })
       toast.success(
-        `Pagamento de ${formatCurrency(payingSummary.totalCommission)} para ${payingSummary.manager.full_name} registrado com sucesso no Livro Caixa!`,
+        `Pagamento de ${formatCurrency(summaryToPay.totalCommission)} para ${summaryToPay.manager.full_name} registrado com sucesso no Livro Caixa!`,
       )
+
+      // Perguntar ou gerar recibo automaticamente
+      const bankAcc = bankAccounts.find((b) => b.id === bankId)
+      const bankLabel = bankAcc ? formatBankAccountLabel(bankAcc) : undefined
+
       setPaymentModalOpen(false)
       setPayingSummary(null)
-      loadCommissions()
+      await loadCommissions()
+
+      // Dispara a impressão do recibo oficial com quitação
+      printIsolatedManagerReceipt({
+        summary: {
+          ...summaryToPay,
+          isPaid: true,
+          paymentDetails: {
+            expenseId: '',
+            paidAt: paidDate,
+            amount: summaryToPay.totalCommission,
+            bankAccountId: bankId,
+          },
+        },
+        periodMonth: selectedMonth,
+        settings,
+        bankAccountLabel: bankLabel,
+        paymentDate: paidDate,
+      })
     } catch (err: any) {
       toast.error(err.message || 'Erro ao registrar pagamento de comissão.')
     } finally {
       setRegisteringPayment(false)
     }
+  }
+
+  // Gerar recibo de comissão sob demanda
+  const handlePrintReceipt = (s: ManagerCommissionSummary, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!s.isPaid) {
+      toast.warning('O recibo com quitação fica disponível apenas para comissões já pagas e registradas no Livro Caixa.')
+      return
+    }
+
+    const bankAcc = s.paymentDetails?.bankAccountId
+      ? bankAccounts.find((b) => b.id === s.paymentDetails?.bankAccountId)
+      : bankAccounts.find((b) => b.is_active) || bankAccounts[0]
+    const bankLabel = bankAcc ? formatBankAccountLabel(bankAcc) : undefined
+
+    printIsolatedManagerReceipt({
+      summary: s,
+      periodMonth: selectedMonth,
+      settings,
+      bankAccountLabel: bankLabel,
+      paymentDate: s.paymentDetails?.paidAt,
+    })
+  }
   }
 
   // Exportar comissões para CSV
@@ -646,26 +700,41 @@ export default function CreditManagers() {
                                 className="text-right pr-4"
                                 onClick={(e) => e.stopPropagation()}
                               >
-                                {!isReadOnly &&
-                                  s.totalCommission > 0 &&
-                                  (s.isPaid ? (
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {s.isPaid ? (
                                     <Button
                                       size="sm"
-                                      variant="ghost"
-                                      disabled
-                                      className="text-xs text-emerald-700 h-8"
+                                      variant="outline"
+                                      onClick={(e) => handlePrintReceipt(s, e)}
+                                      className="text-xs h-8 gap-1 border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                                      title="Imprimir Recibo de Comissão com Quitação"
                                     >
-                                      <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> No Caixa
+                                      <FileCheck2 className="w-3.5 h-3.5" /> Recibo
                                     </Button>
                                   ) : (
                                     <Button
                                       size="sm"
-                                      onClick={(e) => handleOpenPayment(s, e)}
-                                      className="text-xs h-8 bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
+                                      variant="ghost"
+                                      onClick={(e) => handlePrintReceipt(s, e)}
+                                      className="text-xs h-8 gap-1 text-muted-foreground hover:text-foreground opacity-60 hover:opacity-100"
+                                      title="Recibo indisponível até o registro do pagamento"
                                     >
-                                      <DollarSign className="w-3.5 h-3.5" /> Pagar Comissão
+                                      <FileCheck2 className="w-3.5 h-3.5" /> Recibo
                                     </Button>
-                                  ))}
+                                  )}
+
+                                  {!isReadOnly &&
+                                    s.totalCommission > 0 &&
+                                    !s.isPaid && (
+                                      <Button
+                                        size="sm"
+                                        onClick={(e) => handleOpenPayment(s, e)}
+                                        className="text-xs h-8 bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
+                                      >
+                                        <DollarSign className="w-3.5 h-3.5" /> Pagar Comissão
+                                      </Button>
+                                    )}
+                                </div>
                               </TableCell>
                             </TableRow>
 
@@ -936,6 +1005,13 @@ export default function CreditManagers() {
                   const val = e.target.value
                   const digits = onlyDigits(val)
                   setFormData({ ...formData, cpf: maskCpf(digits) })
+                }}
+                onBlur={() => {
+                  const digits = onlyDigits(formData.cpf)
+                  if (!digits) return
+                  if (digits.length !== 11 || !validateCpf(digits)) {
+                    toast.error('CPF inválido. Verifique os dígitos verificadores.')
+                  }
                 }}
                 placeholder="000.000.000-00"
                 maxLength={14}

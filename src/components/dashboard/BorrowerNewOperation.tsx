@@ -24,7 +24,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { useBorrowerLimit } from '@/hooks/use-borrower-limit'
 import { useSacadoSuggestions, KnownSacado } from '@/hooks/use-sacado-suggestions'
 import { SacadoAutocomplete } from '@/components/operations/SacadoAutocomplete'
-import { onlyDigits, maskCpf, maskCnpj } from '@/lib/cpf-cnpj'
+import { onlyDigits, maskCpf, maskCnpj, validateCpf, validateCnpj } from '@/lib/cpf-cnpj'
 import { toast } from 'sonner'
 import { Loader2, Calculator, Send, CheckCircle2, Sparkles, Building } from 'lucide-react'
 
@@ -109,6 +109,19 @@ export function BorrowerNewOperation({ onSuccess }: { onSuccess?: () => void }) 
       !formData.sacadoPhone
     )
       return toast.error('Preencha todos os dados do sacado')
+
+    const sacadoDocClean = onlyDigits(formData.sacadoDocument)
+    if (sacadoDocClean.length === 11 && !validateCpf(sacadoDocClean)) {
+      return toast.error('CPF do sacado inválido. Verifique os dígitos verificadores.')
+    }
+    if (sacadoDocClean.length === 14 && !validateCnpj(sacadoDocClean)) {
+      return toast.error('CNPJ do sacado inválido. Verifique os dígitos verificadores.')
+    }
+    if (sacadoDocClean.length !== 11 && sacadoDocClean.length !== 14) {
+      return toast.error(
+        'Documento do sacado deve ser um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.',
+      )
+    }
     if (!files.length) return toast.error('Anexe pelo menos um documento comprobatório')
     if (Number(formData.requestedValue) > Number(formData.faceValue))
       return toast.error('Valor solicitado não pode ser maior que o valor de face')
@@ -414,6 +427,19 @@ export function BorrowerNewOperation({ onSuccess }: { onSuccess?: () => void }) 
                 <Input
                   value={formData.sacadoDocument}
                   onChange={(e) => handleSacadoDocumentChange(e.target.value)}
+                  onBlur={() => {
+                    const clean = onlyDigits(formData.sacadoDocument)
+                    if (!clean) return
+                    if (clean.length === 11 && !validateCpf(clean)) {
+                      toast.error('CPF do sacado inválido. Verifique os dígitos verificadores.')
+                    } else if (clean.length === 14 && !validateCnpj(clean)) {
+                      toast.error('CNPJ do sacado inválido. Verifique os dígitos verificadores.')
+                    } else if (clean.length !== 11 && clean.length !== 14) {
+                      toast.error(
+                        'Documento do sacado incompleto (informe 11 dígitos para CPF ou 14 para CNPJ).',
+                      )
+                    }
+                  }}
                   placeholder="00.000.000/0000-00 ou CPF"
                   className={autoFilledSacado ? 'border-emerald-500/40' : ''}
                 />

@@ -91,12 +91,21 @@ export function CompanySettingsForm() {
     }
   }, [settings])
 
-  // Busca automática na BrasilAPI por CNPJ
+  // Validação ao blur do CPF do representante
+  const handleRepresentanteCpfBlur = () => {
+    const raw = onlyDigits(formData.representante_cpf || '')
+    if (!raw) return
+    if (raw.length !== 11 || !validateCpf(raw)) {
+      toast.error('CPF do representante legal inválido. Verifique os dígitos verificadores.')
+    }
+  }
+
+  // Busca automática na BrasilAPI por CNPJ com validação de dígitos
   const handleCnpjBlur = async () => {
     const raw = onlyDigits(formData.cnpj)
-    if (raw.length !== 14) return
-    if (!validateCnpj(raw)) {
-      toast.error('CNPJ inválido. Verifique os dígitos informados.')
+    if (!raw) return
+    if (raw.length !== 14 || !validateCnpj(raw)) {
+      toast.error('CNPJ inválido. Verifique os dígitos verificadores informados.')
       return
     }
 
@@ -377,6 +386,7 @@ export function CompanySettingsForm() {
                       representante_cpf: maskCpf(rawDigits),
                     }))
                   }}
+                  onBlur={handleRepresentanteCpfBlur}
                   placeholder="000.000.000-00"
                   maxLength={14}
                   inputMode="numeric"
