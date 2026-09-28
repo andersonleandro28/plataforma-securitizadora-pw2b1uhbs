@@ -7,6 +7,7 @@ import { ExtractTab } from '@/components/reports/ExtractTab'
 import { InvestorYieldsReportTab } from '@/components/reports/InvestorYieldsReportTab'
 import { PeriodOperationsReportTab } from '@/components/reports/PeriodOperationsReportTab'
 import { BankMovementExtractReportTab } from '@/components/reports/BankMovementExtractReportTab'
+import { ReceivablesToReceiveReportTab } from '@/components/reports/ReceivablesToReceiveReportTab'
 import { UnifiedReportTab } from '@/components/reports/UnifiedReportTab'
 import { useAuth } from '@/hooks/use-auth'
 
@@ -49,6 +50,14 @@ export default function Reports() {
               Extrato de Movimentações Bancárias
             </TabsTrigger>
           )}
+          {isAdminOrStaff && (
+            <TabsTrigger
+              value="receivables-to-receive"
+              className="font-medium text-blue-600 dark:text-blue-400 font-semibold"
+            >
+              Recebíveis a Receber
+            </TabsTrigger>
+          )}
           {isAdminOrStaff && <TabsTrigger value="dashboard">Resumo de Carteira</TabsTrigger>}
           {isAdminOrStaff && <TabsTrigger value="subscriptions">Subscrições</TabsTrigger>}
           {isAdminOrStaff && <TabsTrigger value="acquisitions">Aquisições (CCBs/Rec.)</TabsTrigger>}
@@ -69,6 +78,9 @@ export default function Reports() {
             </TabsContent>
             <TabsContent value="bank-movements" className="space-y-4">
               <BankMovementExtractReportTab />
+            </TabsContent>
+            <TabsContent value="receivables-to-receive" className="space-y-4">
+              <ReceivablesToReceiveReportTab />
             </TabsContent>
             <TabsContent value="dashboard" className="space-y-4">
               <DashboardTab />

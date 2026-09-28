@@ -560,7 +560,52 @@ export const KNOWLEDGE_BASE: KnowledgeTopic[] = [
     tips: [
       'Todos os relatórios contam com botões rápidos de exportação em CSV para importação direta no Excel e impressão com layout corporativo formatado.',
     ],
-    relatedTopicIds: ['admin-relatorios-tributario', 'admin-investimentos-aportes'],
+    relatedTopicIds: [
+      'admin-relatorios-tributario',
+      'admin-relatorios-recebiveis-a-receber',
+      'admin-investimentos-aportes',
+    ],
+  },
+  {
+    id: 'admin-relatorios-recebiveis-a-receber',
+    title: 'Relatório: Recebíveis a Receber (Posição Futura de Caixa da Carteira)',
+    roles: ['admin', 'staff', 'accountant'],
+    category: 'admin',
+    navigationPath: 'Menu lateral > Relatórios > Aba "Recebíveis a Receber"',
+    keywords: [
+      'recebiveis a receber',
+      'recebiveis pendentes',
+      'posicao futura',
+      'fluxo futuro',
+      'entradas de caixa',
+      'aging de recebiveis',
+      'parcelas a vencer',
+      'parcelas vencidas',
+      'duplicatas a receber',
+      'ccbs a receber',
+      'cronograma de parcelas',
+      'filtro competencia',
+      'filtro periodo',
+      'relatorio recebiveis',
+    ],
+    summary:
+      'Demonstrativo analítico do fluxo futuro de caixa da securitizadora, consolidando recebíveis de antecipação (duplicatas, cheques) e parcelas de CCB a receber com filtros de período e aging de atraso.',
+    steps: [
+      'Acesse "Relatórios" no menu lateral e clique na aba destacada "Recebíveis a Receber".',
+      'Escolha o modo de filtro desejado:',
+      '  - Modo Competência: selecione o Mês e Ano de vencimento (histórico de até 36 meses atrás a 24 meses futuros ou "Todos os Meses").',
+      '  - Modo Intervalo: informe a Data Inicial e Data Final para uma janela personalizada de vencimentos.',
+      'Refine pelos filtros adicionais: tipo de operação (Todas, Antecipações ou CCBs), situação (A Vencer, Vencido, Prorrogado) e busca por nome ou documento.',
+      'Para conferir parcelas que já foram quitadas dentro do corte selecionado, marque a opção "Incluir parcelas já recebidas/liquidadas no período".',
+      'Analise os indicadores de topo: Total a Receber no Filtro, Parcelas Vencidas em Atraso, subtotal por tipo (Antecipações vs CCBs) e parcelas A Vencer em dia.',
+      'Caso existam parcelas vencidas, confira o card de Aging da Carteira em Atraso (faixas: até 30 dias, 31 a 60, 61 a 90 e >90 dias).',
+      'Para exportar os dados para auditoria ou contabilidade: clique em "Baixar Planilha CSV" ou "Imprimir / Salvar PDF" (com formatação corporativa, cabeçalho da Securitizadora e paginação automática sem cortes).',
+    ],
+    tips: [
+      'O relatório é somente leitura e reflete as datas reais de vencimento e valores de cada título contratado na esteira da Securitizadora.',
+      'Valores prorrogados na mesa de operações já incorporam automaticamente os juros e encargos pactuados no valor total devido da parcela.',
+    ],
+    relatedTopicIds: ['admin-relatorios-unificado', 'admin-lancar-operacao', 'admin-ccb-purchases'],
   },
   {
     id: 'admin-parametros-securitizadora',
@@ -978,6 +1023,10 @@ export const KNOWLEDGE_BASE: KnowledgeTopic[] = [
 export const FREQUENT_QUESTIONS_BY_ROLE: Record<string, { label: string; query: string }[]> = {
   admin: [
     {
+      label: 'Recebíveis a Receber',
+      query: 'onde vejo o relatorio de recebiveis a receber antecipacoes e ccbs?',
+    },
+    {
       label: 'Regra de Limite do Tomador',
       query: 'como funciona a regra de limite de credito do tomador pago vs liquidado?',
     },
@@ -1191,6 +1240,12 @@ export function searchKnowledgeBase(userQuery: string, userRole?: string): Assis
       topic.id === 'admin-tomador-limite'
     ) {
       score += 40
+    }
+    if (
+      (normalizedQuery.includes('a receber') || normalizedQuery.includes('recebiveis a receber')) &&
+      topic.id === 'admin-relatorios-recebiveis-a-receber'
+    ) {
+      score += 45
     }
     if (
       (normalizedQuery.includes('lalur') || normalizedQuery.includes('lucro real')) &&
