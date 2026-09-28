@@ -525,6 +525,10 @@ Deno.serve(async (req: Request) => {
     addNewPageIfNeeded(160)
     currentY -= 12
 
+    const resolvedIp = inv.is_internal_admin
+      ? ipAddress || 'Lançamento interno pelo admin'
+      : ipAddress || 'Acesso autenticado via plataforma'
+
     drawQualifiedSignatureBlock(
       {
         page: currentPage,
@@ -539,7 +543,7 @@ Deno.serve(async (req: Request) => {
         uf: secUf,
         dataCelebracao: dataAceiteDate,
         dataAceite: dataAceiteDate,
-        ipAddress: ipAddress || 'Conexão Autenticada via Plataforma Web/SSL',
+        ipAddress: resolvedIp,
         documentId: inv.id,
         documentTypeLabel: 'Aporte',
         securitizadoraRazao: secRazao,

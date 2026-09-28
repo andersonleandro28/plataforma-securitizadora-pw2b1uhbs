@@ -38,7 +38,10 @@ import {
   FileCheck,
   Clock,
   CheckCircle2,
+  PlusCircle,
+  UserCheck,
 } from 'lucide-react'
+import { AdminNewInvestmentDialog } from '@/components/admin/AdminNewInvestmentDialog'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/use-auth'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
@@ -67,6 +70,9 @@ export default function InvestmentsReview() {
     unit_price: 1000,
     total_value: 1000,
   })
+
+  // Novo Aporte Interno pelo Admin Modal State
+  const [newInvestmentOpen, setNewInvestmentOpen] = useState(false)
 
   // Comprovante Modal State
   const [proofModalOpen, setProofModalOpen] = useState(false)
@@ -821,6 +827,13 @@ export default function InvestmentsReview() {
                 </Button>
               </div>
             </div>
+
+            <Button
+              onClick={() => setNewInvestmentOpen(true)}
+              className="gap-2 shadow-sm font-medium"
+            >
+              <PlusCircle className="w-4 h-4" /> Fazer Investimento para Cliente
+            </Button>
           </div>
 
           <Card>
@@ -873,8 +886,19 @@ export default function InvestmentsReview() {
                       return (
                         <TableRow key={inv.id}>
                           <TableCell>
-                            <div className="font-medium">
-                              {inv.profiles?.full_name || 'Investidor'}
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-foreground">
+                                {inv.profiles?.full_name || 'Investidor'}
+                              </span>
+                              {inv.is_internal_admin && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] font-normal bg-purple-50 text-purple-700 border-purple-200 gap-1 px-1.5 py-0"
+                                  title="Aporte lançado internamente pelo administrador"
+                                >
+                                  <UserCheck className="w-2.5 h-2.5" /> Lançamento interno
+                                </Badge>
+                              )}
                             </div>
                             <div className="text-xs text-muted-foreground">
                               {inv.profiles?.document_number || '-'}
@@ -1658,6 +1682,15 @@ export default function InvestmentsReview() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Lançamento Interno de Investimento pelo Admin */}
+      <AdminNewInvestmentDialog
+        open={newInvestmentOpen}
+        onOpenChange={setNewInvestmentOpen}
+        onSuccess={() => {
+          fetchData()
+        }}
+      />
 
       {/* Modal de Exclusão Permanente de Aporte (Destrutivo) */}
       <Dialog open={deleteInvOpen} onOpenChange={setDeleteInvOpen}>

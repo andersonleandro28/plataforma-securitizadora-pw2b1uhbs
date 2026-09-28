@@ -606,6 +606,10 @@ Deno.serve(async (req: Request) => {
     curY -= 16
 
     // BLOCO 7: BLOCO DE ASSINATURA ELETRÔNICA QUALIFICADA (Helper compartilhado)
+    const resolvedIp = inv.is_internal_admin
+      ? ipAddress || 'Lançamento interno pelo admin'
+      : ipAddress || 'Acesso autenticado via plataforma'
+
     drawQualifiedSignatureBlock(
       {
         page,
@@ -620,7 +624,7 @@ Deno.serve(async (req: Request) => {
         uf: secUfRaw,
         dataCelebracao: dataAceiteDate,
         dataAceite: dataAceiteDate,
-        ipAddress: ipAddress || 'Conexão Autenticada via Plataforma Web/SSL',
+        ipAddress: resolvedIp,
         documentId: inv.id,
         documentTypeLabel: 'Aporte',
         securitizadoraRazao: secRazaoOriginal,
