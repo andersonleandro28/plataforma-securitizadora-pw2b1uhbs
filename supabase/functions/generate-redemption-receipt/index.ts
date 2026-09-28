@@ -1,6 +1,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib'
+import { computeSha256Hex, drawQualifiedSignatureBlock } from '../_shared/qualified-signature.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -175,13 +176,67 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    curY -= 40
-    page.drawLine({ start: { x: 50, y: curY }, end: { x: 545, y: curY }, thickness: 1 })
-    curY -= 20
+    curY -= 25
     page.drawText(
-      `Este documento é emitido digitalmente por ${secRazao} e serve como recibo legal de quitação/liquidação.`,
-      { x: 50, y: curY, font, size: 9, color: rgb(0.3, 0.3, 0.3) },
+      'O investidor declara haver recebido o valor discriminado, conferindo à Securitizadora plena e irrevogável quitação.',
+      { x: 50, y: curY, font, size: 8, color: rgb(0.3, 0.3, 0.3) },
     )
+    curY -= 15
+
+    const investidorNome = red.profiles?.full_name || red.profiles?.pj_company_name || 'Investidor'
+    const investidorDoc = red.profiles?.document_number || 'N/A'
+    const dataAceiteDoc = red.updated_at || red.created_at || new Date().toISOString()
+    const valorLiqNum = red.net_value || 0
+
+    const hashPayload = `RESGATE_RECIBO:${red.id}:${investidorDoc}:${valorLiqNum}:${dataAceiteDoc}`
+    const shaHex = await computeSha256Hex(hashPayload)
+    const formattedSha = `SHA256-${shaHex.substring(0, 32).toUpperCase()}`
+
+    // BLOCO DE ASSINATURA ELETRÔNICA QUALIFICADA
+    drawQualifiedSignatureBlock(
+      {
+        page,
+        startX: 50,
+        startY: curY,
+        width: 495.28,
+        fontRegular: font,
+        fontBold: fontBold,
+      },
+      {
+        cidade: secCidade,
+        uf: secUf,
+        dataCelebracao: red.created_at,
+        dataAceite: dataAceiteDoc,
+        ipAddress: 'Conexão Autenticada via Plataforma Web/SSL',
+        documentId: red.id,
+        documentTypeLabel: 'Resgate / Liquidação',
+        hashSha256: formattedSha,
+        securitizadoraRazao: secRazao,
+        securitizadoraRepNome: companyData?.representante_nome || 'Diretoria Executiva',
+        securitizadoraRepCargo: companyData?.representante_cargo || 'Sócio-Administrador',
+        securitizadoraRepCpf: companyData?.representante_cpf || null,
+        securitizadoraPapel: 'Securitizadora / Pagadora',
+        contraparteNome: investidorNome,
+        contraparteDocumento: investidorDoc,
+        contrapartePapel: 'Investidor / Titular do Resgate',
+      },
+    )
+
+    // Rodapé de integridade
+    page.drawText(`Hash de Integridade: ${formattedSha}`, {
+      x: 50,
+      y: 22,
+      font,
+      size: 7.5,
+      color: rgb(0.5, 0.5, 0.5),
+    })
+    page.drawText('Documento emitido eletronicamente pela Plataforma Nexum - Página 1 de 1', {
+      x: 270,
+      y: 22,
+      font,
+      size: 7.5,
+      color: rgb(0.5, 0.5, 0.5),
+    })
 
     const pdfBytes = await pdfDoc.save()
 

@@ -1,6 +1,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib'
+import { computeSha256Hex, drawQualifiedSignatureBlock } from '../_shared/qualified-signature.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -164,16 +165,28 @@ Deno.serve(async (req: Request) => {
       const margin = 40
       let currentY = 595.28 - margin
 
+      let currentPage = page
+      const contentWidth = 841.89 - margin * 2
+
+      const addNewPageIfNeeded = (neededHeight: number) => {
+        if (currentY - neededHeight < margin + 35) {
+          currentPage = pdfDoc.addPage([841.89, 595.28])
+          currentY = 595.28 - margin
+          return true
+        }
+        return false
+      }
+
       const drawH2 = (title: string, y: number) => {
-        page.drawText(title, { x: margin, y, font: fontBold, size: 12 })
-        page.drawLine({
+        currentPage.drawText(title, { x: margin, y, font: fontBold, size: 12 })
+        currentPage.drawLine({
           start: { x: margin, y: y - 5 },
           end: { x: 841.89 - margin, y: y - 5 },
           thickness: 1,
         })
       }
 
-      page.drawText(secHeaderName.toUpperCase(), {
+      currentPage.drawText(secHeaderName.toUpperCase(), {
         x: margin,
         y: currentY,
         font: fontBold,
@@ -181,7 +194,7 @@ Deno.serve(async (req: Request) => {
         color: rgb(0, 0.3, 0.6),
       })
       if (secHeaderCnpj) {
-        page.drawText(secHeaderCnpj, {
+        currentPage.drawText(secHeaderCnpj, {
           x: margin,
           y: currentY - 14,
           font,
@@ -189,7 +202,7 @@ Deno.serve(async (req: Request) => {
           color: rgb(0.3, 0.3, 0.3),
         })
       }
-      page.drawText('DOSSIÊ CCB - PROPOSTA / CÉDULA DE CRÉDITO BANCÁRIO', {
+      currentPage.drawText('DOSSIÊ CCB - PROPOSTA / CÉDULA DE CRÉDITO BANCÁRIO', {
         x: margin + 320,
         y: currentY + 2,
         font: fontBold,
@@ -199,25 +212,29 @@ Deno.serve(async (req: Request) => {
 
       drawH2(`1. DADOS DO SOLICITANTE (${entityType === 'pj' ? 'PJ' : 'PF'})`, currentY)
       currentY -= 20
+
+      let solicitanteNome = sanitize(borrowerData?.name)
+      let solicitanteDoc = sanitize(borrowerData?.document)
+
       if (entityType === 'pj') {
-        page.drawText(
-          `Razão Social: ${sanitize(borrowerData?.name).substring(0, 50)} | CNPJ: ${sanitize(borrowerData?.document)}`,
+        currentPage.drawText(
+          `Razão Social: ${solicitanteNome.substring(0, 50)} | CNPJ: ${solicitanteDoc}`,
           { x: margin, y: currentY, font, size: 10 },
         )
         currentY -= 15
-        page.drawText(
+        currentPage.drawText(
           `CNAE: ${sanitize(borrowerData?.cnae)} | Fundação: ${sanitize(borrowerData?.foundationDate)}`,
           { x: margin, y: currentY, font, size: 10 },
         )
         currentY -= 15
-        page.drawText(`Faturamento Médio: R$ ${sanitize(borrowerData?.income)}`, {
+        currentPage.drawText(`Faturamento Médio: R$ ${sanitize(borrowerData?.income)}`, {
           x: margin,
           y: currentY,
           font,
           size: 10,
         })
         currentY -= 15
-        page.drawText(
+        currentPage.drawText(
           `Endereço Comercial: ${sanitize(borrowerData?.street)}, ${sanitize(borrowerData?.number)} - ${sanitize(borrowerData?.city)}/${sanitize(borrowerData?.state)}`,
           { x: margin, y: currentY, font, size: 10 },
         )
@@ -226,29 +243,31 @@ Deno.serve(async (req: Request) => {
         if (partnerData) {
           drawH2('2. DADOS DO SÓCIO ADMINISTRADOR', currentY)
           currentY -= 20
-          page.drawText(
+          currentPage.drawText(
             `Nome: ${sanitize(partnerData.name).substring(0, 50)} | CPF: ${sanitize(partnerData.document)} | Part.: ${sanitize(partnerData.participation)}%`,
             { x: margin, y: currentY, font, size: 10 },
           )
           currentY -= 15
-          page.drawText(
+          currentPage.drawText(
             `Endereço: ${sanitize(partnerData.street)}, ${sanitize(partnerData.number)} - ${sanitize(partnerData.city)}/${sanitize(partnerData.state)}`,
             { x: margin, y: currentY, font, size: 10 },
           )
           currentY -= 20
         }
       } else {
-        page.drawText(
-          `Nome: ${sanitize(borrowerData?.name).substring(0, 50)} | CPF: ${sanitize(borrowerData?.document)}`,
-          { x: margin, y: currentY, font, size: 10 },
-        )
+        currentPage.drawText(`Nome: ${solicitanteNome.substring(0, 50)} | CPF: ${solicitanteDoc}`, {
+          x: margin,
+          y: currentY,
+          font,
+          size: 10,
+        })
         currentY -= 15
-        page.drawText(
+        currentPage.drawText(
           `Profissão: ${sanitize(borrowerData?.occupation)} | Renda: R$ ${sanitize(borrowerData?.income)}`,
           { x: margin, y: currentY, font, size: 10 },
         )
         currentY -= 15
-        page.drawText(
+        currentPage.drawText(
           `Endereço: ${sanitize(borrowerData?.street)}, ${sanitize(borrowerData?.number)} - ${sanitize(borrowerData?.city)}/${sanitize(borrowerData?.state)}`,
           { x: margin, y: currentY, font, size: 10 },
         )
@@ -257,12 +276,12 @@ Deno.serve(async (req: Request) => {
         if (spouseData) {
           drawH2('2. DADOS DO CÔNJUGE', currentY)
           currentY -= 20
-          page.drawText(
+          currentPage.drawText(
             `Nome: ${sanitize(spouseData.name).substring(0, 50)} | CPF: ${sanitize(spouseData.document)} | Tel: ${sanitize(spouseData.phone)}`,
             { x: margin, y: currentY, font, size: 10 },
           )
           currentY -= 15
-          page.drawText(
+          currentPage.drawText(
             `Endereço: ${sanitize(spouseData.street)}, ${sanitize(spouseData.number)} - ${sanitize(spouseData.city)}/${sanitize(spouseData.state)}`,
             { x: margin, y: currentY, font, size: 10 },
           )
@@ -273,34 +292,101 @@ Deno.serve(async (req: Request) => {
       if (guarantorData) {
         drawH2('3. DADOS DO AVALISTA EXTRA', currentY)
         currentY -= 20
-        page.drawText(
+        currentPage.drawText(
           `Nome: ${sanitize(guarantorData.name).substring(0, 50)} | CPF: ${sanitize(guarantorData.document)}`,
           { x: margin, y: currentY, font, size: 10 },
         )
         currentY -= 15
       }
 
+      addNewPageIfNeeded(100)
       drawH2('4. OPERAÇÃO E DADOS BANCÁRIOS', currentY)
       currentY -= 20
-      page.drawText(`Tipo Crédito: ${sanitize(operationData?.creditType).substring(0, 70)}`, {
-        x: margin,
-        y: currentY,
-        font: fontBold,
-        size: 10,
-      })
+      currentPage.drawText(
+        `Tipo Crédito: ${sanitize(operationData?.creditType).substring(0, 70)}`,
+        {
+          x: margin,
+          y: currentY,
+          font: fontBold,
+          size: 10,
+        },
+      )
       currentY -= 15
-      page.drawText(
+      currentPage.drawText(
         `Valor Solicitado: R$ ${reqValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} | Prazo: ${termMonths} meses`,
         { x: margin, y: currentY, font, size: 10 },
       )
       currentY -= 15
 
       if (bankData) {
-        page.drawText(
+        currentPage.drawText(
           `Banco ${sanitize(bankData.bank)} | Agência ${sanitize(bankData.branch)} | Conta ${sanitize(bankData.account)}`,
           { x: margin, y: currentY, font, size: 10 },
         )
         currentY -= 15
+      }
+
+      const userIp =
+        req.headers.get('x-forwarded-for') ||
+        req.headers.get('cf-connecting-ip') ||
+        'Conexão Autenticada via Plataforma Web/SSL'
+
+      const hashPayload = `CCB_DOSSIE:${ccbId}:${solicitanteDoc}:${reqValue}:${nowIso}`
+      const shaHex = await computeSha256Hex(hashPayload)
+      const formattedSha = `SHA256-${shaHex.substring(0, 32).toUpperCase()}`
+
+      // BLOCO DE ASSINATURA ELETRÔNICA QUALIFICADA
+      addNewPageIfNeeded(165)
+      currentY -= 15
+
+      drawQualifiedSignatureBlock(
+        {
+          page: currentPage,
+          startX: margin,
+          startY: currentY,
+          width: contentWidth,
+          fontRegular: font,
+          fontBold: fontBold,
+        },
+        {
+          cidade: secCidade,
+          uf: secUf,
+          dataCelebracao: nowIso,
+          dataAceite: nowIso,
+          ipAddress: userIp,
+          documentId: ccbId,
+          documentTypeLabel: 'CCB / Dossiê',
+          hashSha256: formattedSha,
+          securitizadoraRazao: secHeaderName,
+          securitizadoraRepNome: companyData?.representante_nome || 'Diretoria Executiva',
+          securitizadoraRepCargo: companyData?.representante_cargo || 'Sócio-Administrador',
+          securitizadoraRepCpf: companyData?.representante_cpf || null,
+          securitizadoraPapel: 'Securitizadora / Credora',
+          contraparteNome: solicitanteNome,
+          contraparteDocumento: solicitanteDoc,
+          contrapartePapel: 'Emitente da CCB / Tomador',
+        },
+      )
+
+      // Rodapé em todas as páginas
+      const allPages = pdfDoc.getPages()
+      const totalP = allPages.length
+      for (let i = 0; i < totalP; i++) {
+        const p = allPages[i]
+        p.drawText(`Hash de Integridade: ${formattedSha}`, {
+          x: margin,
+          y: 22,
+          font,
+          size: 7.5,
+          color: rgb(0.5, 0.5, 0.5),
+        })
+        p.drawText(`Página ${i + 1} de ${totalP}`, {
+          x: 841.89 - margin - 55,
+          y: 22,
+          font,
+          size: 7.5,
+          color: rgb(0.5, 0.5, 0.5),
+        })
       }
 
       const pdfBytes = await pdfDoc.save()

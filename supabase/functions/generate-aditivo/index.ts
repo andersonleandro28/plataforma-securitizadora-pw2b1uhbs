@@ -1,6 +1,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib'
+import { computeSha256Hex, drawQualifiedSignatureBlock } from '../_shared/qualified-signature.ts'
 
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -227,7 +228,7 @@ Deno.serve(async (req: Request) => {
 
     // Generate PDF
     const pdfDoc = await PDFDocument.create()
-    const page = pdfDoc.addPage([595.28, 841.89]) // A4 Size
+    let currentPage = pdfDoc.addPage([595.28, 841.89]) // A4 Size
     const font = await pdfDoc.embedFont(StandardFonts.TimesRoman)
     const fontBold = await pdfDoc.embedFont(StandardFonts.TimesRomanBold)
     const size = 11
@@ -236,20 +237,44 @@ Deno.serve(async (req: Request) => {
     const maxWidth = 595.28 - margin * 2
     let currentY = 841.89 - margin
 
+    const addNewPageIfNeeded = (neededHeight: number) => {
+      if (currentY - neededHeight < margin + 40) {
+        currentPage = pdfDoc.addPage([595.28, 841.89])
+        currentY = 841.89 - margin
+        return true
+      }
+      return false
+    }
+
     // [CABEÇALHO]
-    page.drawText(secRazao.toUpperCase(), { x: margin, y: currentY, font: fontBold, size: 13 })
+    currentPage.drawText(secRazao.toUpperCase(), {
+      x: margin,
+      y: currentY,
+      font: fontBold,
+      size: 13,
+    })
     currentY -= 16
-    page.drawText(`CNPJ: ${secCnpj} | ${secEndereco}`, { x: margin, y: currentY, font, size: 9 })
+    currentPage.drawText(`CNPJ: ${secCnpj} | ${secEndereco}`, {
+      x: margin,
+      y: currentY,
+      font,
+      size: 9,
+    })
     currentY -= 24
     const title = `ADITIVO AO CONTRATO MÃE DE CESSÃO DE CRÉDITO Nº ${op.id.split('-')[0].toUpperCase()} - V${nextVersion}`
-    page.drawText(title, { x: margin, y: currentY, font: fontBold, size: 12 })
+    currentPage.drawText(title, { x: margin, y: currentY, font: fontBold, size: 12 })
     currentY -= 18
     const opDate = new Date(new Date().getTime() - 3 * 3600000).toLocaleDateString('pt-BR')
-    page.drawText(`Data da Operação: ${opDate}`, { x: margin, y: currentY, font, size })
+    currentPage.drawText(`Data da Operação: ${opDate}`, { x: margin, y: currentY, font, size })
     currentY -= 25
 
     // [PREÂMBULO / QUALIFICAÇÃO DAS PARTES]
-    page.drawText('[QUALIFICAÇÃO DAS PARTES]', { x: margin, y: currentY, font: fontBold, size })
+    currentPage.drawText('[QUALIFICAÇÃO DAS PARTES]', {
+      x: margin,
+      y: currentY,
+      font: fontBold,
+      size,
+    })
     currentY -= 18
 
     // CESSIONÁRIA / SECURITIZADORA
@@ -261,7 +286,15 @@ Deno.serve(async (req: Request) => {
       secPreambuloTexto += `, neste ato representada por seu ${secRepCargo}, ${secRepNome}${secRepCpf}`
     }
     secPreambuloTexto += '.'
-    currentY = drawTextWrap(secPreambuloTexto, margin, currentY, maxWidth, font, size - 1, page)
+    currentY = drawTextWrap(
+      secPreambuloTexto,
+      margin,
+      currentY,
+      maxWidth,
+      font,
+      size - 1,
+      currentPage,
+    )
     currentY -= 10
 
     // 4. MAPEAMENTO DE CAMPOS (PLACEHOLDERS)
@@ -277,13 +310,22 @@ Deno.serve(async (req: Request) => {
       maxWidth,
       font,
       size,
-      page,
+      currentPage,
     )
-    currentY = drawTextWrap(`Endereço: ${cedenteEnd}`, margin, currentY, maxWidth, font, size, page)
+    currentY = drawTextWrap(
+      `Endereço: ${cedenteEnd}`,
+      margin,
+      currentY,
+      maxWidth,
+      font,
+      size,
+      currentPage,
+    )
     currentY -= 15
 
     // [CLÁUSULA PRIMEIRA]
-    page.drawText('[CLÁUSULA PRIMEIRA - DO OBJETO]', {
+    addNewPageIfNeeded(80)
+    currentPage.drawText('[CLÁUSULA PRIMEIRA - DO OBJETO]', {
       x: margin,
       y: currentY,
       font: fontBold,
@@ -292,12 +334,13 @@ Deno.serve(async (req: Request) => {
     currentY -= 20
     const clausula1 =
       'O CEDENTE, pela presente e na melhor forma de direito, CEDE e TRANSFERE à SECURITIZADORA, de forma irrevogável e irretratável, os Direitos Creditórios abaixo relacionados, originados de operações comerciais legítimas.'
-    currentY = drawTextWrap(clausula1, margin, currentY, maxWidth, font, size, page)
+    currentY = drawTextWrap(clausula1, margin, currentY, maxWidth, font, size, currentPage)
     currentY -= 15
 
     // [CLÁUSULA SEGUNDA]
     // 4. ITERAÇÃO DE RECEBÍVEIS
-    page.drawText('[CLÁUSULA SEGUNDA - RELAÇÃO DE TÍTULOS]', {
+    addNewPageIfNeeded(80)
+    currentPage.drawText('[CLÁUSULA SEGUNDA - RELAÇÃO DE TÍTULOS]', {
       x: margin,
       y: currentY,
       font: fontBold,
@@ -305,16 +348,17 @@ Deno.serve(async (req: Request) => {
     })
     currentY -= 20
     const tableHeader = 'Espécie | Nº Título | Sacado/Devedor | Vencimento | Valor de Face'
-    page.drawText(tableHeader, { x: margin, y: currentY, font: fontBold, size: 10 })
+    currentPage.drawText(tableHeader, { x: margin, y: currentY, font: fontBold, size: 10 })
     currentY -= 15
 
     const titulos = [op] // Array fallback based on schema design for operations/receivables
     for (const titulo of titulos) {
+      addNewPageIfNeeded(30)
       const docNum = titulo.document_number || 'N/A'
       const sac = (titulo.sacado || 'N/A').substring(0, 25)
       const fv = Number(titulo.face_value || 0)
       const row = `${(titulo.receivable_type || '').toUpperCase()} | ${docNum} | ${sac} | ${new Date(titulo.due_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })} | R$ ${fv.toFixed(2)}`
-      page.drawText(row, { x: margin, y: currentY, font, size: 10 })
+      currentPage.drawText(row, { x: margin, y: currentY, font, size: 10 })
       currentY -= 15
     }
     currentY -= 15
@@ -330,7 +374,8 @@ Deno.serve(async (req: Request) => {
     const bankAccount = bankAccounts?.[0]
 
     // [CLÁUSULA TERCEIRA]
-    page.drawText('[CLÁUSULA TERCEIRA - CONDIÇÕES FINANCEIRAS E LIQUIDAÇÃO]', {
+    addNewPageIfNeeded(120)
+    currentPage.drawText('[CLÁUSULA TERCEIRA - CONDIÇÕES FINANCEIRAS E LIQUIDAÇÃO]', {
       x: margin,
       y: currentY,
       font: fontBold,
@@ -350,7 +395,7 @@ Deno.serve(async (req: Request) => {
       maxWidth,
       font,
       size,
-      page,
+      currentPage,
     )
     currentY = drawTextWrap(
       `Total de Descontos (Deságio/Taxas/IOF): R$ ${totalDescontos.toFixed(2)}`,
@@ -359,7 +404,7 @@ Deno.serve(async (req: Request) => {
       maxWidth,
       font,
       size,
-      page,
+      currentPage,
     )
     currentY = drawTextWrap(
       `Valor Líquido a ser Pago: R$ ${valorLiquido.toFixed(2)}`,
@@ -368,11 +413,12 @@ Deno.serve(async (req: Request) => {
       maxWidth,
       font,
       size,
-      page,
+      currentPage,
     )
 
     currentY -= 15
-    page.drawText('Dados para Pagamento/Liquidação:', {
+    addNewPageIfNeeded(100)
+    currentPage.drawText('Dados para Pagamento/Liquidação:', {
       x: margin,
       y: currentY,
       font: fontBold,
@@ -398,7 +444,7 @@ Deno.serve(async (req: Request) => {
         maxWidth,
         font,
         size,
-        page,
+        currentPage,
       )
       currentY = drawTextWrap(
         `Banco: ${bankAccount.bank_code || ''} - ${bankAccount.bank_name}`,
@@ -407,7 +453,7 @@ Deno.serve(async (req: Request) => {
         maxWidth,
         font,
         size,
-        page,
+        currentPage,
       )
       currentY = drawTextWrap(
         `Agência: ${bankAccount.branch || '-'} | Conta: ${bankAccount.account_number || '-'}`,
@@ -416,7 +462,7 @@ Deno.serve(async (req: Request) => {
         maxWidth,
         font,
         size,
-        page,
+        currentPage,
       )
 
       if (bankAccount.pix_key) {
@@ -427,7 +473,7 @@ Deno.serve(async (req: Request) => {
           maxWidth,
           font,
           size,
-          page,
+          currentPage,
         )
         currentY -= 10
 
@@ -450,41 +496,39 @@ Deno.serve(async (req: Request) => {
             const qrBytes = await qrRes.arrayBuffer()
             const qrImage = await pdfDoc.embedPng(qrBytes)
 
-            if (currentY - 120 < margin) {
-              page.drawText('QR Code gerado na próxima página.', {
-                x: margin,
-                y: currentY,
-                font,
-                size: 10,
-              })
-              currentY -= 20
-            } else {
-              page.drawText('QR Code para Pagamento (copie/escanieie):', {
-                x: margin,
-                y: currentY,
-                font,
-                size: 10,
-              })
-              currentY -= 105
-              page.drawImage(qrImage, { x: margin, y: currentY, width: 100, height: 100 })
-              currentY -= 20
+            if (currentY - 140 < margin + 40) {
+              currentPage = pdfDoc.addPage([595.28, 841.89])
+              currentY = 841.89 - margin
+            }
 
-              page.drawText(`Valor: ${formatedValue} | Vencimento: ${dueDate}`, {
-                x: margin,
-                y: currentY,
-                font,
-                size: 10,
-              })
-              currentY -= 15
-              page.drawText(`Pague via PIX escaneando o QR acima ou transferindo para os dados.`, {
+            currentPage.drawText('QR Code para Pagamento (copie/escanieie):', {
+              x: margin,
+              y: currentY,
+              font,
+              size: 10,
+            })
+            currentY -= 105
+            currentPage.drawImage(qrImage, { x: margin, y: currentY, width: 100, height: 100 })
+            currentY -= 20
+
+            currentPage.drawText(`Valor: ${formatedValue} | Vencimento: ${dueDate}`, {
+              x: margin,
+              y: currentY,
+              font,
+              size: 10,
+            })
+            currentY -= 15
+            currentPage.drawText(
+              `Pague via PIX escaneando o QR acima ou transferindo para os dados.`,
+              {
                 x: margin,
                 y: currentY,
                 font,
                 size: 9,
                 color: rgb(0.3, 0.3, 0.3),
-              })
-              currentY -= 15
-            }
+              },
+            )
+            currentY -= 15
           }
         } catch (e) {
           console.error('Error generating QR code:', e)
@@ -497,7 +541,7 @@ Deno.serve(async (req: Request) => {
           maxWidth,
           fontBold,
           size,
-          page,
+          currentPage,
         )
       }
     } else {
@@ -508,43 +552,85 @@ Deno.serve(async (req: Request) => {
         maxWidth,
         fontBold,
         size,
-        page,
+        currentPage,
       )
     }
 
-    currentY -= 40
+    currentY -= 20
 
-    // Assinaturas
-    page.drawLine({
-      start: { x: margin, y: currentY },
-      end: { x: margin + 200, y: currentY },
-      thickness: 1,
-    })
-    page.drawLine({
-      start: { x: margin + 250, y: currentY },
-      end: { x: margin + 450, y: currentY },
-      thickness: 1,
-    })
-    currentY -= 15
-    page.drawText('Assinatura do Cedente', { x: margin, y: currentY, font, size: 9 })
-    page.drawText(`Assinatura: ${secRazao}`, { x: margin + 250, y: currentY, font, size: 9 })
+    // Fetch Aceite Log / Audit Log se houver
+    const { data: auditLog } = await supabase
+      .from('audit_logs')
+      .select('created_at, details')
+      .eq('entity_id', op.id)
+      .in('action', ['confirm_signature', 'op_signed', 'formalizacao_aceita'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
-    // Rodapé
-    const hash = crypto.randomUUID()
-    page.drawText(`Hash de Integridade: ${hash}`, {
-      x: margin,
-      y: 30,
-      font,
-      size: 8,
-      color: rgb(0.5, 0.5, 0.5),
-    })
-    page.drawText(`Página 1 de 1`, {
-      x: 595.28 - margin - 50,
-      y: 30,
-      font,
-      size: 8,
-      color: rgb(0.5, 0.5, 0.5),
-    })
+    const dataAceiteDoc = auditLog?.created_at || op.updated_at || op.created_at
+    const ipRegistrado =
+      auditLog?.details?.ip ||
+      auditLog?.details?.ip_address ||
+      'Conexão Autenticada via Plataforma Web/SSL'
+
+    const hashPayload = `ADITIVO:${op.id}:${cedenteDoc}:${secCnpj}:${valorLiquido}:${dataAceiteDoc}`
+    const docHashHex = await computeSha256Hex(hashPayload)
+    const formattedSha = `SHA256-${docHashHex.substring(0, 32).toUpperCase()}`
+
+    // BLOCO DE ASSINATURA ELETRÔNICA QUALIFICADA
+    addNewPageIfNeeded(165)
+    currentY -= 10
+
+    drawQualifiedSignatureBlock(
+      {
+        page: currentPage,
+        startX: margin,
+        startY: currentY,
+        width: maxWidth,
+        fontRegular: font,
+        fontBold: fontBold,
+      },
+      {
+        cidade: secCidade || 'Criciúma',
+        uf: secUf || 'SC',
+        dataCelebracao: op.created_at,
+        dataAceite: dataAceiteDoc,
+        ipAddress: ipRegistrado,
+        documentId: op.id,
+        documentTypeLabel: 'Aditivo / Operação',
+        hashSha256: formattedSha,
+        securitizadoraRazao: secRazao,
+        securitizadoraRepNome: secRepNome,
+        securitizadoraRepCargo: secRepCargo,
+        securitizadoraRepCpf: companyData?.representante_cpf || null,
+        securitizadoraPapel: 'Cessionária',
+        contraparteNome: cedenteNome,
+        contraparteDocumento: cedenteDoc,
+        contrapartePapel: 'Cedente',
+      },
+    )
+
+    // Rodapé em todas as páginas com numeração dinâmica
+    const pages = pdfDoc.getPages()
+    const totalPages = pages.length
+    for (let pIdx = 0; pIdx < totalPages; pIdx++) {
+      const p = pages[pIdx]
+      p.drawText(`Hash de Integridade: ${formattedSha}`, {
+        x: margin,
+        y: 28,
+        font,
+        size: 7.5,
+        color: rgb(0.5, 0.5, 0.5),
+      })
+      p.drawText(`Página ${pIdx + 1} de ${totalPages}`, {
+        x: 595.28 - margin - 60,
+        y: 28,
+        font,
+        size: 7.5,
+        color: rgb(0.5, 0.5, 0.5),
+      })
+    }
 
     // 2. CORREÇÃO DO STREAM DE GERAÇÃO (AWAIT e finalização de buffer)
     const pdfBytes = await pdfDoc.save()

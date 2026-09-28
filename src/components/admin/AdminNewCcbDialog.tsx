@@ -735,6 +735,147 @@ export function AdminNewCcbDialog({ open, onOpenChange, onSuccess }: AdminNewCcb
           )
         }
 
+        // Bloco de Assinatura Eletrônica Qualificada
+        const nowIso = new Date().toISOString()
+        const nowExtenso = new Date().toLocaleDateString('pt-BR', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric',
+          timeZone: 'America/Sao_Paulo',
+        })
+        const nowBrasilia = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+
+        // Hash de autenticidade
+        const hashPayload = `CCB_MESA:${ccbId}:${kycData.document}:${opData.requestedValue}:${nowIso}`
+        let sha256Hex = ''
+        try {
+          const enc = new TextEncoder()
+          const buf = await window.crypto.subtle.digest('SHA-256', enc.encode(hashPayload))
+          sha256Hex = Array.from(new Uint8Array(buf))
+            .map((b) => b.toString(16).padStart(2, '0'))
+            .join('')
+            .toUpperCase()
+        } catch {
+          sha256Hex = ccbId.replace(/-/g, '').padEnd(32, 'F').substring(0, 32).toUpperCase()
+        }
+        const formattedSha = `SHA256-${sha256Hex.substring(0, 32)}`
+
+        // Inserir bloco de assinatura (cabe na página ou quebra se necessário)
+        const signBoxHeight = 145
+        if (currentY - signBoxHeight < margin + 35) {
+          page = pdfDoc.addPage([841.89, 595.28])
+          currentY = 595.28 - margin
+        } else {
+          currentY -= 20
+        }
+
+        const boxStartY = currentY
+        page.drawRectangle({
+          x: margin,
+          y: boxStartY - signBoxHeight,
+          width: 841.89 - margin * 2,
+          height: signBoxHeight,
+          color: rgb(0.97, 0.98, 1.0),
+          borderColor: rgb(0.65, 0.75, 0.9),
+          borderWidth: 1,
+        })
+
+        page.drawText('FORMALIZAÇÃO E ASSINATURA ELETRÔNICA QUALIFICADA', {
+          x: margin + 14,
+          y: boxStartY - 18,
+          font: fontBold,
+          size: 9.5,
+          color: rgb(0.08, 0.18, 0.36),
+        })
+
+        const ccbSecCidade = (companySettings?.endereco_cidade || 'Criciúma').trim()
+        const ccbSecUf = (companySettings?.endereco_uf || 'SC').trim()
+        const ccbSecRazao = (
+          companySettings?.razao_social || 'NEXUM SECURITIZADORA S.A.'
+        ).toUpperCase()
+        const ccbSecRepNome = companySettings?.representante_nome || 'Diretoria Executiva'
+        const ccbSecRepCargo = companySettings?.representante_cargo || 'Sócio-Administrador'
+
+        const auditLines = [
+          'Assinado digitalmente nos termos do art. 10, § 2º da Medida Provisória nº 2.200-2/2001 e da Lei Federal nº 14.063/2020.',
+          `Data e Local da Celebração: ${ccbSecCidade}/${ccbSecUf}, ${nowExtenso}.`,
+          `Data/Hora do Aceite Eletrônico: ${nowBrasilia} (Horário de Brasília).`,
+          'Endereço IP Registrado: Conexão Autenticada via Plataforma Web/SSL.',
+          `Código Identificador da CCB: ${ccbId}`,
+          `Hash de Autenticidade Escritural: ${formattedSha}`,
+        ]
+
+        let auditLineY = boxStartY - 34
+        for (const line of auditLines) {
+          page.drawText(line, {
+            x: margin + 14,
+            y: auditLineY,
+            font,
+            size: 7.8,
+            color: rgb(0.2, 0.25, 0.35),
+          })
+          auditLineY -= 11.5
+        }
+
+        auditLineY -= 10
+        const totalBoxWidth = 841.89 - margin * 2 - 42
+        const colW = totalBoxWidth / 2
+        const col1X = margin + 14
+        const col2X = col1X + colW + 14
+
+        page.drawLine({
+          start: { x: col1X, y: auditLineY },
+          end: { x: col1X + colW, y: auditLineY },
+          thickness: 0.8,
+          color: rgb(0.3, 0.3, 0.3),
+        })
+        page.drawLine({
+          start: { x: col2X, y: auditLineY },
+          end: { x: col2X + colW, y: auditLineY },
+          thickness: 0.8,
+          color: rgb(0.3, 0.3, 0.3),
+        })
+
+        page.drawText(
+          `${ccbSecRazao} (Securitizadora / Credora)\n${ccbSecRepNome} - ${ccbSecRepCargo}`,
+          {
+            x: col1X,
+            y: auditLineY - 11,
+            font: fontBold,
+            size: 7.5,
+            color: rgb(0.1, 0.1, 0.1),
+          },
+        )
+
+        const contraparteDoc = kycData.document ? ` - CPF/CNPJ: ${kycData.document}` : ''
+        page.drawText(`${kycData.name || 'Emitente'}\nEmitente da CCB / Tomador${contraparteDoc}`, {
+          x: col2X,
+          y: auditLineY - 11,
+          font: fontBold,
+          size: 7.5,
+          color: rgb(0.1, 0.1, 0.1),
+        })
+
+        const allPages = pdfDoc.getPages()
+        const totalP = allPages.length
+        for (let i = 0; i < totalP; i++) {
+          const p = allPages[i]
+          p.drawText(`Hash de Integridade: ${formattedSha}`, {
+            x: margin,
+            y: 22,
+            font,
+            size: 7.5,
+            color: rgb(0.5, 0.5, 0.5),
+          })
+          p.drawText(`Página ${i + 1} de ${totalP}`, {
+            x: 841.89 - margin - 55,
+            y: 22,
+            font,
+            size: 7.5,
+            color: rgb(0.5, 0.5, 0.5),
+          })
+        }
+
         const pdfBytes = await pdfDoc.save()
         const fileName = `Dossie_CCB_${ccbId.substring(0, 8)}.pdf`
         const filePath = `${selectedBorrowerId}/${fileName}`

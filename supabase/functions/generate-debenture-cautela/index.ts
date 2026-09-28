@@ -2,6 +2,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib'
 import { valorPorExtenso } from '../_shared/number-to-words.ts'
+import { drawQualifiedSignatureBlock } from '../_shared/qualified-signature.ts'
 
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -604,80 +605,33 @@ Deno.serve(async (req: Request) => {
 
     curY -= 16
 
-    // BLOCO 7: BLOCO DE ASSINATURA ELETRÔNICA QUALIFICADA (Padrão Idêntico ao Contrato)
-    const signBoxHeight = 145
-    const signBoxY = curY - signBoxHeight
-
-    page.drawRectangle({
-      x: contentMarginLeft,
-      y: signBoxY,
-      width: contentWidth,
-      height: signBoxHeight,
-      color: rgb(0.97, 0.98, 1.0),
-      borderColor: rgb(0.65, 0.75, 0.9),
-      borderWidth: 1,
-    })
-
-    page.drawText('FORMALIZAÇÃO E ASSINATURA ELETRÔNICA QUALIFICADA', {
-      x: contentMarginLeft + 14,
-      y: curY - 18,
-      font: fontBold,
-      size: 9.5,
-      color: rgb(0.08, 0.18, 0.36),
-    })
-
-    const infoSign = [
-      `Assinado digitalmente nos termos do art. 10, § 2º da Medida Provisória nº 2.200-2/2001 e da Lei Federal nº 14.063/2020.`,
-      `Data e Local da Celebração: ${secCidadeRaw}/${secUfRaw}, ${dataCelebracaoFmt}.`,
-      `Data/Hora do Aceite Eletrônico: ${dataHoraFmt} (Horário de Brasília).`,
-      `Endereço IP Registrado: ${ipAddress || 'Conexão Autenticada via Plataforma Web/SSL'}.`,
-      `Código Identificador do Aporte: ${inv.id}`,
-      `Hash de Autenticidade Escritural: SHA256-${inv.id.replace(/-/g, '').substring(0, 24).toUpperCase()}`,
-    ]
-
-    let signTextY = curY - 34
-    for (const line of infoSign) {
-      page.drawText(line, {
-        x: contentMarginLeft + 14,
-        y: signTextY,
-        font: font,
-        size: 7.8,
-        color: rgb(0.2, 0.25, 0.35),
-      })
-      signTextY -= 11.5
-    }
-
-    // Linhas de assinatura dos representantes e debenturista
-    signTextY -= 10
-    const halfWidth = (contentWidth - 40) / 2
-    page.drawLine({
-      start: { x: contentMarginLeft + 14, y: signTextY },
-      end: { x: contentMarginLeft + 14 + halfWidth, y: signTextY },
-      thickness: 0.8,
-      color: rgb(0.3, 0.3, 0.3),
-    })
-    page.drawLine({
-      start: { x: contentMarginLeft + 28 + halfWidth, y: signTextY },
-      end: { x: contentMarginLeft + 28 + halfWidth * 2, y: signTextY },
-      thickness: 0.8,
-      color: rgb(0.3, 0.3, 0.3),
-    })
-
-    page.drawText(`${secRazaoOriginal}\n${secRepNome} - ${secRepCargo}`, {
-      x: contentMarginLeft + 14,
-      y: signTextY - 12,
-      font: fontBold,
-      size: 7.5,
-      color: rgb(0.1, 0.1, 0.1),
-    })
-
-    page.drawText(`${invNomeOriginal}\nDebenturista - CPF/CNPJ: ${invDocumento}`, {
-      x: contentMarginLeft + 28 + halfWidth,
-      y: signTextY - 12,
-      font: fontBold,
-      size: 7.5,
-      color: rgb(0.1, 0.1, 0.1),
-    })
+    // BLOCO 7: BLOCO DE ASSINATURA ELETRÔNICA QUALIFICADA (Helper compartilhado)
+    drawQualifiedSignatureBlock(
+      {
+        page,
+        startX: contentMarginLeft,
+        startY: curY,
+        width: contentWidth,
+        fontRegular: font,
+        fontBold: fontBold,
+      },
+      {
+        cidade: secCidadeRaw,
+        uf: secUfRaw,
+        dataCelebracao: dataAceiteDate,
+        dataAceite: dataAceiteDate,
+        ipAddress: ipAddress || 'Conexão Autenticada via Plataforma Web/SSL',
+        documentId: inv.id,
+        documentTypeLabel: 'Aporte',
+        securitizadoraRazao: secRazaoOriginal,
+        securitizadoraRepNome: secRepNome,
+        securitizadoraRepCargo: secRepCargo,
+        securitizadoraRepCpf: companyData?.representante_cpf || null,
+        contraparteNome: invNomeOriginal,
+        contraparteDocumento: invDocumento,
+        contrapartePapel: 'Debenturista',
+      },
+    )
 
     // 5. Salvar PDF no bucket investment-docs sob /cautelas/
     const pdfBytes = await pdfDoc.save()

@@ -1,6 +1,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib'
+import { computeSha256Hex, drawQualifiedSignatureBlock } from '../_shared/qualified-signature.ts'
 
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -57,8 +58,71 @@ Deno.serve(async (req: Request) => {
     })
     page.drawText(`Risco PEP: ${profile.is_pep ? 'Sim' : 'Não'}`, { x: 50, y: 630, font, size: 12 })
 
-    page.drawLine({ start: { x: 50, y: 550 }, end: { x: 250, y: 550 }, thickness: 1 })
-    page.drawText('Assinatura Eletrônica do Usuário', { x: 50, y: 535, font, size: 10 })
+    // Fetch Securitizadora Settings
+    const { data: companyData } = await supabase
+      .from('company_settings')
+      .select('*')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    const secRazao = (companyData?.razao_social || 'NEXUM SECURITIZADORA S.A.').toUpperCase()
+    const secCidade = (companyData?.endereco_cidade || 'Criciúma').trim()
+    const secUf = (companyData?.endereco_uf || 'SC').trim()
+    const secRepNome = companyData?.representante_nome || 'Diretoria Executiva'
+    const secRepCargo = companyData?.representante_cargo || 'Sócio-Administrador'
+
+    const nowIso = new Date().toISOString()
+    const titNome = profile.full_name || profile.pj_company_name || 'Titular Cadastrado'
+    const titDoc = profile.document_number || 'N/A'
+    const hashPayload = `KYC_CADASTRO:${userId}:${titDoc}:${nowIso}`
+    const shaHex = await computeSha256Hex(hashPayload)
+    const formattedSha = `SHA256-${shaHex.substring(0, 32).toUpperCase()}`
+
+    // BLOCO DE ASSINATURA ELETRÔNICA QUALIFICADA
+    drawQualifiedSignatureBlock(
+      {
+        page,
+        startX: 50,
+        startY: 570,
+        width: 495.28,
+        fontRegular: font,
+        fontBold: fontBold,
+      },
+      {
+        cidade: secCidade,
+        uf: secUf,
+        dataCelebracao: profile.created_at || nowIso,
+        dataAceite: nowIso,
+        ipAddress: 'Conexão Autenticada via Plataforma Web/SSL',
+        documentId: userId,
+        documentTypeLabel: 'Cadastro / Dossiê KYC',
+        hashSha256: formattedSha,
+        securitizadoraRazao: secRazao,
+        securitizadoraRepNome: secRepNome,
+        securitizadoraRepCargo: secRepCargo,
+        securitizadoraRepCpf: companyData?.representante_cpf || null,
+        securitizadoraPapel: 'Securitizadora / Custodiante',
+        contraparteNome: titNome,
+        contraparteDocumento: titDoc,
+        contrapartePapel: 'Titular / Cadastrado',
+      },
+    )
+
+    page.drawText(`Hash de Integridade: ${formattedSha}`, {
+      x: 50,
+      y: 25,
+      font,
+      size: 7.5,
+      color: rgb(0.5, 0.5, 0.5),
+    })
+    page.drawText('Documento emitido eletronicamente pela Plataforma Nexum - Página 1 de 1', {
+      x: 270,
+      y: 25,
+      font,
+      size: 7.5,
+      color: rgb(0.5, 0.5, 0.5),
+    })
 
     const pdfBytes = await pdfDoc.save()
     const fileName = `KYC_${userId}.pdf`

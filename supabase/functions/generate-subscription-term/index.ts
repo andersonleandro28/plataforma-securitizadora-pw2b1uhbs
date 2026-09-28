@@ -1,6 +1,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib'
+import { drawQualifiedSignatureBlock } from '../_shared/qualified-signature.ts'
 
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -524,75 +525,32 @@ Deno.serve(async (req: Request) => {
     addNewPageIfNeeded(160)
     currentY -= 12
 
-    currentPage.drawRectangle({
-      x: margin,
-      y: currentY - 145,
-      width: contentWidth,
-      height: 145,
-      color: rgb(0.97, 0.98, 1.0),
-      borderColor: rgb(0.65, 0.75, 0.9),
-      borderWidth: 1,
-    })
-
-    currentPage.drawText('FORMALIZAÇÃO E ASSINATURA ELETRÔNICA QUALIFICADA', {
-      x: margin + 14,
-      y: currentY - 18,
-      font: fontBold,
-      size: 9.5,
-      color: rgb(0.08, 0.18, 0.36),
-    })
-
-    const infoSign = [
-      `Assinado digitalmente nos termos do art. 10, § 2º da Medida Provisória nº 2.200-2/2001 e da Lei Federal nº 14.063/2020.`,
-      `Data e Local da Celebração: ${secCidade}/${secUf}, ${dataCelebracaoFmt}.`,
-      `Data/Hora do Aceite Eletrônico: ${dataHoraFmt} (Horário de Brasília).`,
-      `Endereço IP Registrado: ${ipAddress || 'Conexão Autenticada via Plataforma Web/SSL'}.`,
-      `Código Identificador do Aporte: ${inv.id}`,
-      `Hash de Autenticidade Escritural: SHA256-${inv.id.replace(/-/g, '').substring(0, 24).toUpperCase()}`,
-    ]
-
-    let signY = currentY - 34
-    for (const line of infoSign) {
-      currentPage.drawText(line, {
-        x: margin + 14,
-        y: signY,
-        font: font,
-        size: 8,
-        color: rgb(0.2, 0.25, 0.35),
-      })
-      signY -= 12
-    }
-
-    // Linhas de assinatura
-    signY -= 10
-    currentPage.drawLine({
-      start: { x: margin + 20, y: signY },
-      end: { x: margin + 220, y: signY },
-      thickness: 0.8,
-      color: rgb(0.3, 0.3, 0.3),
-    })
-    currentPage.drawLine({
-      start: { x: margin + 260, y: signY },
-      end: { x: margin + 460, y: signY },
-      thickness: 0.8,
-      color: rgb(0.3, 0.3, 0.3),
-    })
-
-    currentPage.drawText(`${secRazao}\n${secRepNome} - ${secRepCargo}`, {
-      x: margin + 20,
-      y: signY - 12,
-      font: fontBold,
-      size: 7.5,
-      color: rgb(0.1, 0.1, 0.1),
-    })
-
-    currentPage.drawText(`${invNome}\nDebenturista - CPF/CNPJ: ${invDocumento}`, {
-      x: margin + 260,
-      y: signY - 12,
-      font: fontBold,
-      size: 7.5,
-      color: rgb(0.1, 0.1, 0.1),
-    })
+    drawQualifiedSignatureBlock(
+      {
+        page: currentPage,
+        startX: margin,
+        startY: currentY,
+        width: contentWidth,
+        fontRegular: font,
+        fontBold: fontBold,
+      },
+      {
+        cidade: secCidade,
+        uf: secUf,
+        dataCelebracao: dataAceiteDate,
+        dataAceite: dataAceiteDate,
+        ipAddress: ipAddress || 'Conexão Autenticada via Plataforma Web/SSL',
+        documentId: inv.id,
+        documentTypeLabel: 'Aporte',
+        securitizadoraRazao: secRazao,
+        securitizadoraRepNome: secRepNome,
+        securitizadoraRepCargo: secRepCargo,
+        securitizadoraRepCpf: companyData?.representante_cpf || null,
+        contraparteNome: invNome,
+        contraparteDocumento: invDocumento,
+        contrapartePapel: 'Debenturista',
+      },
+    )
 
     // Adiciona rodapé na última página
     drawFooter(currentPage)
