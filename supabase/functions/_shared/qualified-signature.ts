@@ -116,9 +116,9 @@ export function drawQualifiedSignatureBlock(
   // 2. Título do bloco em azul marinho
   page.drawText('FORMALIZAÇÃO E ASSINATURA ELETRÔNICA QUALIFICADA', {
     x: startX + 14,
-    y: startY - 18,
+    y: startY - 16,
     font: fontBold,
-    size: 9.5,
+    size: 9.0,
     color: rgb(0.08, 0.18, 0.36),
   })
 
@@ -142,20 +142,20 @@ export function drawQualifiedSignatureBlock(
     `Hash de Autenticidade Escritural: ${hashFormatted}`,
   ]
 
-  let lineY = startY - 34
+  let lineY = startY - 30
   for (const line of infoSign) {
     page.drawText(line, {
       x: startX + 14,
       y: lineY,
       font: fontRegular,
-      size: 7.8,
+      size: 7.4,
       color: rgb(0.2, 0.25, 0.35),
     })
-    lineY -= 11.5
+    lineY -= 10.5
   }
 
   // 4. Linhas de assinatura duplas
-  lineY -= 10
+  lineY -= 8
   const availableWidth = width - 42
   const colWidth = availableWidth / 2
   const colGap = 14
@@ -178,33 +178,120 @@ export function drawQualifiedSignatureBlock(
     color: rgb(0.3, 0.3, 0.3),
   })
 
+  // Helper interno de quebra de texto por largura para garantir que o texto de cada coluna NUNCA invada a outra
+  const wrapTextToWidth = (
+    text: string,
+    maxWidth: number,
+    fontToMeasure: any,
+    fontSize: number,
+  ): string[] => {
+    if (!text) return []
+    const rawParagraphs = text.split('\n')
+    const finalLines: string[] = []
+
+    for (const paragraph of rawParagraphs) {
+      const words = paragraph.split(/\s+/).filter(Boolean)
+      if (words.length === 0) continue
+
+      let currentLine = ''
+      for (const word of words) {
+        const candidate = currentLine ? `${currentLine} ${word}` : word
+        let candidateWidth = 0
+        try {
+          candidateWidth = fontToMeasure.widthOfTextAtSize(candidate, fontSize)
+        } catch {
+          candidateWidth = candidate.length * (fontSize * 0.55)
+        }
+
+        if (candidateWidth <= maxWidth || !currentLine) {
+          currentLine = candidate
+        } else {
+          finalLines.push(currentLine)
+          currentLine = word
+        }
+      }
+      if (currentLine) {
+        finalLines.push(currentLine)
+      }
+    }
+
+    return finalLines
+  }
+
   // Textos de qualificação sob as assinaturas
+  // Securitizadora / Diretor:
+  // Linha 1: Razão Social (com papel se houver)
+  // Linha 2+: Nome do Representante + Cargo
+  // Linha final: CPF do Representante destacado em linha própria
   const secPapel = data.securitizadoraPapel ? ` (${data.securitizadoraPapel})` : ''
-  const secRepCpf = data.securitizadoraRepCpf ? ` - CPF: ${data.securitizadoraRepCpf}` : ''
-  const secText = `${data.securitizadoraRazao}${secPapel}\n${data.securitizadoraRepNome} - ${data.securitizadoraRepCargo}${secRepCpf}`
+  const secLine1 = `${data.securitizadoraRazao}${secPapel}`
+  const secLine2 = `${data.securitizadoraRepNome} - ${data.securitizadoraRepCargo}`
+  const secCpfLine = data.securitizadoraRepCpf ? `CPF: ${data.securitizadoraRepCpf}` : ''
 
-  page.drawText(secText, {
-    x: col1X,
-    y: lineY - 11,
-    font: fontBold,
-    size: 7.5,
-    color: rgb(0.1, 0.1, 0.1),
-    lineHeight: 9.5,
-  })
-
-  const contraparteDoc = data.contraparteDocumento
-    ? ` - CPF/CNPJ: ${data.contraparteDocumento}`
+  // Contraparte (ex: Debenturista, Tomador, Cedente):
+  // Linha 1+: Nome da Contraparte
+  // Linha 2: Papel da Contraparte (ex: "Debenturista")
+  // Linha final: CPF/CNPJ da Contraparte em linha própria
+  const contraparteLine1 = data.contraparteNome || ''
+  const contraparteLine2 = data.contrapartePapel || ''
+  const contraparteDocLine = data.contraparteDocumento
+    ? `CPF/CNPJ: ${data.contraparteDocumento}`
     : ''
-  const contraparteText = `${data.contraparteNome}\n${data.contrapartePapel}${contraparteDoc}`
 
-  page.drawText(contraparteText, {
-    x: col2X,
-    y: lineY - 11,
-    font: fontBold,
-    size: 7.5,
-    color: rgb(0.1, 0.1, 0.1),
-    lineHeight: 9.5,
-  })
+  // Quebra segura dentro da largura de cada coluna individual (colWidth)
+  const secLines: { text: string; isBold: boolean }[] = []
+  for (const l of wrapTextToWidth(secLine1, colWidth, fontBold, 7.2)) {
+    secLines.push({ text: l, isBold: true })
+  }
+  for (const l of wrapTextToWidth(secLine2, colWidth, fontRegular, 7.0)) {
+    secLines.push({ text: l, isBold: false })
+  }
+  if (secCpfLine) {
+    for (const l of wrapTextToWidth(secCpfLine, colWidth, fontRegular, 6.8)) {
+      secLines.push({ text: l, isBold: false })
+    }
+  }
+
+  const contraLines: { text: string; isBold: boolean }[] = []
+  for (const l of wrapTextToWidth(contraparteLine1, colWidth, fontBold, 7.2)) {
+    contraLines.push({ text: l, isBold: true })
+  }
+  for (const l of wrapTextToWidth(contraparteLine2, colWidth, fontBold, 7.0)) {
+    contraLines.push({ text: l, isBold: true })
+  }
+  if (contraparteDocLine) {
+    for (const l of wrapTextToWidth(contraparteDocLine, colWidth, fontRegular, 6.8)) {
+      contraLines.push({ text: l, isBold: false })
+    }
+  }
+
+  // Renderiza textos da coluna 1 (Securitizadora / Diretor)
+  let curCol1Y = lineY - 10
+  const lineHeightCol1 = 8.8
+  for (const item of secLines) {
+    page.drawText(item.text, {
+      x: col1X,
+      y: curCol1Y,
+      font: item.isBold ? fontBold : fontRegular,
+      size: item.isBold ? 7.2 : 7.0,
+      color: rgb(0.12, 0.15, 0.2),
+    })
+    curCol1Y -= lineHeightCol1
+  }
+
+  // Renderiza textos da coluna 2 (Debenturista / Contraparte)
+  let curCol2Y = lineY - 10
+  const lineHeightCol2 = 8.8
+  for (const item of contraLines) {
+    page.drawText(item.text, {
+      x: col2X,
+      y: curCol2Y,
+      font: item.isBold ? fontBold : fontRegular,
+      size: item.isBold ? 7.2 : 7.0,
+      color: rgb(0.12, 0.15, 0.2),
+    })
+    curCol2Y -= lineHeightCol2
+  }
 
   return signBoxY
 }
