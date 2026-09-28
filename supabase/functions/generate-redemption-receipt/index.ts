@@ -25,19 +25,27 @@ Deno.serve(async (req: Request) => {
       .limit(1)
       .maybeSingle()
 
-    const secRazao = companyData?.razao_social || 'Nexum Securitizadora S.A.'
+    const secRazao = (companyData?.razao_social || 'Nexum Securitizadora S.A.').toUpperCase()
     const secCnpj = companyData?.cnpj || '00.000.000/0001-00'
-    const secCidade = companyData?.endereco_cidade || 'Criciúma'
-    const secUf = companyData?.endereco_uf || 'SC'
+    const secCidade = (companyData?.endereco_cidade || 'Criciúma').trim()
+    const secUf = (companyData?.endereco_uf || 'SC').trim()
+    const secCidadeUf =
+      secCidade && secUf ? `${secCidade}/${secUf}` : secCidade || secUf || 'Criciúma/SC'
+
+    const secCepRaw = companyData?.endereco_cep || ''
+    const secCepDigits = secCepRaw.replace(/\D/g, '')
+    const secCepFmt =
+      secCepDigits.length === 8 ? `${secCepDigits.slice(0, 5)}-${secCepDigits.slice(5)}` : secCepRaw
+
     const secEndParts = [
       companyData?.endereco_logradouro
-        ? `${companyData.endereco_logradouro}${companyData.endereco_numero ? ', ' + companyData.endereco_numero : ''}`
+        ? `${companyData.endereco_logradouro}${companyData.endereco_numero ? ', ' + companyData.endereco_numero : ''}${companyData.endereco_complemento ? ' - ' + companyData.endereco_complemento : ''}`
         : '',
       companyData?.endereco_bairro,
-      `${secCidade}/${secUf}`,
-      companyData?.endereco_cep ? `CEP: ${companyData.endereco_cep}` : '',
+      secCidadeUf,
+      secCepFmt ? `CEP: ${secCepFmt}` : '',
     ].filter(Boolean)
-    const secEndereco = secEndParts.length > 0 ? secEndParts.join(' - ') : 'Sede Social'
+    const secEndereco = secEndParts.length > 0 ? secEndParts.join(' - ') : secCidadeUf
 
     const { data: red, error } = await supabase
       .from('investment_redemptions')

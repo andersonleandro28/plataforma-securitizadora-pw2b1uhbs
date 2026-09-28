@@ -229,8 +229,12 @@ export function CompanySettingsForm() {
   }
 
   // Preâmbulo de demonstração em tempo real
+  const previewCidadeUf =
+    formData.endereco_cidade && formData.endereco_uf
+      ? `${formData.endereco_cidade}/${formData.endereco_uf}`
+      : formData.endereco_cidade || formData.endereco_uf || 'Criciúma/SC'
   const previewAddress = formatCompanyAddress(formData)
-  const previewPreambulo = `${formData.razao_social || '[RAZÃO SOCIAL DA SECURITIZADORA]'}, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº ${formData.cnpj || '[CNPJ]'}, com sede em ${previewAddress || '[ENDEREÇO COMPLETO]'}${formData.inscricao_estadual ? `, Inscrição Estadual nº ${formData.inscricao_estadual}` : ''}${formData.registro_regulador ? `, marco regulatório (${formData.registro_regulador})` : ''}${formData.representante_nome ? `, neste ato representada por seu ${formData.representante_cargo || 'Sócio-Administrador'}, Sr(a). ${formData.representante_nome}${formData.representante_cpf ? `, CPF nº ${formData.representante_cpf}` : ''}` : ''}, doravante denominada simplesmente "CESSIONÁRIA".`
+  const previewPreambulo = `${(formData.razao_social || '[RAZÃO SOCIAL DA SECURITIZADORA]').toUpperCase()}, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº ${formData.cnpj || '[CNPJ]'}, com sede e foro na cidade de ${previewCidadeUf}${previewAddress ? `, com endereço em ${previewAddress}` : ''}${formData.inscricao_estadual ? `, Inscrição Estadual nº ${formData.inscricao_estadual}` : ''}${formData.registro_regulador ? `, marco regulatório (${formData.registro_regulador})` : ''}${formData.representante_nome ? `, neste ato representada por seu ${formData.representante_cargo || 'Sócio-Administrador'}, Sr(a). ${formData.representante_nome}${formData.representante_cpf ? `, CPF nº ${formData.representante_cpf}` : ''}` : ''}, doravante denominada simplesmente "CESSIONÁRIA".`
 
   return (
     <form onSubmit={handleSave} className="space-y-6">

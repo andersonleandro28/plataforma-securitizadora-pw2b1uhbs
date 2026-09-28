@@ -148,19 +148,47 @@ Deno.serve(async (req: Request) => {
       .limit(1)
       .maybeSingle()
 
-    const secRazao = companyData?.razao_social || 'NEXUM SECURITIZADORA S.A.'
+    const secRazao = (companyData?.razao_social || 'NEXUM SECURITIZADORA S.A.').toUpperCase()
     const secCnpj = companyData?.cnpj || '00.000.000/0001-00'
+    const secCidade = (companyData?.endereco_cidade || '').trim()
+    const secUf = (companyData?.endereco_uf || '').trim()
+    const secCidadeUf =
+      secCidade && secUf ? `${secCidade}/${secUf}` : secCidade || secUf || 'Criciúma/SC'
+
+    const secCepRaw = companyData?.endereco_cep || ''
+    const secCepDigits = secCepRaw.replace(/\D/g, '')
+    const secCepFmt =
+      secCepDigits.length === 8 ? `${secCepDigits.slice(0, 5)}-${secCepDigits.slice(5)}` : secCepRaw
+
     const secEndParts = [
       companyData?.endereco_logradouro
         ? `${companyData.endereco_logradouro}${companyData.endereco_numero ? ', ' + companyData.endereco_numero : ''}${companyData.endereco_complemento ? ' - ' + companyData.endereco_complemento : ''}`
         : '',
       companyData?.endereco_bairro,
-      companyData?.endereco_cidade || companyData?.endereco_uf
-        ? `${companyData?.endereco_cidade || ''}/${companyData?.endereco_uf || ''}`
-        : '',
-      companyData?.endereco_cep ? `CEP: ${companyData.endereco_cep}` : '',
+      secCidadeUf,
+      secCepFmt ? `CEP: ${secCepFmt}` : '',
     ].filter(Boolean)
-    const secEndereco = secEndParts.length > 0 ? secEndParts.join(' - ') : 'Sede Social'
+    const secEndereco = secEndParts.length > 0 ? secEndParts.join(' - ') : secCidadeUf
+
+    // Endereço descritivo detalhado
+    const secEndDetalhadoPartes: string[] = []
+    if (companyData?.endereco_logradouro) {
+      let log = companyData.endereco_logradouro.trim()
+      if (!/^rua|^av|^alameda|^rodovia|^travessa/i.test(log)) {
+        log = `Rua ${log}`
+      }
+      if (companyData.endereco_numero) log += `, nº ${companyData.endereco_numero.trim()}`
+      if (companyData.endereco_complemento) log += `, ${companyData.endereco_complemento.trim()}`
+      secEndDetalhadoPartes.push(log)
+    }
+    if (companyData?.endereco_bairro) {
+      secEndDetalhadoPartes.push(`Bairro ${companyData.endereco_bairro.trim()}`)
+    }
+    if (secCepFmt) {
+      secEndDetalhadoPartes.push(`CEP ${secCepFmt}`)
+    }
+    const secEnderecoDescritivo = secEndDetalhadoPartes.join(', ')
+
     const secRepNome = companyData?.representante_nome || ''
     const secRepCargo = companyData?.representante_cargo || 'Sócio-Administrador'
     const secRepCpf = companyData?.representante_cpf
@@ -225,7 +253,10 @@ Deno.serve(async (req: Request) => {
     currentY -= 18
 
     // CESSIONÁRIA / SECURITIZADORA
-    let secPreambuloTexto = `CESSIONÁRIA: ${secRazao}, inscrita no CNPJ sob o nº ${secCnpj}, com sede em ${secEndereco}`
+    let secPreambuloTexto = `CESSIONÁRIA: ${secRazao}, inscrita no CNPJ sob o nº ${secCnpj}, com sede e foro na cidade de ${secCidadeUf}`
+    if (secEnderecoDescritivo) {
+      secPreambuloTexto += `, com endereço na ${secEnderecoDescritivo}`
+    }
     if (secRepNome) {
       secPreambuloTexto += `, neste ato representada por seu ${secRepCargo}, ${secRepNome}${secRepCpf}`
     }

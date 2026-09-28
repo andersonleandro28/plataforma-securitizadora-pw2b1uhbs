@@ -190,7 +190,18 @@ export async function saveCompanySettings(
 }
 
 /**
- * Retorna o endereço formatado em uma única linha.
+ * Retorna a cidade e UF formatadas (ex.: "Criciúma/SC" ou "CRICIUMA/SC").
+ */
+export function formatCompanyCityState(settings?: Partial<CompanySettings> | null): string {
+  if (!settings) return ''
+  const cidade = settings.endereco_cidade?.trim() || ''
+  const uf = settings.endereco_uf?.trim() || ''
+  if (cidade && uf) return `${cidade}/${uf}`
+  return cidade || uf || ''
+}
+
+/**
+ * Retorna o endereço formatado em uma única linha (logradouro, número, complemento, bairro, cidade/UF, CEP).
  */
 export function formatCompanyAddress(settings?: Partial<CompanySettings> | null): string {
   if (!settings) return ''
@@ -202,26 +213,66 @@ export function formatCompanyAddress(settings?: Partial<CompanySettings> | null)
     parts.push(log)
   }
   if (settings.endereco_bairro) parts.push(settings.endereco_bairro)
-  if (settings.endereco_cidade || settings.endereco_uf) {
-    parts.push(`${settings.endereco_cidade || ''}/${settings.endereco_uf || ''}`)
+  const cityState = formatCompanyCityState(settings)
+  if (cityState) parts.push(cityState)
+  if (settings.endereco_cep) {
+    const cepDigits = settings.endereco_cep.replace(/\D/g, '')
+    const cepFmt =
+      cepDigits.length === 8
+        ? `${cepDigits.slice(0, 5)}-${cepDigits.slice(5)}`
+        : settings.endereco_cep
+    parts.push(`CEP: ${cepFmt}`)
   }
-  if (settings.endereco_cep) parts.push(`CEP: ${settings.endereco_cep}`)
   return parts.join(' - ')
 }
 
 /**
+ * Retorna o endereço descritivo para cláusulas contratuais:
+ * "na [Logradouro], nº [Número], [Complemento], Bairro [Bairro], CEP [CEP]"
+ */
+export function formatCompanyDetailedAddress(settings?: Partial<CompanySettings> | null): string {
+  if (!settings) return ''
+  const parts: string[] = []
+  if (settings.endereco_logradouro) {
+    let log = settings.endereco_logradouro
+    if (settings.endereco_numero) log += `, nº ${settings.endereco_numero}`
+    if (settings.endereco_complemento) log += `, ${settings.endereco_complemento}`
+    parts.push(log)
+  }
+  if (settings.endereco_bairro) {
+    parts.push(`Bairro ${settings.endereco_bairro}`)
+  }
+  if (settings.endereco_cep) {
+    const cepDigits = settings.endereco_cep.replace(/\D/g, '')
+    const cepFmt =
+      cepDigits.length === 8
+        ? `${cepDigits.slice(0, 5)}-${cepDigits.slice(5)}`
+        : settings.endereco_cep
+    parts.push(`CEP ${cepFmt}`)
+  }
+  return parts.join(', ')
+}
+
+/**
  * Monta o preâmbulo contratual oficial da Securitizadora para uso em instrumentos contratuais, aditivos, termos e recibos.
+ * Garante que a frase de sede e foro mencione APENAS a cidade e UF ("com sede e foro na cidade de CRICIUMA/SC"),
+ * mantendo o endereço completo em cláusula/parágrafo próprio de endereço.
  */
 export function buildSecuritizadoraPreambulo(
   settings?: Partial<CompanySettings> | null,
   papel: 'CESSIONÁRIA' | 'EMISSORA' | 'SECURITIZADORA' | 'CREDORA' = 'CESSIONÁRIA',
 ): string {
   const s = settings || DEFAULT_COMPANY_SETTINGS
-  const razao = s.razao_social || '[RAZÃO SOCIAL DA SECURITIZADORA]'
+  const razao = (s.razao_social || '[RAZÃO SOCIAL DA SECURITIZADORA]').toUpperCase()
   const cnpjFmt = s.cnpj ? maskCnpj(s.cnpj) : '[CNPJ DA SECURITIZADORA]'
-  const enderecoFmt = formatCompanyAddress(s) || '[ENDEREÇO DA SECURITIZADORA]'
+  const cidadeUf = formatCompanyCityState(s) || 'Criciúma/SC'
+  const enderecoDetalhado = formatCompanyDetailedAddress(s) || formatCompanyAddress(s)
 
-  let text = `${razao.toUpperCase()}, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº ${cnpjFmt}, com sede em ${enderecoFmt}`
+  let text = `${razao}, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº ${cnpjFmt}, com sede e foro na cidade de ${cidadeUf}`
+
+  if (enderecoDetalhado) {
+    text += `, com endereço na ${enderecoDetalhado}`
+  }
 
   if (s.inscricao_estadual) {
     text += `, Inscrição Estadual nº ${s.inscricao_estadual}`

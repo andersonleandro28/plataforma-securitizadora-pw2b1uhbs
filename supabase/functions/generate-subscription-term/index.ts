@@ -58,17 +58,45 @@ Deno.serve(async (req: Request) => {
     const secRazao = companyData?.razao_social || 'SEA CONNECTION INVESTIMENTOS S/A'
     const secNomeFantasia = companyData?.nome_fantasia || 'Sea Connection'
     const secCnpj = companyData?.cnpj || '60.703.936/0001-00'
-    const secCidade = companyData?.endereco_cidade || 'Criciúma'
-    const secUf = companyData?.endereco_uf || 'SC'
+    const secCidade = (companyData?.endereco_cidade || 'Criciúma').trim()
+    const secUf = (companyData?.endereco_uf || 'SC').trim()
+    const secCidadeUf =
+      secCidade && secUf ? `${secCidade}/${secUf}` : secCidade || secUf || 'Criciúma/SC'
+
+    const secCepRaw = companyData?.endereco_cep || ''
+    const secCepDigits = secCepRaw.replace(/\D/g, '')
+    const secCepFmt =
+      secCepDigits.length === 8 ? `${secCepDigits.slice(0, 5)}-${secCepDigits.slice(5)}` : secCepRaw
+
     const secEndParts = [
       companyData?.endereco_logradouro
         ? `${companyData.endereco_logradouro}${companyData.endereco_numero ? ', ' + companyData.endereco_numero : ''}${companyData.endereco_complemento ? ' - ' + companyData.endereco_complemento : ''}`
         : '',
       companyData?.endereco_bairro,
-      `${secCidade}/${secUf}`,
-      companyData?.endereco_cep ? `CEP: ${companyData.endereco_cep}` : '',
+      secCidadeUf,
+      secCepFmt ? `CEP: ${secCepFmt}` : '',
     ].filter(Boolean)
-    const secEndereco = secEndParts.length > 0 ? secEndParts.join(' - ') : 'Criciúma/SC'
+    const secEndereco = secEndParts.length > 0 ? secEndParts.join(' - ') : `${secCidadeUf}`
+
+    // Endereço descritivo detalhado da sede para o preâmbulo
+    const secEndDetalhadoPartes: string[] = []
+    if (companyData?.endereco_logradouro) {
+      let log = companyData.endereco_logradouro.trim()
+      if (!/^rua|^av|^alameda|^rodovia|^travessa/i.test(log)) {
+        log = `Rua ${log}`
+      }
+      if (companyData.endereco_numero) log += `, nº ${companyData.endereco_numero.trim()}`
+      if (companyData.endereco_complemento) log += `, ${companyData.endereco_complemento.trim()}`
+      secEndDetalhadoPartes.push(log)
+    }
+    if (companyData?.endereco_bairro) {
+      secEndDetalhadoPartes.push(`Bairro ${companyData.endereco_bairro.trim()}`)
+    }
+    if (secCepFmt) {
+      secEndDetalhadoPartes.push(`CEP ${secCepFmt}`)
+    }
+    const secEnderecoDescritivo = secEndDetalhadoPartes.join(', ')
+
     const secRepNome = companyData?.representante_nome || 'Anderson Cardozo Leandro'
     const secRepCargo = companyData?.representante_cargo || 'Diretor Presidente'
     const secRepCpf = companyData?.representante_cpf || '020.936.129-84'
@@ -374,7 +402,7 @@ Deno.serve(async (req: Request) => {
         isSectionHeader: true,
       },
       {
-        text: `DE UM LADO, na qualidade de EMISSORA, ${secRazao}, sociedade anônima fechada, inscrita no CNPJ sob o nº ${secCnpj}, com sede e foro na cidade de ${secEndereco}, neste ato representada por seu ${secRepCargo}, Sr. ${secRepNome}, inscrito no CPF sob o nº ${secRepCpf}, doravante denominada simplesmente "EMISSORA"; e,`,
+        text: `DE UM LADO, na qualidade de EMISSORA, ${secRazao}, sociedade anônima fechada, inscrita no CNPJ sob o nº ${secCnpj}, com sede e foro na cidade de ${secCidadeUf}${secEnderecoDescritivo ? `, com endereço na ${secEnderecoDescritivo}` : ''}, neste ato representada por seu ${secRepCargo}, Sr. ${secRepNome}, inscrito no CPF sob o nº ${secRepCpf}, doravante denominada simplesmente "EMISSORA"; e,`,
       },
       {
         text: `DE OUTRO LADO, na qualidade de INVESTIDOR E SUBSCRITOR (DEBENTURISTA), ${invNome}, inscrito no CPF/CNPJ sob o nº ${invDocumento}, com endereço em ${invEndereco}, endereço eletrônico registrado ${invEmail}, doravante denominado simplesmente "DEBENTURISTA" ou "INVESTIDOR";`,
