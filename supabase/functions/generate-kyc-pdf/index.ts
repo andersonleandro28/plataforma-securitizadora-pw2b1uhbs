@@ -79,12 +79,20 @@ Deno.serve(async (req: Request) => {
     const shaHex = await computeSha256Hex(hashPayload)
     const formattedSha = `SHA256-${shaHex.substring(0, 32).toUpperCase()}`
 
+    // Se a altura não for suficiente para o bloco de 145pt, permite quebra de página
+    let targetPage = page
+    let signStartY = 570
+    if (signStartY - 145 < 45) {
+      targetPage = pdfDoc.addPage([595.28, 841.89])
+      signStartY = 841.89 - 50
+    }
+
     // BLOCO DE ASSINATURA ELETRÔNICA QUALIFICADA
     drawQualifiedSignatureBlock(
       {
-        page,
+        page: targetPage,
         startX: 50,
-        startY: 570,
+        startY: signStartY,
         width: 495.28,
         fontRegular: font,
         fontBold: fontBold,
@@ -109,20 +117,28 @@ Deno.serve(async (req: Request) => {
       },
     )
 
-    page.drawText(`Hash de Integridade: ${formattedSha}`, {
-      x: 50,
-      y: 25,
-      font,
-      size: 7.5,
-      color: rgb(0.5, 0.5, 0.5),
-    })
-    page.drawText('Documento emitido eletronicamente pela Plataforma Nexum - Página 1 de 1', {
-      x: 270,
-      y: 25,
-      font,
-      size: 7.5,
-      color: rgb(0.5, 0.5, 0.5),
-    })
+    const allPages = pdfDoc.getPages()
+    const totalP = allPages.length
+    for (let i = 0; i < totalP; i++) {
+      const p = allPages[i]
+      p.drawText(`Hash de Integridade: ${formattedSha}`, {
+        x: 50,
+        y: 25,
+        font,
+        size: 7.5,
+        color: rgb(0.5, 0.5, 0.5),
+      })
+      p.drawText(
+        `Documento emitido eletronicamente pela Plataforma Nexum - Página ${i + 1} de ${totalP}`,
+        {
+          x: 270,
+          y: 25,
+          font,
+          size: 7.5,
+          color: rgb(0.5, 0.5, 0.5),
+        },
+      )
+    }
 
     const pdfBytes = await pdfDoc.save()
     const fileName = `KYC_${userId}.pdf`

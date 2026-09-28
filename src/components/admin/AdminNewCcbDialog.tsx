@@ -656,7 +656,7 @@ export function AdminNewCcbDialog({ open, onOpenChange, onSuccess }: AdminNewCcb
         const secHeaderCnpj = compSettings?.cnpj ? `CNPJ: ${compSettings.cnpj}` : ''
 
         const pdfDoc = await PDFDocument.create()
-        const page = pdfDoc.addPage([841.89, 595.28])
+        let page = pdfDoc.addPage([841.89, 595.28])
         const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
         const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
         const margin = 40
@@ -788,13 +788,13 @@ export function AdminNewCcbDialog({ open, onOpenChange, onSuccess }: AdminNewCcb
           color: rgb(0.08, 0.18, 0.36),
         })
 
-        const ccbSecCidade = (companySettings?.endereco_cidade || 'Criciúma').trim()
-        const ccbSecUf = (companySettings?.endereco_uf || 'SC').trim()
+        const ccbSecCidade = (compSettings?.endereco_cidade || 'Criciúma').trim()
+        const ccbSecUf = (compSettings?.endereco_uf || 'SC').trim()
         const ccbSecRazao = (
-          companySettings?.razao_social || 'NEXUM SECURITIZADORA S.A.'
+          compSettings?.razao_social || 'NEXUM SECURITIZADORA S.A.'
         ).toUpperCase()
-        const ccbSecRepNome = companySettings?.representante_nome || 'Diretoria Executiva'
-        const ccbSecRepCargo = companySettings?.representante_cargo || 'Sócio-Administrador'
+        const ccbSecRepNome = compSettings?.representante_nome || 'Diretoria Executiva'
+        const ccbSecRepCargo = compSettings?.representante_cargo || 'Sócio-Administrador'
 
         const auditLines = [
           'Assinado digitalmente nos termos do art. 10, § 2º da Medida Provisória nº 2.200-2/2001 e da Lei Federal nº 14.063/2020.',
