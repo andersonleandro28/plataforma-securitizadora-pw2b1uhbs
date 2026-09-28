@@ -18,6 +18,24 @@ interface FormattedParagraph {
   spaceAfter?: number
 }
 
+function formatDataPorExtenso(dateStr: string | null | undefined): string {
+  if (!dateStr) return '05 de junho de 2025'
+  try {
+    const raw = String(dateStr).split('T')[0]
+    const [y, m, d] = raw.split('-').map(Number)
+    if (!y || !m || !d) return '05 de junho de 2025'
+    const date = new Date(Date.UTC(y, m - 1, d, 12, 0, 0))
+    return date.toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC',
+    })
+  } catch {
+    return '05 de junho de 2025'
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -59,6 +77,11 @@ Deno.serve(async (req: Request) => {
       companyData?.debenture_numero_escritura_padrao ||
       '1ª Escritura de Emissão Pública de Debêntures'
     const secSeriePadrao = companyData?.debenture_serie_padrao || '1ª Série'
+    const secOrgaoPadrao =
+      companyData?.debenture_orgao_registro_padrao || 'Junta Comercial do Estado de Santa Catarina'
+    const secDataRegistroPadrao = companyData?.debenture_data_registro_padrao || '2025-06-05'
+    const secNumeroArquivamentoPadrao =
+      companyData?.debenture_numero_arquivamento_padrao || 'ED009857000'
 
     // 2. Fetch Investment and Related Product + Debenture Info
     const { data: inv, error } = await supabase
@@ -85,7 +108,6 @@ Deno.serve(async (req: Request) => {
 
     // If contract_url already exists and forceRegenerate is false, re-deriva signedUrl e filePath
     if (inv.contract_url && !forceRegenerate && !sendEmail) {
-      // Extrai path relativo a partir de qualquer domínio legado
       let parsedPath = defaultFilePath
       const match = inv.contract_url.match(/investment-docs\/(.+?)(\?|$)/)
       if (match?.[1]) {
@@ -120,13 +142,23 @@ Deno.serve(async (req: Request) => {
 
     // Identificação de Escritura e Série com fallback seguro
     const numeroEscritura =
-      debenture.numero_escritura || debenture.issuer_name
-        ? `${debenture.numero_escritura || '1ª Escritura de Emissão Pública'}`
-        : secEscrituraPadrao
+      debenture.numero_escritura ||
+      (debenture.issuer_name ? '1ª Escritura de Emissão Pública de Debêntures' : secEscrituraPadrao)
     const numeroEmissao = debenture.numero_emissao || '1ª Emissão'
     const serieIdentificacao = series.series_number
       ? `Série ${series.series_number}`
       : secSeriePadrao
+
+    // Dados oficiais de registro na Junta Comercial
+    const orgaoRegistro = debenture.orgao_registro || secOrgaoPadrao
+    const dataRegistroRaw = debenture.data_registro || secDataRegistroPadrao
+    const dataRegistroExtenso = formatDataPorExtenso(dataRegistroRaw)
+    const numeroArquivamento = debenture.numero_arquivamento || secNumeroArquivamentoPadrao
+
+    // FRASE NORMATIVA EXATA solicitada pelo usuário:
+    // "Escritura de Emissão registrada na Junta Comercial do Estado de Santa Catarina, em 05 de junho de 2025, nº Arquivamento: ED009857000 doravante denominada "Escritura de Emissão""
+    const fraseNormativaEscritura = `Escritura de Emissão registrada na ${orgaoRegistro}, em ${dataRegistroExtenso}, nº Arquivamento: ${numeroArquivamento} doravante denominada "Escritura de Emissão"`
+
     const taxaDebenture = prod.rate || (series.rate ? `${series.rate}% a.a.` : '18% a.a.')
     const indexadorDebenture = series.indexer || 'Pré-fixado'
     const regimeJuros =
@@ -192,7 +224,6 @@ Deno.serve(async (req: Request) => {
 
     const addNewPageIfNeeded = (neededHeight: number): void => {
       if (currentY - neededHeight < margin + 30) {
-        // Rodapé na página anterior
         drawFooter(currentPage)
         currentPage = pdfDoc.addPage([pageWidth, pageHeight])
         currentY = pageHeight - margin
@@ -224,7 +255,7 @@ Deno.serve(async (req: Request) => {
         color: rgb(0.8, 0.8, 0.8),
       })
       page.drawText(
-        `Nexum Security 360º • Escritura: ${numeroEscritura} • ${serieIdentificacao} • Autenticação: ${inv.id.substring(0, 13)}`,
+        `Nexum Security 360º • Escritura: ${numeroEscritura} • Arq. Junta: ${numeroArquivamento} • Autenticação: ${inv.id.substring(0, 13)}`,
         {
           x: margin,
           y: margin + 8,
@@ -292,8 +323,8 @@ Deno.serve(async (req: Request) => {
     })
     currentY -= 20
 
-    // Caixa de Destaque da Escritura e Série
-    const boxHeight = 44
+    // Caixa de Destaque da Escritura, Série e Registro na Junta (Moldura da Capa)
+    const boxHeight = 56
     currentPage.drawRectangle({
       x: margin,
       y: currentY - boxHeight,
@@ -306,19 +337,30 @@ Deno.serve(async (req: Request) => {
 
     currentPage.drawText(`ESCRITURA DE EMISSÃO: ${numeroEscritura.toUpperCase()}`, {
       x: margin + 12,
-      y: currentY - 16,
+      y: currentY - 15,
       font: fontBold,
       size: 9.5,
       color: rgb(0.1, 0.2, 0.4),
     })
 
     currentPage.drawText(
+      `REGISTRO: ${orgaoRegistro.toUpperCase()} | ARQUIVAMENTO: ${numeroArquivamento} (${dataRegistroExtenso})`,
+      {
+        x: margin + 12,
+        y: currentY - 29,
+        font: fontBold,
+        size: 8,
+        color: rgb(0.15, 0.35, 0.6),
+      },
+    )
+
+    currentPage.drawText(
       `SÉRIE: ${serieIdentificacao.toUpperCase()}   |   EMISSÃO: ${numeroEmissao.toUpperCase()}   |   PRODUTO: ${(prod.title || 'Debênture').toUpperCase()}`,
       {
         x: margin + 12,
-        y: currentY - 32,
+        y: currentY - 44,
         font: font,
-        size: 8.5,
+        size: 8,
         color: rgb(0.25, 0.3, 0.4),
       },
     )
@@ -389,7 +431,7 @@ Deno.serve(async (req: Request) => {
         isSectionHeader: true,
       },
       {
-        text: `5.1. A presente subscrição é regida e subordinada a todos os termos, condições e prerrogativas previstos na Escritura de Emissão (${numeroEscritura}), à qual o DEBENTURISTA expressamente adere neste ato para todos os fins de direito.`,
+        text: `5.1. A presente subscrição é regida e subordinada a todos os termos, condições e prerrogativas previstos na ${fraseNormativaEscritura}, à qual o DEBENTURISTA expressamente adere neste ato para todos os fins de direito.`,
       },
       {
         text: '5.2. As debêntures conferem ao seu titular os direitos creditórios patrimoniais correspondentes ao valor nominal unitário acrescido da respectiva remuneração, gozando das prerrogativas previstas no art. 52 e seguintes da Lei 6.404/76. Quando legalmente cabível ou deliberado pela emissora, os debenturistas poderão constituir Conselho de Debenturistas para defesa e fiscalização dos interesses comuns da comunhão.',
@@ -575,6 +617,9 @@ Deno.serve(async (req: Request) => {
                 <p>Seu <strong>Instrumento Particular de Subscrição e Integralização de Debêntures</strong> foi formalizado com sucesso na plataforma <strong>${secRazao}</strong>.</p>
                 <div style="background-color: #f4f6f9; padding: 15px; border-radius: 6px; margin: 20px 0;">
                   <p style="margin: 0 0 8px;"><strong>Escritura de Emissão:</strong> ${numeroEscritura}</p>
+                  <p style="margin: 0 0 8px;"><strong>Registro na Junta Comercial:</strong> ${orgaoRegistro}</p>
+                  <p style="margin: 0 0 8px;"><strong>Data do Arquivamento:</strong> ${dataRegistroExtenso}</p>
+                  <p style="margin: 0 0 8px;"><strong>Nº Arquivamento:</strong> ${numeroArquivamento}</p>
                   <p style="margin: 0 0 8px;"><strong>Série:</strong> ${serieIdentificacao}</p>
                   <p style="margin: 0 0 8px;"><strong>Produto:</strong> ${prod.title || 'Debênture'}</p>
                   <p style="margin: 0 0 8px;"><strong>Quantidade de Cotas:</strong> ${qtdCotas}</p>

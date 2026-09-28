@@ -36,6 +36,9 @@ export interface DeedData {
   issuer_name: string
   numero_escritura?: string
   numero_emissao?: string
+  orgao_registro?: string
+  data_registro?: string
+  numero_arquivamento?: string
   total_volume: string
   issue_date: string
   series: SeriesData[]
@@ -60,20 +63,26 @@ export function ManualDeedDialog({ open, onOpenChange, onSuccess }: ManualDeedDi
   const [saving, setSaving] = useState(false)
   const [data, setData] = useState<DeedData>({
     issuer_name: '',
-    numero_escritura: '1ª Escritura de Emissão Pública',
+    numero_escritura: '1ª Escritura de Emissão Pública de Debêntures',
     numero_emissao: '1ª Emissão',
+    orgao_registro: 'Junta Comercial do Estado de Santa Catarina',
+    data_registro: '2025-06-05',
+    numero_arquivamento: 'ED009857000',
     total_volume: '',
-    issue_date: new Date().toISOString().split('T')[0],
+    issue_date: '2025-06-02',
     series: [{ ...defaultSeries }],
   })
 
   const resetForm = () => {
     setData({
       issuer_name: '',
-      numero_escritura: '1ª Escritura de Emissão Pública',
+      numero_escritura: '1ª Escritura de Emissão Pública de Debêntures',
       numero_emissao: '1ª Emissão',
+      orgao_registro: 'Junta Comercial do Estado de Santa Catarina',
+      data_registro: '2025-06-05',
+      numero_arquivamento: 'ED009857000',
       total_volume: '',
-      issue_date: new Date().toISOString().split('T')[0],
+      issue_date: '2025-06-02',
       series: [{ ...defaultSeries }],
     })
   }
@@ -107,8 +116,12 @@ export function ManualDeedDialog({ open, onOpenChange, onSuccess }: ManualDeedDi
       const { data: debData, error: debErr } = await (supabase.from('debentures') as any)
         .insert({
           issuer_name: data.issuer_name,
-          numero_escritura: data.numero_escritura || '1ª Escritura de Emissão Pública',
+          numero_escritura:
+            data.numero_escritura || '1ª Escritura de Emissão Pública de Debêntures',
           numero_emissao: data.numero_emissao || '1ª Emissão',
+          orgao_registro: data.orgao_registro || 'Junta Comercial do Estado de Santa Catarina',
+          data_registro: data.data_registro || null,
+          numero_arquivamento: data.numero_arquivamento || null,
           total_volume: Number(data.total_volume) || 0,
           issue_date: data.issue_date || null,
         })
@@ -200,7 +213,7 @@ export function ManualDeedDialog({ open, onOpenChange, onSuccess }: ManualDeedDi
               <div className="space-y-1.5">
                 <Label>Número da Escritura</Label>
                 <Input
-                  placeholder="Ex: 1ª Escritura de Emissão Pública"
+                  placeholder="Ex: 1ª Escritura de Emissão Pública de Debêntures"
                   value={data.numero_escritura}
                   onChange={(e) => setData({ ...data, numero_escritura: e.target.value })}
                 />
@@ -229,6 +242,33 @@ export function ManualDeedDialog({ open, onOpenChange, onSuccess }: ManualDeedDi
                   type="date"
                   value={data.issue_date}
                   onChange={(e) => setData({ ...data, issue_date: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Órgão de Registro</Label>
+                <Input
+                  placeholder="Ex: Junta Comercial do Estado de Santa Catarina"
+                  value={data.orgao_registro}
+                  onChange={(e) => setData({ ...data, orgao_registro: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Data do Registro / Arquivamento</Label>
+                <Input
+                  type="date"
+                  value={data.data_registro}
+                  onChange={(e) => setData({ ...data, data_registro: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5 md:col-span-2">
+                <Label>Número de Arquivamento</Label>
+                <Input
+                  placeholder="Ex: ED009857000"
+                  className="font-mono uppercase"
+                  value={data.numero_arquivamento}
+                  onChange={(e) =>
+                    setData({ ...data, numero_arquivamento: e.target.value.toUpperCase() })
+                  }
                 />
               </div>
             </div>

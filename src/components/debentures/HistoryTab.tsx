@@ -7,6 +7,8 @@ import {
   Trash2,
   Printer,
   PlusCircle,
+  Edit,
+  FileCheck,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -33,6 +35,7 @@ import { format } from 'date-fns'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { AddSeriesDialog } from './AddSeriesDialog'
+import { EditEscrituraDialog } from './EditEscrituraDialog'
 import { formatDate } from '@/lib/utils'
 
 interface HistoryTabProps {
@@ -40,12 +43,20 @@ interface HistoryTabProps {
   loading: boolean
   formatCurrency: (val: number) => string
   onRefresh: () => void
+  onEditEscritura?: (deb: any) => void
 }
 
-export function HistoryTab({ debentures, loading, formatCurrency, onRefresh }: HistoryTabProps) {
+export function HistoryTab({
+  debentures,
+  loading,
+  formatCurrency,
+  onRefresh,
+  onEditEscritura,
+}: HistoryTabProps) {
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({})
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [addingSeriesFor, setAddingSeriesFor] = useState<any>(null)
+  const [editingEscritura, setEditingEscritura] = useState<any>(null)
 
   const toggleRow = (id: string) => setExpandedRows((prev) => ({ ...prev, [id]: !prev[id] }))
 
@@ -180,18 +191,19 @@ export function HistoryTab({ debentures, loading, formatCurrency, onRefresh }: H
           <TableHeader>
             <TableRow>
               <TableHead className="w-[40px]"></TableHead>
-              <TableHead>Data Processamento</TableHead>
+              <TableHead>Escritura & Registro</TableHead>
               <TableHead>Emissor</TableHead>
               <TableHead>Data Emissão</TableHead>
               <TableHead className="text-right">Volume Total</TableHead>
+              <TableHead className="text-center">Registro Junta</TableHead>
               <TableHead className="text-center">Séries</TableHead>
-              <TableHead className="text-center w-[150px]">Ações</TableHead>
+              <TableHead className="text-center w-[180px]">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8">
+                <TableCell colSpan={8} className="text-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                 </TableCell>
               </TableRow>
@@ -210,8 +222,16 @@ export function HistoryTab({ debentures, loading, formatCurrency, onRefresh }: H
                         <ChevronRight className="h-4 w-4 text-muted-foreground" />
                       )}
                     </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      {format(new Date(deb.created_at), 'dd/MM/yyyy HH:mm')}
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-medium text-xs text-foreground">
+                          {deb.numero_escritura || '1ª Escritura de Emissão Pública'}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {deb.numero_emissao || '1ª Emissão'} •{' '}
+                          {format(new Date(deb.created_at), 'dd/MM/yyyy')}
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell className="font-medium">{deb.issuer_name}</TableCell>
                     <TableCell className="whitespace-nowrap">
@@ -219,6 +239,24 @@ export function HistoryTab({ debentures, loading, formatCurrency, onRefresh }: H
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm">
                       {formatCurrency(deb.total_volume)}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {deb.numero_arquivamento ? (
+                        <div className="flex flex-col items-center">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-mono font-medium text-primary bg-primary/10 px-2 py-0.5 rounded">
+                            <FileCheck className="h-3 w-3" />
+                            {deb.numero_arquivamento}
+                          </span>
+                          <span
+                            className="text-[10px] text-muted-foreground mt-0.5 truncate max-w-[130px]"
+                            title={deb.orgao_registro}
+                          >
+                            {deb.orgao_registro || 'Junta Comercial'}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground italic">Não registrado</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-center">
                       <span className="bg-primary/10 text-primary px-2.5 py-0.5 rounded text-xs font-semibold">
@@ -229,6 +267,18 @@ export function HistoryTab({ debentures, loading, formatCurrency, onRefresh }: H
                       className="text-center space-x-1 whitespace-nowrap"
                       onClick={(e) => e.stopPropagation()}
                     >
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-primary hover:bg-primary/10"
+                        onClick={() => {
+                          if (onEditEscritura) onEditEscritura(deb)
+                          else setEditingEscritura(deb)
+                        }}
+                        title="Editar Escritura e Dados da Junta"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -294,9 +344,40 @@ export function HistoryTab({ debentures, loading, formatCurrency, onRefresh }: H
                 if (expandedRows[deb.id]) {
                   rows.push(
                     <TableRow key={`${deb.id}-expanded`} className="bg-muted/5 hover:bg-muted/5">
-                      <TableCell colSpan={7} className="p-0 border-b">
-                        <div className="p-4 pl-14 animate-in slide-in-from-top-2 duration-200">
-                          <div className="flex items-center justify-between mb-3">
+                      <TableCell colSpan={8} className="p-0 border-b">
+                        <div className="p-4 pl-14 animate-in slide-in-from-top-2 duration-200 space-y-3">
+                          {/* Card de Informações da Escritura e Registro na Junta */}
+                          <div className="bg-background rounded-md border p-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-xs text-primary">
+                                  {deb.numero_escritura || '1ª Escritura de Emissão Pública'}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  • {deb.numero_emissao || '1ª Emissão'}
+                                </span>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                <strong>Registro:</strong> {deb.orgao_registro || 'Junta Comercial'}{' '}
+                                •<strong> Data:</strong> {formatDate(deb.data_registro)} •
+                                <strong> Arquivamento nº:</strong>{' '}
+                                {deb.numero_arquivamento || 'Pendente'}
+                              </p>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs gap-1.5 shrink-0"
+                              onClick={() => {
+                                if (onEditEscritura) onEditEscritura(deb)
+                                else setEditingEscritura(deb)
+                              }}
+                            >
+                              <Edit className="h-3.5 w-3.5" /> Editar Escritura & Registro
+                            </Button>
+                          </div>
+
+                          <div className="flex items-center justify-between">
                             <h4 className="text-sm font-semibold flex items-center gap-2">
                               <ListFilter className="h-4 w-4 text-primary" /> Detalhamento das
                               Séries
@@ -359,7 +440,7 @@ export function HistoryTab({ debentures, loading, formatCurrency, onRefresh }: H
               })
             ) : (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground h-32">
+                <TableCell colSpan={8} className="text-center text-muted-foreground h-32">
                   Nenhum documento processado ainda.
                 </TableCell>
               </TableRow>
@@ -377,6 +458,18 @@ export function HistoryTab({ debentures, loading, formatCurrency, onRefresh }: H
         onSuccess={() => {
           onRefresh()
           setAddingSeriesFor(null)
+        }}
+      />
+
+      <EditEscrituraDialog
+        debenture={editingEscritura}
+        open={!!editingEscritura}
+        onOpenChange={(op) => {
+          if (!op) setEditingEscritura(null)
+        }}
+        onSuccess={() => {
+          onRefresh()
+          setEditingEscritura(null)
         }}
       />
     </Card>

@@ -2,12 +2,13 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { UploadCloud, Building, Clock } from 'lucide-react'
+import { UploadCloud, Building, Clock, FileSignature } from 'lucide-react'
 import { format } from 'date-fns'
 import { HistoryTab } from '@/components/debentures/HistoryTab'
 import { SeriesListTab } from '@/components/debentures/SeriesListTab'
 import { DeedUploadDialog } from '@/components/debentures/DeedUploadDialog'
 import { ManualDeedDialog } from '@/components/debentures/ManualDeedDialog'
+import { EditEscrituraDialog } from '@/components/debentures/EditEscrituraDialog'
 
 export default function Debentures() {
   const [loading, setLoading] = useState(true)
@@ -16,6 +17,7 @@ export default function Debentures() {
 
   const [uploadOpen, setUploadOpen] = useState(false)
   const [manualOpen, setManualOpen] = useState(false)
+  const [editEscrituraTarget, setEditEscrituraTarget] = useState<any>(null)
 
   const fetchData = useCallback(async () => {
     try {
@@ -84,9 +86,18 @@ export default function Debentures() {
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {debentures.length > 0 && (
+              <Button
+                variant="outline"
+                className="gap-2 border-primary/30 text-primary hover:bg-primary/5"
+                onClick={() => setEditEscrituraTarget(debentures[0])}
+              >
+                <FileSignature className="h-4 w-4" /> Editar Escritura & Registro
+              </Button>
+            )}
             <Button variant="outline" className="gap-2" onClick={() => setManualOpen(true)}>
-              <Building className="h-4 w-4" /> Nova Escritura Manual
+              <Building className="h-4 w-4" /> Nova Escritura
             </Button>
             <Button className="gap-2" onClick={() => setUploadOpen(true)}>
               <UploadCloud className="h-4 w-4" /> Processar Documento IA
@@ -116,6 +127,7 @@ export default function Debentures() {
             loading={loading}
             formatCurrency={formatCurrency}
             onRefresh={fetchData}
+            onEditEscritura={(deb) => setEditEscrituraTarget(deb)}
           />
         </TabsContent>
 
@@ -131,6 +143,17 @@ export default function Debentures() {
 
       <DeedUploadDialog open={uploadOpen} onOpenChange={setUploadOpen} onSuccess={fetchData} />
       <ManualDeedDialog open={manualOpen} onOpenChange={setManualOpen} onSuccess={fetchData} />
+      <EditEscrituraDialog
+        debenture={editEscrituraTarget}
+        open={!!editEscrituraTarget}
+        onOpenChange={(op) => {
+          if (!op) setEditEscrituraTarget(null)
+        }}
+        onSuccess={() => {
+          fetchData()
+          setEditEscrituraTarget(null)
+        }}
+      />
     </div>
   )
 }
