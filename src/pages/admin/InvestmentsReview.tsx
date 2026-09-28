@@ -47,6 +47,8 @@ import { InvestmentProofModal, InvestmentProof } from '@/components/admin/Invest
 import { sendNotification } from '@/services/notifications'
 import { evaluateGracePeriod } from '@/lib/redemption-utils'
 import { getOrGenerateSubscriptionContract } from '@/services/subscription-contract'
+import { getOrGenerateDebentureCautela } from '@/services/debenture-cautela'
+import { Award } from 'lucide-react'
 import { Download } from 'lucide-react'
 
 export default function InvestmentsReview() {
@@ -71,6 +73,7 @@ export default function InvestmentsReview() {
   const [selectedProof, setSelectedProof] = useState<InvestmentProof | null>(null)
   const [selectedProofInv, setSelectedProofInv] = useState<any>(null)
   const [generatingContractId, setGeneratingContractId] = useState<string | null>(null)
+  const [generatingCautelaId, setGeneratingCautelaId] = useState<string | null>(null)
 
   // Novos States de Reprovação e Exclusão de Aportes
   const [rejectInvOpen, setRejectInvOpen] = useState(false)
@@ -394,6 +397,26 @@ export default function InvestmentsReview() {
       // Toast já tratado
     } finally {
       setGeneratingContractId(null)
+    }
+  }
+
+  const handleOpenCautela = async (inv: any, downloadDirectly = false) => {
+    setGeneratingCautelaId(inv.id)
+    try {
+      const url = await getOrGenerateDebentureCautela({
+        investmentId: inv.id,
+        existingUrl: inv.cautela_url,
+        forceRegenerate: false,
+        openInNewTab: !downloadDirectly,
+        downloadDirectly,
+      })
+      if (!inv.cautela_url && url) {
+        fetchData()
+      }
+    } catch {
+      // Toast já tratado
+    } finally {
+      setGeneratingCautelaId(null)
     }
   }
 
@@ -1010,7 +1033,7 @@ export default function InvestmentsReview() {
                                   : 'Emitir Contrato'}
                             </Button>
 
-                            {/* Download direto do PDF */}
+                            {/* Download direto do Contrato */}
                             <Button
                               variant="ghost"
                               size="sm"
@@ -1018,6 +1041,35 @@ export default function InvestmentsReview() {
                               onClick={() => handleOpenContract(inv, true)}
                               disabled={generatingContractId === inv.id}
                               title="Baixar Contrato (PDF) diretamente no dispositivo"
+                            >
+                              <Download className="w-4 h-4" />
+                            </Button>
+
+                            {/* Ver / Gerar Cautela de Debêntures */}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800"
+                              onClick={() => handleOpenCautela(inv, false)}
+                              disabled={generatingCautelaId === inv.id}
+                              title="Visualizar ou emitir Cautela de Debêntures em PDF"
+                            >
+                              <Award className="w-4 h-4 mr-1.5 text-emerald-600 dark:text-emerald-400" />
+                              {generatingCautelaId === inv.id
+                                ? 'Gerando...'
+                                : inv.cautela_url
+                                  ? 'Cautela'
+                                  : 'Emitir Cautela'}
+                            </Button>
+
+                            {/* Download direto da Cautela */}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-muted-foreground hover:text-emerald-600 px-2"
+                              onClick={() => handleOpenCautela(inv, true)}
+                              disabled={generatingCautelaId === inv.id}
+                              title="Baixar Cautela de Debêntures (PDF) diretamente no dispositivo"
                             >
                               <Download className="w-4 h-4" />
                             </Button>

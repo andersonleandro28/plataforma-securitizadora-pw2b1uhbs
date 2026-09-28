@@ -20,6 +20,8 @@ import { Trash2, Edit2, Save, X, Plus, Loader2, DollarSign, FileText } from 'luc
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { getOrGenerateSubscriptionContract } from '@/services/subscription-contract'
+import { getOrGenerateDebentureCautela } from '@/services/debenture-cautela'
+import { Award } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatDate, toISODate } from '@/lib/utils'
@@ -48,6 +50,7 @@ export function ManageSubscriptionsDialog({
   const [interestOpen, setInterestOpen] = useState(false)
   const [interestForm, setInterestForm] = useState<any>(null)
   const [loadingContractSubId, setLoadingContractSubId] = useState<string | null>(null)
+  const [loadingCautelaSubId, setLoadingCautelaSubId] = useState<string | null>(null)
 
   useEffect(() => {
     if (series) {
@@ -282,6 +285,29 @@ export function ManageSubscriptionsDialog({
       // Toast disparado
     } finally {
       setLoadingContractSubId(null)
+    }
+  }
+
+  const handleOpenSubscriptionCautela = async (sub: any, downloadDirectly = false) => {
+    if (!sub.investment_id) {
+      toast.info(
+        'Esta subscrição não possui vínculo direto a um aporte online para emissão automatizada.',
+      )
+      return
+    }
+    setLoadingCautelaSubId(sub.id)
+    try {
+      await getOrGenerateDebentureCautela({
+        investmentId: sub.investment_id,
+        existingUrl: null,
+        forceRegenerate: false,
+        openInNewTab: !downloadDirectly,
+        downloadDirectly,
+      })
+    } catch {
+      // Toast disparado
+    } finally {
+      setLoadingCautelaSubId(null)
     }
   }
 
@@ -611,18 +637,38 @@ export function ManageSubscriptionsDialog({
                           {activeTab === 'ativos' ? (
                             <>
                               {sub.investment_id && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 text-primary hover:bg-primary/10"
-                                  onClick={() => handleOpenSubscriptionContract(sub, false)}
-                                  disabled={
-                                    !!editingId || loading || loadingContractSubId === sub.id
-                                  }
-                                  title="Ver Contrato de Subscrição (PDF)"
-                                >
-                                  <FileText className="h-4 w-4" />
-                                </Button>
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-primary hover:bg-primary/10"
+                                    onClick={() => handleOpenSubscriptionContract(sub, false)}
+                                    disabled={
+                                      !!editingId ||
+                                      loading ||
+                                      loadingContractSubId === sub.id ||
+                                      loadingCautelaSubId === sub.id
+                                    }
+                                    title="Ver Contrato de Subscrição (PDF)"
+                                  >
+                                    <FileText className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                    onClick={() => handleOpenSubscriptionCautela(sub, false)}
+                                    disabled={
+                                      !!editingId ||
+                                      loading ||
+                                      loadingContractSubId === sub.id ||
+                                      loadingCautelaSubId === sub.id
+                                    }
+                                    title="Ver Cautela de Debêntures (PDF)"
+                                  >
+                                    <Award className="h-4 w-4" />
+                                  </Button>
+                                </>
                               )}
                               <Button
                                 variant="ghost"

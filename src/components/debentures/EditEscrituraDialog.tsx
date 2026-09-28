@@ -16,6 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { getOrGenerateSubscriptionContract } from '@/services/subscription-contract'
+import { getOrGenerateDebentureCautela } from '@/services/debenture-cautela'
 
 export interface DebentureEscritura {
   id: string
@@ -173,7 +174,7 @@ export function EditEscrituraDialog({
               // Busca aportes/investimentos
               const { data: investmentsList } = await supabase
                 .from('investments')
-                .select('id, contract_url')
+                .select('id, contract_url, cautela_url')
                 .in('product_id', productIds)
 
               const invs = investmentsList || []
@@ -192,9 +193,18 @@ export function EditEscrituraDialog({
                         openInNewTab: false,
                         downloadDirectly: false,
                       })
+                      // Também regenera cautela se já havia sido emitida
+                      if (inv.cautela_url) {
+                        await getOrGenerateDebentureCautela({
+                          investmentId: inv.id,
+                          forceRegenerate: true,
+                          openInNewTab: false,
+                          downloadDirectly: false,
+                        })
+                      }
                       regeneratedCount++
                     } catch (e) {
-                      console.warn(`Erro ao regenerar contrato do investimento ${inv.id}:`, e)
+                      console.warn(`Erro ao regenerar documentos do investimento ${inv.id}:`, e)
                     }
                   }),
                 )
@@ -202,7 +212,7 @@ export function EditEscrituraDialog({
 
               toast.dismiss(toastId)
               toast.success(
-                `Escritura salva e ${regeneratedCount} contrato(s) regenerado(s) com sucesso!`,
+                `Escritura salva e ${regeneratedCount} documento(s) regenerado(s) com sucesso!`,
               )
             } else {
               toast.dismiss(toastId)

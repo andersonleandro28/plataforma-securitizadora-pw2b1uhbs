@@ -43,6 +43,8 @@ import {
 import { evaluateGracePeriod } from '@/lib/redemption-utils'
 import { InvestorRedemptionDialog } from '@/components/investor/InvestorRedemptionDialog'
 import { getOrGenerateSubscriptionContract } from '@/services/subscription-contract'
+import { getOrGenerateDebentureCautela } from '@/services/debenture-cautela'
+import { Award } from 'lucide-react'
 import { InvestorRedemptionStatement } from '@/components/investor/InvestorRedemptionStatement'
 import { InvestorTaxReport } from '@/components/investor/InvestorTaxReport'
 
@@ -96,6 +98,7 @@ function InvestmentList({
   onContractGenerated,
 }: InvestmentListProps) {
   const [loadingContractId, setLoadingContractId] = useState<string | null>(null)
+  const [loadingCautelaId, setLoadingCautelaId] = useState<string | null>(null)
 
   const handleOpenContract = async (inv: any, downloadDirectly = false) => {
     setLoadingContractId(inv.id)
@@ -114,6 +117,26 @@ function InvestmentList({
       // Toast já disparado no service
     } finally {
       setLoadingContractId(null)
+    }
+  }
+
+  const handleOpenCautela = async (inv: any, downloadDirectly = false) => {
+    setLoadingCautelaId(inv.id)
+    try {
+      const url = await getOrGenerateDebentureCautela({
+        investmentId: inv.id,
+        existingUrl: inv.cautela_url,
+        forceRegenerate: false,
+        openInNewTab: !downloadDirectly,
+        downloadDirectly,
+      })
+      if (!inv.cautela_url && url && onContractGenerated) {
+        onContractGenerated()
+      }
+    } catch {
+      // Toast já disparado no service
+    } finally {
+      setLoadingCautelaId(null)
     }
   }
   if (data.length === 0) {
@@ -211,34 +234,66 @@ function InvestmentList({
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
-                    Contrato
+                    Documentos
                   </p>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs gap-1.5 text-primary hover:bg-primary/10 border-primary/30"
-                      disabled={loadingContractId === inv.id}
-                      onClick={() => handleOpenContract(inv, false)}
-                      title="Visualizar Termo de Subscrição de Debêntures em PDF"
-                    >
-                      <FileText className="h-3.5 w-3.5 text-primary" />
-                      {loadingContractId === inv.id
-                        ? 'Gerando...'
-                        : inv.contract_url
-                          ? 'Ver Contrato'
-                          : 'Emitir Contrato'}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0 text-muted-foreground hover:text-primary"
-                      disabled={loadingContractId === inv.id}
-                      onClick={() => handleOpenContract(inv, true)}
-                      title="Baixar Contrato (PDF) diretamente no dispositivo"
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                    </Button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Contrato / Termo de Subscrição */}
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs gap-1.5 text-primary hover:bg-primary/10 border-primary/30"
+                        disabled={loadingContractId === inv.id}
+                        onClick={() => handleOpenContract(inv, false)}
+                        title="Visualizar Termo de Subscrição de Debêntures em PDF"
+                      >
+                        <FileText className="h-3.5 w-3.5 text-primary" />
+                        {loadingContractId === inv.id
+                          ? 'Gerando...'
+                          : inv.contract_url
+                            ? 'Contrato'
+                            : 'Emitir Contrato'}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 text-muted-foreground hover:text-primary"
+                        disabled={loadingContractId === inv.id}
+                        onClick={() => handleOpenContract(inv, true)}
+                        title="Baixar Contrato (PDF) diretamente no dispositivo"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+
+                    {/* Cautela de Debêntures */}
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs gap-1.5 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800"
+                        disabled={loadingCautelaId === inv.id}
+                        onClick={() => handleOpenCautela(inv, false)}
+                        title="Visualizar Cautela de Debêntures em PDF conforme modelo formal"
+                      >
+                        <Award className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                        {loadingCautelaId === inv.id
+                          ? 'Gerando...'
+                          : inv.cautela_url
+                            ? 'Cautela'
+                            : 'Emitir Cautela'}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 text-muted-foreground hover:text-emerald-600"
+                        disabled={loadingCautelaId === inv.id}
+                        onClick={() => handleOpenCautela(inv, true)}
+                        title="Baixar Cautela (PDF) diretamente no dispositivo"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>
