@@ -227,15 +227,15 @@ Deno.serve(async (req: Request) => {
     const total = Number(inv.total_value) || Number(inv.quotas) * pu
     const qtdCotas = Number(inv.quotas) || 1
 
-    // Data de celebração / subscrição
-    const dataCriacao = inv.created_at ? new Date(inv.created_at) : new Date()
-    const dataCelebracaoFmt = dataCriacao.toLocaleDateString('pt-BR', {
+    // Data de celebração / subscrição / aceite eletrônico
+    const dataAceiteDate = inv.created_at ? new Date(inv.created_at) : new Date()
+    const dataCelebracaoFmt = dataAceiteDate.toLocaleDateString('pt-BR', {
       day: '2-digit',
       month: 'long',
       year: 'numeric',
       timeZone: 'America/Sao_Paulo',
     })
-    const dataHoraFmt = dataCriacao.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+    const dataHoraFmt = dataAceiteDate.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
 
     // 3. Montar o PDF multipáginas com formatação profissional
     const pdfDoc = await PDFDocument.create()
