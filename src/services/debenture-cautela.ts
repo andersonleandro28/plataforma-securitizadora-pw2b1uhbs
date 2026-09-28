@@ -13,6 +13,7 @@ export interface GetOrGenerateCautelaOptions {
   forceRegenerate?: boolean
   openInNewTab?: boolean
   downloadDirectly?: boolean
+  ipAddress?: string
 }
 
 const BUCKET_NAME = 'investment-docs'
@@ -31,6 +32,7 @@ export async function getOrGenerateDebentureCautela({
   forceRegenerate = false,
   openInNewTab = true,
   downloadDirectly = false,
+  ipAddress,
 }: GetOrGenerateCautelaOptions): Promise<string> {
   if (!investmentId) {
     throw new Error('ID do investimento é obrigatório.')
@@ -90,6 +92,7 @@ export async function getOrGenerateDebentureCautela({
       body: {
         investmentId,
         forceRegenerate,
+        ipAddress: ipAddress || 'Acesso autenticado via plataforma',
       },
     })
 

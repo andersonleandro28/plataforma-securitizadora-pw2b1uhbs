@@ -163,7 +163,7 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { investmentId, forceRegenerate = false } = await req.json()
+    const { investmentId, ipAddress, forceRegenerate = false } = await req.json()
     if (!investmentId) throw new Error('investmentId é obrigatório')
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
@@ -178,10 +178,13 @@ Deno.serve(async (req: Request) => {
       .limit(1)
       .maybeSingle()
 
+    const secRazaoOriginal = companyData?.razao_social || 'SEA CONNECTION INVESTIMENTOS S/A'
     const secRazao = (companyData?.razao_social || 'SEA CONNECTION INVESTIMENTOS SA').toUpperCase()
     const secCnpj = companyData?.cnpj || '60.703.936/0001-00'
-    const secCidade = (companyData?.endereco_cidade || 'CRICIÚMA').trim().toUpperCase()
-    const secUf = (companyData?.endereco_uf || 'SC').trim().toUpperCase()
+    const secCidadeRaw = (companyData?.endereco_cidade || 'Criciúma').trim()
+    const secUfRaw = (companyData?.endereco_uf || 'SC').trim()
+    const secCidade = secCidadeRaw.toUpperCase()
+    const secUf = secUfRaw.toUpperCase()
     const secLogradouro = (
       companyData?.endereco_logradouro || 'RODOVIA ANTÔNIO JUSTI'
     ).toUpperCase()
@@ -190,6 +193,9 @@ Deno.serve(async (req: Request) => {
 
     const secEnderecoCompleto = `${secLogradouro}, ${secNumero}, ${secBairro}`
     const secCidadeEstadoLinha = `${secCidade} - ${secUf}`
+
+    const secRepNome = companyData?.representante_nome || 'Anderson Cardozo Leandro'
+    const secRepCargo = companyData?.representante_cargo || 'Diretor Presidente'
 
     const secOrgaoPadrao =
       companyData?.debenture_orgao_registro_padrao || 'Junta Comercial do Estado de Santa Catarina'
@@ -329,10 +335,21 @@ Deno.serve(async (req: Request) => {
     // “Escritura de emissão registrada na Junta Comercial do Estado de SC em 05/06/25, sob o nº ED009857000”
     const fraseRegistro = `“Escritura de emissão registrada na ${orgaoAbreviado} em ${dataRegistroFormatada}, sob o nº ${numeroArquivamento}”`
 
-    // Data de emissão/subscrição da cautela
+    // Data de emissão/subscrição da cautela e formato para auditoria eletrônica
     const dataSubscricaoRaw = inv.transfer_date || inv.created_at || new Date().toISOString()
     const dataSubscricaoExtenso = formatDateExtenso(dataSubscricaoRaw)
     const rodapeLocalData = `${secCidade}(${secUf}), ${dataSubscricaoExtenso}`
+
+    const dataAceiteDate = inv.created_at ? new Date(inv.created_at) : new Date()
+    const dataCelebracaoFmt = dataAceiteDate.toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'America/Sao_Paulo',
+    })
+    const dataHoraFmt = dataAceiteDate.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+    const invDocumento = inv.profiles?.document_number || 'N/A'
+    const invNomeOriginal = inv.profiles?.full_name || inv.profiles?.pj_company_name || 'Investidor'
 
     // 4. Montar o PDF A4 Retrato Página Única (fiel ao modelo da Cautela)
     const pdfDoc = await PDFDocument.create()
@@ -356,14 +373,14 @@ Deno.serve(async (req: Request) => {
     const contentWidth = contentMarginRight - contentMarginLeft
 
     // BLOCO 1: Cabeçalho da Companhia (Box superior central)
-    let curY = pageHeight - 90
+    let curY = pageHeight - 68
 
     // Linhas centrais da empresa
     const companyHeaderLines = [
-      { text: secRazao, font: fontBold, size: 10, color: rgb(0.1, 0.1, 0.1) },
-      { text: `CNPJ: ${secCnpj}`, font: font, size: 9, color: rgb(0.15, 0.15, 0.15) },
-      { text: secEnderecoCompleto, font: font, size: 8.5, color: rgb(0.2, 0.2, 0.2) },
-      { text: secCidadeEstadoLinha, font: font, size: 8.5, color: rgb(0.2, 0.2, 0.2) },
+      { text: secRazao, font: fontBold, size: 9.5, color: rgb(0.1, 0.1, 0.1) },
+      { text: `CNPJ: ${secCnpj}`, font: font, size: 8.5, color: rgb(0.15, 0.15, 0.15) },
+      { text: secEnderecoCompleto, font: font, size: 8, color: rgb(0.2, 0.2, 0.2) },
+      { text: secCidadeEstadoLinha, font: font, size: 8, color: rgb(0.2, 0.2, 0.2) },
     ]
 
     for (const item of companyHeaderLines) {
@@ -376,10 +393,10 @@ Deno.serve(async (req: Request) => {
         size: item.size,
         color: item.color,
       })
-      curY -= 13
+      curY -= 11.5
     }
 
-    curY -= 18
+    curY -= 10
 
     // BLOCO 2: Características da Sociedade (em duas colunas no modelo)
     // Coluna esquerda: Data de Constituição e arquivamento
@@ -432,8 +449,8 @@ Deno.serve(async (req: Request) => {
       colTopY,
       colWidth,
       fontTimes,
-      8.5,
-      11.5,
+      8,
+      10.5,
     )
     const endRightY = drawParagraphInBox(
       objetoSocialText,
@@ -441,42 +458,42 @@ Deno.serve(async (req: Request) => {
       colTopY,
       colWidth,
       fontTimes,
-      8.5,
-      11.5,
+      8,
+      10.5,
     )
 
-    curY = Math.min(endLeftY, endRightY) - 14
+    curY = Math.min(endLeftY, endRightY) - 10
 
     // Prazo de Duração e Espécie da Debênture (centralizado)
     const duracaoText = 'Prazo de Duração da Sociedade: Indeterminado'
-    const duracaoW = fontTimes.widthOfTextAtSize(duracaoText, 9)
+    const duracaoW = fontTimes.widthOfTextAtSize(duracaoText, 8.5)
     page.drawText(duracaoText, {
       x: (pageWidth - duracaoW) / 2,
       y: curY,
       font: fontTimes,
-      size: 9,
+      size: 8.5,
       color: rgb(0.15, 0.15, 0.15),
     })
-    curY -= 14
+    curY -= 11.5
 
     const especieText = 'DEBÊNTURES SIMPLES, SUBORDINADAS'
-    const especieW = fontBold.widthOfTextAtSize(especieText, 9.5)
+    const especieW = fontBold.widthOfTextAtSize(especieText, 9)
     page.drawText(especieText, {
       x: (pageWidth - especieW) / 2,
       y: curY,
       font: fontBold,
-      size: 9.5,
+      size: 9,
       color: rgb(0.1, 0.1, 0.1),
     })
 
-    curY -= 26
+    curY -= 18
 
     // BLOCO 3: Dois Boxes em Destaque (Estilo Cautela)
     // Box 1 (Esquerda): Número da Cautela
     // Box 2 (Direita): Quantidade de Debêntures
-    const boxW = 150
-    const boxH = 46
-    const boxSpacing = 30
+    const boxW = 145
+    const boxH = 42
+    const boxSpacing = 28
     const boxesTotalW = boxW * 2 + boxSpacing
     const box1X = (pageWidth - boxesTotalW) / 2
     const box2X = box1X + boxW + boxSpacing
@@ -497,21 +514,21 @@ Deno.serve(async (req: Request) => {
       borderWidth: 1,
     })
     const b1Title = 'Número da Cautela'
-    const b1TitleW = fontTimesBold.widthOfTextAtSize(b1Title, 9)
+    const b1TitleW = fontTimesBold.widthOfTextAtSize(b1Title, 8.5)
     page.drawText(b1Title, {
       x: box1X + (boxW - b1TitleW) / 2,
-      y: boxY + boxH - 16,
+      y: boxY + boxH - 14,
       font: fontTimesBold,
-      size: 9,
+      size: 8.5,
       color: rgb(0.12, 0.2, 0.15),
     })
     const b1Value = String(numeroCautela)
-    const b1ValueW = fontBold.widthOfTextAtSize(b1Value, 13)
+    const b1ValueW = fontBold.widthOfTextAtSize(b1Value, 12)
     page.drawText(b1Value, {
       x: box1X + (boxW - b1ValueW) / 2,
-      y: boxY + 11,
+      y: boxY + 9,
       font: fontBold,
-      size: 13,
+      size: 12,
       color: rgb(0.1, 0.18, 0.12),
     })
 
@@ -526,37 +543,32 @@ Deno.serve(async (req: Request) => {
       borderWidth: 1,
     })
     const b2Title = 'Quantidade de Debêntures'
-    const b2TitleW = fontTimesBold.widthOfTextAtSize(b2Title, 9)
+    const b2TitleW = fontTimesBold.widthOfTextAtSize(b2Title, 8.5)
     page.drawText(b2Title, {
       x: box2X + (boxW - b2TitleW) / 2,
-      y: boxY + boxH - 16,
+      y: boxY + boxH - 14,
       font: fontTimesBold,
-      size: 9,
+      size: 8.5,
       color: rgb(0.12, 0.2, 0.15),
     })
     const b2Value = String(qtdDebentures)
-    const b2ValueW = fontBold.widthOfTextAtSize(b2Value, 13)
+    const b2ValueW = fontBold.widthOfTextAtSize(b2Value, 12)
     page.drawText(b2Value, {
       x: box2X + (boxW - b2ValueW) / 2,
-      y: boxY + 11,
+      y: boxY + 9,
       font: fontBold,
-      size: 13,
+      size: 12,
       color: rgb(0.1, 0.18, 0.12),
     })
 
-    curY = boxY - 32
+    curY = boxY - 20
 
     // BLOCO 4: Texto Principal da Cautela (Parágrafo Solene Justificado/Centrado)
-    // "Esta cautela representativa de 330 debêntures, não conversíveis em ações, da Escritura 1° EMISSÃO DE
-    // DEBÊNTURES SIMPLES SEA CONNECTION, da série 000083 - SERIE - 83, no valor nominal unitário de R$ 100,00
-    // (Cem Reais ********** ...) e demais características especificadas na Escritura de Emissão 1° EMISSÃO DE
-    // DEBÊNTURES SIMPLES SEA CONNECTION, confere a ANA MARIA TRES os direitos que a Lei e a Escritura de Emissão
-    // lhes asseguram."
     const textoPrincipal = `Esta cautela representativa de ${qtdDebentures} debêntures, não conversíveis em ações, da Escritura ${escrituraNome}, da série ${serieIdentificacao}, no valor nominal unitário de R$ ${valorUnitarioFmt} (${valorExtensoCompleto}) e demais características especificadas na Escritura de Emissão ${escrituraNome}, confere a ${debenturistaNome} os direitos que a Lei e a Escritura de Emissão lhes asseguram.`
 
-    // Renderiza parágrafo principal em Times-Roman / Helvetica justificado elegante
-    const mainFontSize = 8.5
-    const mainLineHeight = 13.5
+    // Renderiza parágrafo principal em Times-Roman justificado elegante
+    const mainFontSize = 8
+    const mainLineHeight = 11.5
     curY = drawParagraphInBox(
       textoPrincipal,
       contentMarginLeft,
@@ -567,51 +579,103 @@ Deno.serve(async (req: Request) => {
       mainLineHeight,
     )
 
-    curY -= 12
+    curY -= 8
 
     // BLOCO 5: Frase de Registro na Junta Comercial (Itálico/Aspas)
-    // “Escritura de emissão registrada na Junta Comercial do Estado de SC em 05/06/25, sob o nº ED009857000”
     page.drawText(fraseRegistro, {
       x: contentMarginLeft,
       y: curY,
       font: fontTimesItalic,
-      size: 8.5,
+      size: 8,
       color: rgb(0.15, 0.15, 0.15),
     })
 
-    curY -= 36
+    curY -= 16
 
     // BLOCO 6: Local e Data (Centralizado)
-    // CRICIÚMA(SC), 8 de Janeiro de 2026
-    const dataW = fontTimes.widthOfTextAtSize(rodapeLocalData, 9)
+    const dataW = fontTimes.widthOfTextAtSize(rodapeLocalData, 8.5)
     page.drawText(rodapeLocalData, {
       x: (pageWidth - dataW) / 2,
       y: curY,
       font: fontTimes,
-      size: 9,
+      size: 8.5,
       color: rgb(0.15, 0.15, 0.15),
     })
 
-    curY -= 48
+    curY -= 16
 
-    // BLOCO 7: Linha de Assinatura da Securitizadora
-    // SEA CONNECTION INVESTIMENTOS SA
-    const signLineW = 260
-    const signLineX = (pageWidth - signLineW) / 2
+    // BLOCO 7: BLOCO DE ASSINATURA ELETRÔNICA QUALIFICADA (Padrão Idêntico ao Contrato)
+    const signBoxHeight = 145
+    const signBoxY = curY - signBoxHeight
+
+    page.drawRectangle({
+      x: contentMarginLeft,
+      y: signBoxY,
+      width: contentWidth,
+      height: signBoxHeight,
+      color: rgb(0.97, 0.98, 1.0),
+      borderColor: rgb(0.65, 0.75, 0.9),
+      borderWidth: 1,
+    })
+
+    page.drawText('FORMALIZAÇÃO E ASSINATURA ELETRÔNICA QUALIFICADA', {
+      x: contentMarginLeft + 14,
+      y: curY - 18,
+      font: fontBold,
+      size: 9.5,
+      color: rgb(0.08, 0.18, 0.36),
+    })
+
+    const infoSign = [
+      `Assinado digitalmente nos termos do art. 10, § 2º da Medida Provisória nº 2.200-2/2001 e da Lei Federal nº 14.063/2020.`,
+      `Data e Local da Celebração: ${secCidadeRaw}/${secUfRaw}, ${dataCelebracaoFmt}.`,
+      `Data/Hora do Aceite Eletrônico: ${dataHoraFmt} (Horário de Brasília).`,
+      `Endereço IP Registrado: ${ipAddress || 'Conexão Autenticada via Plataforma Web/SSL'}.`,
+      `Código Identificador do Aporte: ${inv.id}`,
+      `Hash de Autenticidade Escritural: SHA256-${inv.id.replace(/-/g, '').substring(0, 24).toUpperCase()}`,
+    ]
+
+    let signTextY = curY - 34
+    for (const line of infoSign) {
+      page.drawText(line, {
+        x: contentMarginLeft + 14,
+        y: signTextY,
+        font: font,
+        size: 7.8,
+        color: rgb(0.2, 0.25, 0.35),
+      })
+      signTextY -= 11.5
+    }
+
+    // Linhas de assinatura dos representantes e debenturista
+    signTextY -= 10
+    const halfWidth = (contentWidth - 40) / 2
     page.drawLine({
-      start: { x: signLineX, y: curY },
-      end: { x: signLineX + signLineW, y: curY },
+      start: { x: contentMarginLeft + 14, y: signTextY },
+      end: { x: contentMarginLeft + 14 + halfWidth, y: signTextY },
       thickness: 0.8,
       color: rgb(0.3, 0.3, 0.3),
     })
-    curY -= 14
+    page.drawLine({
+      start: { x: contentMarginLeft + 28 + halfWidth, y: signTextY },
+      end: { x: contentMarginLeft + 28 + halfWidth * 2, y: signTextY },
+      thickness: 0.8,
+      color: rgb(0.3, 0.3, 0.3),
+    })
 
-    const signCompanyW = fontTimesBold.widthOfTextAtSize(secRazao, 8.5)
-    page.drawText(secRazao, {
-      x: (pageWidth - signCompanyW) / 2,
-      y: curY,
-      font: fontTimesBold,
-      size: 8.5,
+    page.drawText(`${secRazaoOriginal}\n${secRepNome} - ${secRepCargo}`, {
+      x: contentMarginLeft + 14,
+      y: signTextY - 12,
+      font: fontBold,
+      size: 7.5,
+      color: rgb(0.1, 0.1, 0.1),
+    })
+
+    page.drawText(`${invNomeOriginal}\nDebenturista - CPF/CNPJ: ${invDocumento}`, {
+      x: contentMarginLeft + 28 + halfWidth,
+      y: signTextY - 12,
+      font: fontBold,
+      size: 7.5,
       color: rgb(0.1, 0.1, 0.1),
     })
 

@@ -117,6 +117,15 @@ export default function Investments() {
         body: { investmentId: inv.id, ipAddress: 'Registrado via Plataforma' },
       })
 
+      // Pré-gera a Cautela de Debêntures com o mesmo registro de IP/autenticação
+      try {
+        await supabase.functions.invoke('generate-debenture-cautela', {
+          body: { investmentId: inv.id, ipAddress: 'Registrado via Plataforma' },
+        })
+      } catch (cautelaErr) {
+        console.warn('Emissão antecipada da cautela falhou, será gerada sob demanda:', cautelaErr)
+      }
+
       toast.success('Termo assinado digitalmente! Redirecionando para pagamento...')
       navigate(`/investments/checkout/${inv.id}`)
     } catch (err: any) {
