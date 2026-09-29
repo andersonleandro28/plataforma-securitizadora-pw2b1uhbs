@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import {
   Table,
@@ -64,6 +64,26 @@ export default function CcbPurchases() {
 
   const [installmentsOpen, setInstallmentsOpen] = useState(false)
   const [selectedPurchase, setSelectedPurchase] = useState<any>(null)
+
+  // Lista de boletos da CCB selecionada, com o índice original preserved e ordenados cronologicamente por vencimento vigente
+  const sortedSelectedBoletos = useMemo(() => {
+    if (!selectedPurchase?.boletos || !Array.isArray(selectedPurchase.boletos)) {
+      return []
+    }
+    return selectedPurchase.boletos
+      .map((b: any, originalIndex: number) => ({
+        ...b,
+        _originalIndex: originalIndex,
+      }))
+      .sort((a: any, b: any) => {
+        const dateA = a.due_date || a.dueDate || ''
+        const dateB = b.due_date || b.dueDate || ''
+        if (dateA !== dateB) {
+          return dateA.localeCompare(dateB)
+        }
+        return a._originalIndex - b._originalIndex
+      })
+  }, [selectedPurchase])
 
   const [liquidationOpen, setLiquidationOpen] = useState(false)
   const [liquidationForm, setLiquidationForm] = useState({
@@ -1006,72 +1026,80 @@ export default function CcbPurchases() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {selectedPurchase?.boletos?.map((b: any, i: number) => (
-                  <TableRow key={i}>
-                    <TableCell>{i + 1}</TableCell>
-                    <TableCell>{formatDate(b.due_date)}</TableCell>
-                    <TableCell>
-                      R${' '}
-                      {Number(b.unit_value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </TableCell>
-                    <TableCell>
-                      {b.status === 'Pago' ? (
-                        <span className="text-emerald-600 font-medium text-sm flex items-center gap-1">
-                          <CheckCircle className="w-3 h-3" /> Pago
-                        </span>
-                      ) : (
-                        <span className="text-amber-600 font-medium text-sm">
-                          {b.status || 'Pendente'}
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {b.status === 'Pago' ? (
-                        isAdminOrStaff && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-amber-700 border-amber-300 hover:bg-amber-50 hover:text-amber-800 gap-1"
-                            onClick={() => handleOpenRevertModal(selectedPurchase.id, i, b)}
-                            title="Reverter baixa e estornar receita do caixa"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" /> Reverter Baixa
-                          </Button>
-                        )
-                      ) : (
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-primary/30 text-primary hover:bg-primary/10 gap-1"
-                            onClick={() => handleOpenExtensionModal(selectedPurchase, i, b)}
-                            title="Prorrogar vencimento com recálculo de juros"
-                          >
-                            <CalendarClock className="w-3.5 h-3.5" /> Prorrogar
-                          </Button>
-                          <Button
-                            size="sm"
-                            className="bg-emerald-600 hover:bg-emerald-700"
-                            onClick={() => {
-                              const defaultDate =
-                                b.due_date || new Date().toISOString().split('T')[0]
-                              setLiquidationForm({
-                                idx: i,
-                                payment_date: defaultDate,
-                                interest: '',
-                                penalty: '',
-                                bank_account_id: b.bank_account_id || '',
-                              })
-                              setLiquidationOpen(true)
-                            }}
-                          >
-                            Dar Baixa
-                          </Button>
-                        </div>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {sortedSelectedBoletos.map((b: any, displayIdx: number) => {
+                  const originalIdx = b._originalIndex ?? displayIdx
+                  const effectiveDueDate = b.due_date || b.dueDate
+                  return (
+                    <TableRow key={originalIdx}>
+                      <TableCell>{displayIdx + 1}</TableCell>
+                      <TableCell>{formatDate(effectiveDueDate)}</TableCell>
+                      <TableCell>
+                        R${' '}
+                        {Number(b.unit_value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell>
+                        {b.status === 'Pago' ? (
+                          <span className="text-emerald-600 font-medium text-sm flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3" /> Pago
+                          </span>
+                        ) : (
+                          <span className="text-amber-600 font-medium text-sm">
+                            {b.status || 'Pendente'}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {b.status === 'Pago' ? (
+                          isAdminOrStaff && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-amber-700 border-amber-300 hover:bg-amber-50 hover:text-amber-800 gap-1"
+                              onClick={() =>
+                                handleOpenRevertModal(selectedPurchase.id, originalIdx, b)
+                              }
+                              title="Reverter baixa e estornar receita do caixa"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" /> Reverter Baixa
+                            </Button>
+                          )
+                        ) : (
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-primary/30 text-primary hover:bg-primary/10 gap-1"
+                              onClick={() =>
+                                handleOpenExtensionModal(selectedPurchase, originalIdx, b)
+                              }
+                              title="Prorrogar vencimento com recálculo de juros"
+                            >
+                              <CalendarClock className="w-3.5 h-3.5" /> Prorrogar
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="bg-emerald-600 hover:bg-emerald-700"
+                              onClick={() => {
+                                const defaultDate =
+                                  effectiveDueDate || new Date().toISOString().split('T')[0]
+                                setLiquidationForm({
+                                  idx: originalIdx,
+                                  payment_date: defaultDate,
+                                  interest: '',
+                                  penalty: '',
+                                  bank_account_id: b.bank_account_id || '',
+                                })
+                                setLiquidationOpen(true)
+                              }}
+                            >
+                              Dar Baixa
+                            </Button>
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
           </div>
