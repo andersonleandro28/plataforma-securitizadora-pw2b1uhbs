@@ -222,9 +222,9 @@ export function InvestorYieldsReportTab({ embedded = false }: InvestorYieldsRepo
           `
           id, investor_name, document_number, total_amount, subscription_date,
           created_at, status, investment_id, series_id,
-          investments (
+          investments!debenture_subscriptions_investment_id_fkey (
             id, status, user_id, quotas, redeemed_quotas, unit_price, total_value, transfer_date, created_at,
-            profiles ( id, full_name, document_number ),
+            profiles!investments_user_id_fkey ( id, full_name, document_number ),
             investment_products ( id, title, type, rate, term, yield_split_pct, interest_type, quota_value )
           )
           `,

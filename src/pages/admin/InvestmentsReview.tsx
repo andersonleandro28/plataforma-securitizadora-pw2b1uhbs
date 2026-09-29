@@ -853,6 +853,7 @@ export default function InvestmentsReview() {
                     <TableHead>Valor / Cotas</TableHead>
                     <TableHead>Data Transferência</TableHead>
                     <TableHead>Carência / Liberação Saque</TableHead>
+                    <TableHead>Autorização do Investidor</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
@@ -985,6 +986,59 @@ export default function InvestmentsReview() {
                                 className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[11px]"
                               >
                                 Sem carência
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {inv.is_internal_admin ? (
+                              inv.investor_authorization_status === 'accepted' ? (
+                                <div className="space-y-0.5">
+                                  <Badge
+                                    variant="outline"
+                                    className="bg-emerald-50 text-emerald-800 border-emerald-300 gap-1 text-[11px]"
+                                  >
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                    Aceito
+                                  </Badge>
+                                  {inv.investor_accepted_at && (
+                                    <div className="text-[10px] text-muted-foreground">
+                                      {formatDate(inv.investor_accepted_at)}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : inv.investor_authorization_status === 'revision_requested' ? (
+                                <div className="space-y-0.5">
+                                  <Badge
+                                    variant="outline"
+                                    className="bg-amber-50 text-amber-900 border-amber-400 gap-1 text-[11px]"
+                                  >
+                                    <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                    Revisão solicitada
+                                  </Badge>
+                                  {inv.investor_accepted_note && (
+                                    <p
+                                      className="text-[10px] text-amber-800 dark:text-amber-300 line-clamp-1 max-w-[140px] cursor-help"
+                                      title={inv.investor_accepted_note}
+                                    >
+                                      &quot;{inv.investor_accepted_note}&quot;
+                                    </p>
+                                  )}
+                                </div>
+                              ) : (
+                                <Badge
+                                  variant="outline"
+                                  className="bg-amber-100 text-amber-900 border-amber-400 gap-1 text-[11px] animate-pulse"
+                                >
+                                  <Clock className="w-3 h-3 text-amber-700" />
+                                  Aguardando aceite
+                                </Badge>
+                              )
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="text-muted-foreground border-dashed text-[11px]"
+                              >
+                                Realizado pelo cliente
                               </Badge>
                             )}
                           </TableCell>
@@ -1165,7 +1219,7 @@ export default function InvestmentsReview() {
                     })}
                   {investments.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                         Nenhum aporte encontrado.
                       </TableCell>
                     </TableRow>

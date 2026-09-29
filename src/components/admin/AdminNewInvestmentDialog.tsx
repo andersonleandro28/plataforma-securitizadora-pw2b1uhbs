@@ -262,6 +262,7 @@ export function AdminNewInvestmentDialog({
           transfer_value: totalValue,
           is_internal_admin: true,
           created_by_admin: user?.id || null,
+          investor_authorization_status: 'pending',
         })
         .select()
         .single()
@@ -622,13 +623,14 @@ export function AdminNewInvestmentDialog({
             <Alert className="bg-blue-50 border-blue-200 text-blue-900">
               <CheckCircle2 className="h-4 w-4 text-blue-600" />
               <AlertTitle className="text-blue-800 font-semibold">
-                Revisão do Lançamento Interno
+                Revisão do Lançamento Interno com Pendência de Autorização
               </AlertTitle>
-              <AlertDescription className="text-xs text-blue-700 mt-1">
+              <AlertDescription className="text-xs text-blue-700 mt-1 leading-relaxed">
                 Ao confirmar, o sistema registrará o aporte com o selo{' '}
-                <strong>Lançamento interno</strong>, formalizará o Termo de Subscrição com o bloco
-                de assinatura eletrônica qualificada, emitirá a cautela de debêntures e enviará
-                notificação ao investidor.
+                <strong>Lançamento interno</strong>, formalizará o Termo de Subscrição preliminar e
+                a cautela. O aporte entrará como{' '}
+                <strong>&quot;Aguardando autorização do investidor&quot;</strong> e o cliente será
+                notificado no painel dele para ler o contrato e confirmar o aceite expresso formal.
               </AlertDescription>
             </Alert>
 
@@ -674,6 +676,13 @@ export function AdminNewInvestmentDialog({
                 <span className="text-muted-foreground">Origem do Registro:</span>
                 <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
                   Lançamento interno pelo admin
+                </Badge>
+              </div>
+
+              <div className="flex justify-between py-1 border-b">
+                <span className="text-muted-foreground">Status de Autorização Inicial:</span>
+                <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300">
+                  Aguardando aceite do investidor
                 </Badge>
               </div>
 

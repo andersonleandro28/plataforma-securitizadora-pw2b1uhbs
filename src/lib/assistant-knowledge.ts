@@ -644,6 +644,47 @@ export const KNOWLEDGE_BASE: KnowledgeTopic[] = [
   // INVESTIDOR
   // ==========================================
   {
+    id: 'investor-autorizacao-lancamento-interno',
+    title: 'Investidor: Como Autorizar Investimento Lançado Internamente pelo Admin',
+    roles: ['investor', 'admin', 'staff'],
+    category: 'investor',
+    navigationPath:
+      'Menu lateral > Dashboard > Card/Banner "Autorização de Investimento Pendente" ou listagem de Aportes',
+    keywords: [
+      'autorizar investimento',
+      'autorizacao investidor',
+      'aceite lancamento interno',
+      'confirmar aporte',
+      'aceite aporte admin',
+      'lancamento interno',
+      'aguardando autorizacao',
+      'solicitar revisao',
+      'contestar aporte',
+      'termo de subscricao interno',
+      'aceite do investidor',
+      'aceite',
+    ],
+    summary:
+      'Fluxo obrigatório em que o investidor confere o contrato e autoriza expressamente um aporte em debêntures lançado internamente pela administração.',
+    steps: [
+      'Quando a administração lança um investimento para você internamente, um card/banner âmbar em destaque surge no topo do seu "Dashboard do Investidor" indicando "Autorização de Investimento Pendente".',
+      'Clique no botão "Revisar e Autorizar Aporte" no banner, ou no botão "Autorizar Investimento" no card do aporte com o selo "Aguardando sua autorização".',
+      'O sistema abre o diálogo "Autorização de Investimento Lançado", apresentando o produto, valor total, quantidade de cotas, rentabilidade contratual e carência mínima.',
+      'LEITURA PRÉVIA DO CONTRATO: Clique no botão "Ver Contrato (PDF)" para abrir e ler o Termo de Subscrição de Debêntures gerado na íntegra por dentro da plataforma (imune a bloqueadores).',
+      'PARA CONFIRMAR O ACEITE: Marque a caixa de declaração de ciência e clique em "Confirmar Aceite e Autorizar". O sistema registra o carimbo temporal oficial e seu endereço de conexão autenticado (MP 2.200-2/2001 e Lei 14.063/2020), atualizando o status para "Aceito pelo investidor em DD/MM/AAAA".',
+      'SE NÃO RECONHECER OU DESEJAR AJUSTES: Clique no link "Não reconhece este investimento ou deseja retificação? Solicitar revisão", descreva a divergência no campo de texto e clique em "Enviar Solicitação de Revisão". Uma notificação prioritária é enviada para os administradores revisarem o caso sem alterar seus saldos financeiros de forma indevida.',
+    ],
+    tips: [
+      'A confirmação do aceite consolida a regularidade contratual do aporte em sua carteira.',
+      'A solicitação de revisão não estorna valores automaticamente, garantindo segurança patrimonial para ambas as partes.',
+    ],
+    relatedTopicIds: [
+      'investor-contrato-cautela',
+      'admin-investimentos-aportes',
+      'transversal-assinatura-eletronica',
+    ],
+  },
+  {
     id: 'investor-checkout',
     title: 'Investidor: Como Fazer um Investimento e Enviar Comprovante (Checkout)',
     roles: ['investor'],
@@ -1023,6 +1064,10 @@ export const KNOWLEDGE_BASE: KnowledgeTopic[] = [
 export const FREQUENT_QUESTIONS_BY_ROLE: Record<string, { label: string; query: string }[]> = {
   admin: [
     {
+      label: 'Autorização de Aportes Internos',
+      query: 'como funciona a autorizacao do cliente pos lancamento interno e status de aceite?',
+    },
+    {
       label: 'Recebíveis a Receber',
       query: 'onde vejo o relatorio de recebiveis a receber antecipacoes e ccbs?',
     },
@@ -1094,6 +1139,10 @@ export const FREQUENT_QUESTIONS_BY_ROLE: Record<string, { label: string; query: 
     },
   ],
   investor: [
+    {
+      label: 'Autorizar Investimento do Admin',
+      query: 'como autorizo um investimento lancado pelo admin e confirmo meu aceite?',
+    },
     {
       label: 'Como Fazer um Aporte',
       query: 'como investir e enviar o comprovante de transferencia?',
@@ -1234,6 +1283,15 @@ export function searchKnowledgeBase(userQuery: string, userRole?: string): Assis
     }
 
     // Casos especiais específicos citados na tarefa
+    if (
+      (normalizedQuery.includes('autoriz') ||
+        normalizedQuery.includes('aceite') ||
+        normalizedQuery.includes('pos lancamento') ||
+        normalizedQuery.includes('lancado pelo admin')) &&
+      topic.id === 'investor-autorizacao-lancamento-interno'
+    ) {
+      score += 45
+    }
     if (
       normalizedQuery.includes('pago') &&
       normalizedQuery.includes('limite') &&

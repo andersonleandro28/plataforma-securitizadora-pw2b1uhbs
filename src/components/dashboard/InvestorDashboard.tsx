@@ -44,9 +44,10 @@ import { evaluateGracePeriod } from '@/lib/redemption-utils'
 import { InvestorRedemptionDialog } from '@/components/investor/InvestorRedemptionDialog'
 import { getOrGenerateSubscriptionContract } from '@/services/subscription-contract'
 import { getOrGenerateDebentureCautela } from '@/services/debenture-cautela'
-import { Award } from 'lucide-react'
+import { Award, CheckCircle2, AlertTriangle, ShieldCheck } from 'lucide-react'
 import { InvestorRedemptionStatement } from '@/components/investor/InvestorRedemptionStatement'
 import { InvestorTaxReport } from '@/components/investor/InvestorTaxReport'
+import { InvestorAuthorizationDialog } from '@/components/investor/InvestorAuthorizationDialog'
 
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0)
@@ -89,6 +90,7 @@ interface InvestmentListProps {
   pendingRedemptionsByInv?: Record<string, number>
   onOpenRedeemModal?: (inv: any) => void
   onContractGenerated?: () => void
+  onAuthorizeInvestment?: (inv: any) => void
 }
 
 function InvestmentList({
@@ -96,6 +98,7 @@ function InvestmentList({
   pendingRedemptionsByInv = {},
   onOpenRedeemModal,
   onContractGenerated,
+  onAuthorizeInvestment,
 }: InvestmentListProps) {
   const [loadingContractId, setLoadingContractId] = useState<string | null>(null)
   const [loadingCautelaId, setLoadingCautelaId] = useState<string | null>(null)
@@ -188,6 +191,41 @@ function InvestmentList({
                     </Badge>
                   )}
                   {getStatusBadge(inv.status)}
+                  {inv.is_internal_admin &&
+                    (inv.investor_authorization_status === 'accepted' ? (
+                      <Badge
+                        variant="outline"
+                        className="bg-emerald-50 text-emerald-800 border-emerald-300 gap-1 text-[11px]"
+                        title={
+                          inv.investor_accepted_at
+                            ? `Aceito em ${formatDate(inv.investor_accepted_at)}`
+                            : 'Aceito pelo investidor'
+                        }
+                      >
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        Aceito pelo investidor
+                        {inv.investor_accepted_at
+                          ? ` em ${formatDate(inv.investor_accepted_at)}`
+                          : ''}
+                      </Badge>
+                    ) : inv.investor_authorization_status === 'revision_requested' ? (
+                      <Badge
+                        variant="outline"
+                        className="bg-amber-50 text-amber-800 border-amber-400 gap-1 text-[11px]"
+                        title={inv.investor_accepted_note || 'Revisão solicitada'}
+                      >
+                        <AlertTriangle className="w-3 h-3 text-amber-600" />
+                        Revisão solicitada
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="bg-amber-100 text-amber-900 border-amber-400 font-semibold gap-1 text-[11px] animate-pulse"
+                      >
+                        <Clock className="w-3 h-3 text-amber-700" />
+                        Aguardando sua autorização
+                      </Badge>
+                    ))}
                 </div>
               </div>
             </CardHeader>
@@ -327,6 +365,57 @@ function InvestmentList({
                 </div>
               )}
 
+              {/* Alerta / Barra de Ação de Autorização para Lançamento Interno */}
+              {inv.is_internal_admin && inv.investor_authorization_status !== 'accepted' && (
+                <div
+                  className={`p-3 rounded-md border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+                    inv.investor_authorization_status === 'revision_requested'
+                      ? 'bg-amber-50/70 border-amber-200 text-amber-950 dark:bg-amber-950/20 dark:text-amber-300'
+                      : 'bg-amber-500/10 border-amber-500/30 text-amber-950 dark:bg-amber-950/30 dark:text-amber-200'
+                  }`}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangle className="w-4 h-4 mt-0.5 text-amber-600 shrink-0" />
+                    <div>
+                      <p className="text-xs font-semibold">
+                        {inv.investor_authorization_status === 'revision_requested'
+                          ? 'Solicitação de revisão registrada'
+                          : 'Aporte lançado internamente pela administração: confirmação necessária'}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {inv.investor_authorization_status === 'revision_requested'
+                          ? `A administração foi notificada. Observação: "${inv.investor_accepted_note || '-'}"`
+                          : 'Para sua segurança e validade do contrato, revise os termos e registre o seu aceite expresso.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    {onAuthorizeInvestment && (
+                      <Button
+                        size="sm"
+                        variant={
+                          inv.investor_authorization_status === 'revision_requested'
+                            ? 'outline'
+                            : 'default'
+                        }
+                        className={`text-xs gap-1.5 ${
+                          inv.investor_authorization_status !== 'revision_requested'
+                            ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                            : ''
+                        }`}
+                        onClick={() => onAuthorizeInvestment(inv)}
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        {inv.investor_authorization_status === 'revision_requested'
+                          ? 'Revisar / Autorizar'
+                          : 'Autorizar Investimento'}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Barra de Ação: Botão Solicitar Saque */}
               {isApproved && onOpenRedeemModal && (
                 <div className="flex items-center justify-between pt-1 border-t">
@@ -373,6 +462,15 @@ export function InvestorDashboard() {
   // Estado do modal de resgate
   const [redeemModalOpen, setRedeemModalOpen] = useState(false)
   const [selectedInvestmentForRedeem, setSelectedInvestmentForRedeem] = useState<any | null>(null)
+
+  // Estado do modal de autorização do investidor para aportes internos
+  const [authModalOpen, setAuthModalOpen] = useState(false)
+  const [selectedInvestmentForAuth, setSelectedInvestmentForAuth] = useState<any | null>(null)
+
+  const handleOpenAuthModal = (inv: any) => {
+    setSelectedInvestmentForAuth(inv)
+    setAuthModalOpen(true)
+  }
 
   const fetchData = useCallback(async () => {
     if (!user) return
@@ -486,6 +584,18 @@ export function InvestorDashboard() {
     const remainingQuotas = Math.max(0, Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0))
     return remainingQuotas > 0
   })
+
+  // Aportes lançados internamente pendentes de confirmação do investidor
+  const pendingAuthorizationInvestments = useMemo(() => {
+    return investments.filter(
+      (inv) =>
+        inv.is_internal_admin &&
+        inv.status !== 'cancelled' &&
+        inv.status !== 'rejected' &&
+        inv.status !== 'Excluído' &&
+        inv.investor_authorization_status !== 'accepted',
+    )
+  }, [investments])
 
   // Aportes resgatados: status 'resgatado' ou cotas remanescentes zeradas com resgate registrado
   const redeemedInvestments = investments.filter((inv) => {
@@ -647,6 +757,44 @@ export function InvestorDashboard() {
         </Button>
       </div>
 
+      {/* Banner de destaque caso existam lançamentos internos pendentes de autorização */}
+      {pendingAuthorizationInvestments.length > 0 && (
+        <Card className="border-amber-400 bg-amber-500/10 shadow-sm animate-fade-in-up">
+          <CardContent className="p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5">
+                <Clock className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="font-semibold text-amber-950 dark:text-amber-200 text-sm sm:text-base">
+                    Autorização de Investimento Pendente ({pendingAuthorizationInvestments.length})
+                  </h3>
+                  <Badge
+                    variant="outline"
+                    className="bg-amber-100 text-amber-800 border-amber-300 text-xs"
+                  >
+                    Ação Necessária
+                  </Badge>
+                </div>
+                <p className="text-xs sm:text-sm text-amber-900/80 dark:text-amber-300/80 leading-relaxed max-w-2xl">
+                  A administração realizou o lançamento de debêntures em seu nome. Confira o Termo
+                  de Subscrição emitido e confirme seu aceite para consolidar a titularidade oficial
+                  do aporte.
+                </p>
+              </div>
+            </div>
+            <Button
+              className="gap-2 bg-amber-600 hover:bg-amber-700 text-white w-full sm:w-auto shrink-0 shadow"
+              onClick={() => handleOpenAuthModal(pendingAuthorizationInvestments[0])}
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              Revisar e Autorizar Aporte
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -797,11 +945,16 @@ export function InvestorDashboard() {
                 pendingRedemptionsByInv={pendingRedemptionsByInv}
                 onOpenRedeemModal={handleOpenRedeemModal}
                 onContractGenerated={fetchData}
+                onAuthorizeInvestment={handleOpenAuthModal}
               />
             </TabsContent>
 
             <TabsContent value="resgatados" className="m-0">
-              <InvestmentList data={redeemedInvestments} onContractGenerated={fetchData} />
+              <InvestmentList
+                data={redeemedInvestments}
+                onContractGenerated={fetchData}
+                onAuthorizeInvestment={handleOpenAuthModal}
+              />
             </TabsContent>
 
             <TabsContent value="extrato-resgates" className="m-0">
@@ -827,7 +980,11 @@ export function InvestorDashboard() {
             </TabsContent>
 
             <TabsContent value="cancelados" className="m-0">
-              <InvestmentList data={cancelledInvestments} onContractGenerated={fetchData} />
+              <InvestmentList
+                data={cancelledInvestments}
+                onContractGenerated={fetchData}
+                onAuthorizeInvestment={handleOpenAuthModal}
+              />
             </TabsContent>
           </div>
         </Tabs>
@@ -848,6 +1005,14 @@ export function InvestorDashboard() {
             ? pendingRedemptionsByInv[selectedInvestmentForRedeem.id] || 0
             : 0
         }
+        onSuccess={fetchData}
+      />
+
+      {/* Dialog de Autorização / Aceite Pós-Lançamento do Investidor */}
+      <InvestorAuthorizationDialog
+        open={authModalOpen}
+        onOpenChange={setAuthModalOpen}
+        investment={selectedInvestmentForAuth}
         onSuccess={fetchData}
       />
     </div>
