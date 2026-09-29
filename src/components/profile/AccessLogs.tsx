@@ -20,17 +20,17 @@ export function AccessLogs() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!user) return
-    supabase
-      .from('access_logs')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(10)
-      .then(({ data }) => {
-        if (data) setLogs(data)
-        setLoading(false)
-      })
+    if (!user)
+      return supabase
+        .from('access_logs')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(10)
+        .then(({ data }) => {
+          if (data) setLogs(data)
+          setLoading(false)
+        })
   }, [user])
 
   const exportCSV = () => {
@@ -56,22 +56,46 @@ export function AccessLogs() {
     const printWindow = window.open('', '', 'width=800,height=600')
     if (!printWindow) return toast.error('Permita pop-ups para gerar o PDF.')
 
+    const docTitle = `Relatório de Auditoria de Acessos — Nexum Security 360º`
     const html = `
-      <html><head><title>Relatório de Acessos</title>
-      <style>body{font-family:sans-serif;padding:20px;color:#333}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{border:1px solid #ddd;padding:10px;text-align:left}th{background:#f5f5f5}</style>
-      </head><body>
-      <h2>Relatório de Auditoria de Acessos</h2>
-      <p>Gerado em: ${new Date().toLocaleString('pt-BR')}</p>
-      <table><thead><tr><th>Data</th><th>Hora</th><th>Evento</th></tr></thead><tbody>
-      ${logs
-        .map((l) => {
-          const d = new Date(l.created_at)
-          return `<tr><td>${d.toLocaleDateString('pt-BR')}</td><td>${d.toLocaleTimeString('pt-BR')}</td><td>Login detectado</td></tr>`
-        })
-        .join('')}
-      </tbody></table>
-      <script>window.onload = () => { window.print(); window.close(); }</script>
-      </body></html>
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="utf-8" />
+        <title>${docTitle}</title>
+        <style>
+          body{font-family:sans-serif;padding:20px;color:#333}
+          table{width:100%;border-collapse:collapse;margin-top:20px}
+          th,td{border:1px solid #ddd;padding:10px;text-align:left}
+          th{background:#f5f5f5}
+          @media print { body { padding: 0; } }
+        </style>
+      </head>
+      <body>
+        <h2>Relatório de Auditoria de Acessos</h2>
+        <p>Gerado em: ${new Date().toLocaleString('pt-BR')}</p>
+        <table>
+          <thead><tr><th>Data</th><th>Hora</th><th>Evento</th></tr></thead>
+          <tbody>
+            ${logs
+              .map((l) => {
+                const d = new Date(l.created_at)
+                return `<tr><td>${d.toLocaleDateString('pt-BR')}</td><td>${d.toLocaleTimeString('pt-BR')}</td><td>Login detectado</td></tr>`
+              })
+              .join('')}
+          </tbody>
+        </table>
+        <script>
+          document.title = ${JSON.stringify(docTitle)};
+          window.onload = () => {
+            document.title = ${JSON.stringify(docTitle)};
+            window.focus();
+            window.print();
+            window.close();
+          };
+        </script>
+      </body>
+      </html>
     `
     printWindow.document.write(html)
     printWindow.document.close()

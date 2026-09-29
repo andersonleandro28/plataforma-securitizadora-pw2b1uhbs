@@ -235,7 +235,7 @@ export function UnifiedReportTab() {
   const handlePrint = useCallback(async () => {
     if (!printContainerRef.current) return
     setIsPrinting(true)
-    const unifiedDocTitle = `Relatório Financeiro & Operacional Unificado - ${selectedMonthLabel}`
+    const unifiedDocTitle = `Relatório Financeiro & Operacional Unificado — ${selectedMonthLabel}`
     try {
       await printIsolatedUnifiedReport(printContainerRef.current, {
         title: unifiedDocTitle,

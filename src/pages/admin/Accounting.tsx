@@ -181,7 +181,7 @@ export default function Accounting() {
   const handlePrintPDF = () => {
     const datesPart =
       periodoInicio && periodoFim
-        ? ` - ${new Date(periodoInicio + 'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(periodoFim + 'T00:00:00').toLocaleDateString('pt-BR')}`
+        ? ` — ${new Date(periodoInicio + 'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(periodoFim + 'T00:00:00').toLocaleDateString('pt-BR')}`
         : ''
     const reportTitle = `Livro Caixa Contábil${datesPart}`
     printWithReportTitle(reportTitle)

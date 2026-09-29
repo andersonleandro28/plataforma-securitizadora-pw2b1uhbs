@@ -285,8 +285,8 @@ export function BankMovementExtractReportTab({
   }, [displayList, selectedAccountId, selectedAccount, selectedMonth])
 
   const handlePrint = useCallback(() => {
-    const periodPart = selectedMonth !== 'todos' ? ` - ${selectedMonthLabel}` : ''
-    const accountPart = selectedAccount ? ` - ${selectedAccount.bank_name}` : ''
+    const periodPart = selectedMonth !== 'todos' ? ` — ${selectedMonthLabel}` : ''
+    const accountPart = selectedAccount ? ` — ${selectedAccount.bank_name}` : ''
     const reportTitle = `Extrato de Movimentações Bancárias${periodPart}${accountPart}`
     printWithReportTitle(reportTitle)
   }, [selectedMonth, selectedMonthLabel, selectedAccount])

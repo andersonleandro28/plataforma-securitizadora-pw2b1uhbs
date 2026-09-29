@@ -578,24 +578,37 @@ export function printIsolatedUnifiedReport(
 
         // Foco e acionamento no contexto isolado do iframe, garantindo document.title da janela principal temporariamente sincronizado
         const originalDocTitle = document.title
+        const isBrandedTitle = /skip|adapta/i.test(originalDocTitle)
+        const safeFallbackTitle = isBrandedTitle
+          ? 'Nexum Security 360º'
+          : originalDocTitle || 'Nexum Security 360º'
         const desiredTitle = options.title || 'Relatório Financeiro & Operacional Unificado'
+
         try {
           document.title = desiredTitle
+          if (iframeDoc) {
+            iframeDoc.title = desiredTitle
+          }
         } catch {
           // ignore
         }
 
+        let titleRestored = false
         const restoreParentTitle = () => {
+          if (titleRestored) return
+          titleRestored = true
           try {
-            document.title = originalDocTitle
+            document.title = safeFallbackTitle
           } catch {
             // ignore
           }
           cw.removeEventListener('afterprint', restoreParentTitle)
+          window.removeEventListener('afterprint', restoreParentTitle)
         }
 
         cw.addEventListener('afterprint', restoreParentTitle, { once: true })
-        setTimeout(restoreParentTitle, 2000)
+        window.addEventListener('afterprint', restoreParentTitle, { once: true })
+        setTimeout(restoreParentTitle, 5000)
 
         cw.focus()
         try {

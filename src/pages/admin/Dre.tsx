@@ -125,7 +125,7 @@ export default function Dre() {
       modoPeriodo === 'mes'
         ? `${MESES[Number(mes)]}/${ano}`
         : `${new Date(periodoInicio + 'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(periodoFim + 'T00:00:00').toLocaleDateString('pt-BR')}`
-    const reportTitle = `DRE - Demonstração do Resultado do Exercício - ${periodLabel}`
+    const reportTitle = `DRE — Demonstração do Resultado do Exercício — ${periodLabel}`
     printWithReportTitle(reportTitle)
   }
 

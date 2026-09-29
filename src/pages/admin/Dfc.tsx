@@ -143,7 +143,7 @@ export default function Dfc() {
       modoPeriodo === 'mes'
         ? `${MESES[Number(mes)]}/${ano}`
         : `${new Date(periodoInicio + 'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(periodoFim + 'T00:00:00').toLocaleDateString('pt-BR')}`
-    const reportTitle = `DFC - Demonstração dos Fluxos de Caixa - ${periodLabel}`
+    const reportTitle = `DFC — Demonstração dos Fluxos de Caixa — ${periodLabel}`
     printWithReportTitle(reportTitle)
   }
 

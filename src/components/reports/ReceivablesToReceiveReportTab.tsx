@@ -703,7 +703,7 @@ export function ReceivablesToReceiveReportTab({
 
   const handlePrint = useCallback(() => {
     const reportTitle = activePeriodLabel
-      ? `Recebíveis a Receber - ${activePeriodLabel}`
+      ? `Recebíveis a Receber — ${activePeriodLabel}`
       : 'Recebíveis a Receber'
     printWithReportTitle(reportTitle)
   }, [activePeriodLabel])

@@ -48,35 +48,48 @@ export function printWithReportTitle(
       : titleOrOptions
 
   const cleanTitle = sanitizeFileName(options.title || 'Relatório')
-  const originalTitle = document.title
+  // Se o título atual contiver "Skip" ou "ADAPTA", o título de fallback definitivo nunca deve reutilizá-lo
+  const currentTitle = document.title
+  const isBrandedTitle = /skip|adapta/i.test(currentTitle)
+  const safeFallbackTitle = isBrandedTitle
+    ? 'Nexum Security 360º'
+    : currentTitle || 'Nexum Security 360º'
 
   let restored = false
   const restoreOriginalTitle = () => {
     if (restored) return
     restored = true
     try {
-      document.title = originalTitle
+      document.title = safeFallbackTitle
     } catch (e) {
       console.warn('Falha ao restaurar document.title:', e)
     }
     window.removeEventListener('afterprint', restoreOriginalTitle)
+    window.removeEventListener('beforeprint', ensureReportTitle)
   }
 
-  // 1. Define o título com o nome limpo do relatório
-  try {
-    document.title = cleanTitle
-  } catch (e) {
-    console.warn('Falha ao definir document.title para impressão:', e)
+  const ensureReportTitle = () => {
+    try {
+      document.title = cleanTitle
+    } catch (e) {
+      console.warn('Falha ao garantir document.title no beforeprint:', e)
+    }
   }
 
-  // 2. Registra o listener do afterprint (disparado quando o diálogo fecha ou imprime)
-  window.addEventListener('afterprint', restoreOriginalTitle, { once: true })
+  // 1. Define imediatamente o título com o nome limpo do relatório
+  ensureReportTitle()
 
-  // 3. Fallback de segurança com timeout para garantir restauração caso afterprint não dispare
-  const timeoutMs = options.timeoutMs ?? 1500
-  setTimeout(restoreOriginalTitle, timeoutMs)
+  // 2. Registra listener de beforeprint para reafirmar o título caso o navegador/extensões o sobrescrevam
+  window.addEventListener('beforeprint', ensureReportTitle)
 
-  // 4. Executa a impressão
+  // 3. Registra listener do afterprint para restauração limpa
+  window.addEventListener('afterprint', restoreOriginalTitle)
+
+  // 4. Fallback de segurança com timeout mais generoso (5000ms) para não restaurar prematuramente enquanto o diálogo nativo do PDF ainda está inicializando
+  const timeoutMs = options.timeoutMs ?? 5000
+  const timeoutId = setTimeout(restoreOriginalTitle, timeoutMs)
+
+  // 5. Executa a impressão
   try {
     if (typeof options.printFn === 'function') {
       options.printFn()
@@ -84,6 +97,7 @@ export function printWithReportTitle(
       window.print()
     }
   } catch (err) {
+    clearTimeout(timeoutId)
     restoreOriginalTitle()
     throw err
   }

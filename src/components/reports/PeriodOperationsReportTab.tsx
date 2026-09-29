@@ -1164,7 +1164,7 @@ export function PeriodOperationsReportTab({
 
   const handlePrint = () => {
     const reportTitle = selectedMonthLabel
-      ? `Operações do Período - ${selectedMonthLabel}`
+      ? `Operações do Período — ${selectedMonthLabel}`
       : 'Operações do Período'
     printWithReportTitle(reportTitle)
   }

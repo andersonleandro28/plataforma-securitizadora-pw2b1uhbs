@@ -25,10 +25,14 @@ const exportPDF = (record: SerasaConsultationRecord) => {
     const printWindow = window.open('', '_blank')
     if (!printWindow) throw new Error('Bloqueador de pop-ups ativo')
 
+    const reportTitle = `Relatório Serasa - ${record.document_number}`
+
     printWindow.document.write(`
-      <html>
+      <!DOCTYPE html>
+      <html lang="pt-BR">
         <head>
-          <title>Relatório Serasa - ${record.document_number}</title>
+          <meta charset="utf-8" />
+          <title>${reportTitle}</title>
           <style>
             body { font-family: system-ui, sans-serif; padding: 40px; color: #0f172a; max-width: 800px; margin: 0 auto; }
             h1 { color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 16px; margin-bottom: 32px; }
@@ -41,6 +45,7 @@ const exportPDF = (record: SerasaConsultationRecord) => {
             .badge-médio { background: #fef08a; color: #854d0e; border: 1px solid #fde047; }
             .badge-alto { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
             .disclaimer { margin-top: 48px; font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 24px; line-height: 1.6; }
+            @media print { body { padding: 0; } }
           </style>
         </head>
         <body>
@@ -68,7 +73,15 @@ const exportPDF = (record: SerasaConsultationRecord) => {
             Os dados refletem a análise no momento da consulta e não constituem recomendação, endosso ou garantia de aprovação de crédito.
           </div>
           <script>
-            setTimeout(() => { window.print(); window.close(); }, 500);
+            document.title = ${JSON.stringify(reportTitle)};
+            window.onload = () => {
+              document.title = ${JSON.stringify(reportTitle)};
+              setTimeout(() => {
+                window.focus();
+                window.print();
+                window.close();
+              }, 300);
+            };
           </script>
         </body>
       </html>

@@ -84,10 +84,13 @@ export function HistoryTab({
       return
     }
 
+    const docTitle = `Espelho de Escritura — ${deb.issuer_name || 'Debêntures'}`
     const html = `
-      <html>
+      <!DOCTYPE html>
+      <html lang="pt-BR">
         <head>
-          <title>Escritura - ${deb.issuer_name}</title>
+          <meta charset="utf-8" />
+          <title>${docTitle}</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 40px; color: #333; max-width: 900px; margin: 0 auto; }
             h1 { color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 20px; font-size: 24px; }
@@ -166,6 +169,9 @@ export function HistoryTab({
               .join('')}
             ${!deb.series || deb.series.length === 0 ? '<p class="empty">Nenhuma série cadastrada.</p>' : ''}
           </div>
+          <script>
+            document.title = ${JSON.stringify(docTitle)};
+          </script>
         </body>
       </html>
     `
@@ -173,7 +179,9 @@ export function HistoryTab({
     printWindow.document.write(html)
     printWindow.document.close()
     printWindow.focus()
+    printWindow.document.title = docTitle
     setTimeout(() => {
+      printWindow.document.title = docTitle
       printWindow.print()
     }, 500)
   }

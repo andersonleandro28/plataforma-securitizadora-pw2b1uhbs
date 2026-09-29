@@ -812,7 +812,7 @@ export function InvestorYieldsReportTab({ embedded = false }: InvestorYieldsRepo
 
   const handlePrint = () => {
     const reportTitle = selectedMonthLabel
-      ? `Rendimentos dos Investidores - ${selectedMonthLabel}`
+      ? `Rendimentos dos Investidores — ${selectedMonthLabel}`
       : 'Rendimentos dos Investidores'
     printWithReportTitle(reportTitle)
   }

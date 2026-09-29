@@ -437,6 +437,35 @@ export function generateManagerReceiptHtml(options: PrintManagerReceiptOptions):
 }
 
 export function printIsolatedManagerReceipt(options: PrintManagerReceiptOptions): void {
+  const compLabel = options.periodMonth
+    ? (() => {
+        const [y, m] = options.periodMonth.split('-')
+        const dt = new Date(Number(y), Number(m) - 1, 1)
+        return dt.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+      })()
+    : 'Geral'
+  const receiptTitle = `Recibo de Comissão — ${options.manager.full_name} — ${compLabel}`
+
+  // Garante que o document.title da página pai também reflita o recibo durante a impressão
+  const originalParentTitle = document.title
+  const safeFallback = /skip|adapta/i.test(originalParentTitle)
+    ? 'Nexum Security 360º'
+    : originalParentTitle || 'Nexum Security 360º'
+
+  const restoreParentTitle = () => {
+    try {
+      document.title = safeFallback
+    } catch {
+      // ignore
+    }
+  }
+
+  try {
+    document.title = receiptTitle
+  } catch {
+    // ignore
+  }
+
   const html = generateManagerReceiptHtml(options)
   const iframe = document.createElement('iframe')
   iframe.style.position = 'fixed'
@@ -452,6 +481,8 @@ export function printIsolatedManagerReceipt(options: PrintManagerReceiptOptions)
   const doc = iframe.contentWindow?.document
   if (!doc) {
     document.body.removeChild(iframe)
+    window.addEventListener('afterprint', restoreParentTitle, { once: true })
+    setTimeout(restoreParentTitle, 5000)
     window.print()
     return
   }
@@ -460,20 +491,47 @@ export function printIsolatedManagerReceipt(options: PrintManagerReceiptOptions)
   doc.write(html)
   doc.close()
 
-  iframe.onload = () => {
-    setTimeout(() => {
-      try {
-        iframe.contentWindow?.focus()
-        iframe.contentWindow?.print()
-      } catch (err) {
-        console.error('Erro ao acionar impressão de recibo:', err)
-      } finally {
-        setTimeout(() => {
-          if (document.body.contains(iframe)) {
-            document.body.removeChild(iframe)
-          }
-        }, 1000)
-      }
-    }, 250)
+  // Garante que a tag <title> do documento interno do iframe esteja definida com o nome limpo do recibo
+  if (doc.title !== receiptTitle) {
+    doc.title = receiptTitle
   }
+
+  const triggerIframePrint = () => {
+    const cw = iframe.contentWindow
+    if (!cw) {
+      if (document.body.contains(iframe)) document.body.removeChild(iframe)
+      restoreParentTitle()
+      return
+    }
+
+    try {
+      cw.document.title = receiptTitle
+    } catch {
+      // ignore
+    }
+
+    const cleanup = () => {
+      restoreParentTitle()
+      setTimeout(() => {
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe)
+        }
+      }, 1000)
+    }
+
+    cw.addEventListener('afterprint', cleanup, { once: true })
+    window.addEventListener('afterprint', restoreParentTitle, { once: true })
+    setTimeout(cleanup, 5000)
+
+    try {
+      cw.focus()
+      cw.print()
+    } catch (err) {
+      console.error('Erro ao acionar impressão de recibo:', err)
+      cleanup()
+    }
+  }
+
+  // Aciona após estabilização do DOM no iframe
+  setTimeout(triggerIframePrint, 250)
 }
