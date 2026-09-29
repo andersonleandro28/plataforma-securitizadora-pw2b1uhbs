@@ -26,8 +26,17 @@ export interface PrintWithReportTitleOptions {
  * Sanitiza o título removendo caracteres inválidos para nomes de arquivos do sistema operacional.
  */
 export function sanitizeFileName(name: string): string {
+  // Substitui caracteres reservados do SO e caracteres de controle (ASCII 0 a 31)
   return name
-    .replace(/[<>:"/\\|?*\x00-\x1F]/g, ' ')
+    .split('')
+    .map((char) => {
+      const code = char.charCodeAt(0)
+      if (code < 32 || '<>:"/\\|?*'.includes(char)) {
+        return ' '
+      }
+      return char
+    })
+    .join('')
     .replace(/\s+/g, ' ')
     .trim()
 }

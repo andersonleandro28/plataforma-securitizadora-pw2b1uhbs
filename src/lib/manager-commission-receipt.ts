@@ -444,7 +444,7 @@ export function printIsolatedManagerReceipt(options: PrintManagerReceiptOptions)
         return dt.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
       })()
     : 'Geral'
-  const receiptTitle = `Recibo de Comissão — ${options.manager.full_name} — ${compLabel}`
+  const receiptTitle = `Recibo de Comissão — ${options.summary.manager.full_name} — ${compLabel}`
 
   // Garante que o document.title da página pai também reflita o recibo durante a impressão
   const originalParentTitle = document.title

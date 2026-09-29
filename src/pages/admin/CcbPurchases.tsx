@@ -42,6 +42,7 @@ import {
   RotateCcw,
   AlertTriangle,
   Loader2,
+  CalendarClock,
 } from 'lucide-react'
 import { formatDate, toISODate } from '@/lib/utils'
 
@@ -84,6 +85,23 @@ export default function CcbPurchases() {
     penalty?: number
   } | null>(null)
   const [revertingLoading, setRevertingLoading] = useState(false)
+
+  // Prorrogação de parcela
+  const [extensionOpen, setExtensionOpen] = useState(false)
+  const [extensionLoading, setExtensionLoading] = useState(false)
+  const [extensionData, setExtensionData] = useState<{
+    purchaseId: string
+    idx: number
+    originalDueDate: string
+    originalValue: number
+    currentValue: number
+    monthlyRate: number
+    newDueDate: string
+    daysExtended: number
+    interest: string
+    penalty: string
+    reason: string
+  } | null>(null)
 
   const [form, setForm] = useState({
     ccb_id: '',
@@ -383,6 +401,129 @@ export default function CcbPurchases() {
       penalty: Number(b.penalty_applied || 0),
     })
     setRevertDialogOpen(true)
+  }
+
+  // Obter taxa mensal da operação para cálculo automático de prorrogação
+  const getCcbMonthlyRate = (purchase: any): number => {
+    if (!purchase) return 2.5
+    // 1. Tentar pegar da simulação salva em ccb_solicitacoes
+    const sim = purchase.ccb_solicitacoes?.operation_data?.simulation
+    if (sim?.interest_rate_monthly != null && Number(sim.interest_rate_monthly) > 0) {
+      return Number(sim.interest_rate_monthly)
+    }
+    // 2. Tentar taxa efetiva TIR / prazo se existir
+    if (purchase.tir_effective && purchase.boleto_count && Number(purchase.boleto_count) > 0) {
+      const tirMonthly = Number(purchase.tir_effective) / Number(purchase.boleto_count)
+      if (tirMonthly > 0) return Number(tirMonthly.toFixed(2))
+    }
+    return 2.5
+  }
+
+  const handleOpenExtensionModal = (purchase: any, idx: number, b: any) => {
+    const origDate = b.due_date || new Date().toISOString().split('T')[0]
+    // Sugerir +30 dias a partir do vencimento atual
+    const baseDate = new Date(origDate + 'T00:00:00')
+    const nextDate = new Date(baseDate)
+    nextDate.setDate(nextDate.getDate() + 30)
+    const nextDateStr = nextDate.toISOString().split('T')[0]
+
+    const origVal =
+      b.original_value != null
+        ? Number(b.original_value)
+        : b.valor_original != null
+          ? Number(b.valor_original)
+          : Number(b.unit_value || purchase.boleto_unit_value || 0)
+
+    const currVal = Number(b.unit_value || purchase.boleto_unit_value || 0)
+    const rate = getCcbMonthlyRate(purchase)
+
+    const diffDays = Math.max(
+      1,
+      Math.round((nextDate.getTime() - baseDate.getTime()) / (1000 * 60 * 60 * 24)),
+    )
+    const dailyRate = rate / 100 / 30
+    const calculatedInterest = Number((origVal * dailyRate * diffDays).toFixed(2))
+
+    setExtensionData({
+      purchaseId: purchase.id,
+      idx,
+      originalDueDate: origDate,
+      originalValue: origVal,
+      currentValue: currVal,
+      monthlyRate: rate,
+      newDueDate: nextDateStr,
+      daysExtended: diffDays,
+      interest: String(calculatedInterest),
+      penalty: '0',
+      reason: '',
+    })
+    setExtensionOpen(true)
+  }
+
+  const handleExtensionDateChange = (newDateStr: string) => {
+    if (!extensionData) return
+    const origTime = new Date(extensionData.originalDueDate + 'T00:00:00').getTime()
+    const newTime = new Date(newDateStr + 'T00:00:00').getTime()
+    const diffDays = Math.max(0, Math.round((newTime - origTime) / (1000 * 60 * 60 * 24)))
+
+    const dailyRate = extensionData.monthlyRate / 100 / 30
+    const calculatedInterest = Number(
+      (extensionData.originalValue * dailyRate * diffDays).toFixed(2),
+    )
+
+    setExtensionData({
+      ...extensionData,
+      newDueDate: newDateStr,
+      daysExtended: diffDays,
+      interest: String(calculatedInterest),
+    })
+  }
+
+  const handleConfirmExtension = async () => {
+    if (!extensionData) return
+    if (!extensionData.newDueDate) {
+      return toast.error('Informe a nova data de vencimento')
+    }
+    if (extensionData.newDueDate <= extensionData.originalDueDate) {
+      return toast.error('A nova data de vencimento deve ser posterior ao vencimento atual')
+    }
+
+    setExtensionLoading(true)
+    try {
+      const { data, error } = await (supabase.rpc as any)('extend_ccb_installment', {
+        p_recebivel_id: extensionData.purchaseId,
+        p_installment_idx: extensionData.idx,
+        p_new_due_date: extensionData.newDueDate,
+        p_interest_calculated: Number(extensionData.interest || 0),
+        p_penalty_calculated: Number(extensionData.penalty || 0),
+        p_reason: extensionData.reason ? extensionData.reason.trim() : null,
+      })
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      if ((data as any)?.boletos && selectedPurchase) {
+        setSelectedPurchase({
+          ...selectedPurchase,
+          boletos: (data as any).boletos,
+        })
+      }
+
+      toast.success(
+        `Parcela ${extensionData.idx + 1} prorrogada com sucesso para ${formatDate(
+          extensionData.newDueDate,
+        )}!`,
+      )
+      setExtensionOpen(false)
+      setExtensionData(null)
+      fetchPurchases()
+    } catch (err: any) {
+      console.error('Erro ao prorrogar parcela CCB:', err)
+      toast.error('Erro ao prorrogar parcela: ' + (err.message || 'Falha na operação'))
+    } finally {
+      setExtensionLoading(false)
+    }
   }
 
   const handleConfirmReversal = async () => {
@@ -898,23 +1039,35 @@ export default function CcbPurchases() {
                           </Button>
                         )
                       ) : (
-                        <Button
-                          size="sm"
-                          className="bg-emerald-600 hover:bg-emerald-700"
-                          onClick={() => {
-                            const defaultDate = b.due_date || new Date().toISOString().split('T')[0]
-                            setLiquidationForm({
-                              idx: i,
-                              payment_date: defaultDate,
-                              interest: '',
-                              penalty: '',
-                              bank_account_id: b.bank_account_id || '',
-                            })
-                            setLiquidationOpen(true)
-                          }}
-                        >
-                          Dar Baixa
-                        </Button>
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-primary/30 text-primary hover:bg-primary/10 gap-1"
+                            onClick={() => handleOpenExtensionModal(selectedPurchase, i, b)}
+                            title="Prorrogar vencimento com recálculo de juros"
+                          >
+                            <CalendarClock className="w-3.5 h-3.5" /> Prorrogar
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="bg-emerald-600 hover:bg-emerald-700"
+                            onClick={() => {
+                              const defaultDate =
+                                b.due_date || new Date().toISOString().split('T')[0]
+                              setLiquidationForm({
+                                idx: i,
+                                payment_date: defaultDate,
+                                interest: '',
+                                penalty: '',
+                                bank_account_id: b.bank_account_id || '',
+                              })
+                              setLiquidationOpen(true)
+                            }}
+                          >
+                            Dar Baixa
+                          </Button>
+                        </div>
                       )}
                     </TableCell>
                   </TableRow>
@@ -1152,6 +1305,158 @@ export default function CcbPurchases() {
                 </>
               ) : (
                 'Confirmar Reversão'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de Prorrogação de Parcela */}
+      <Dialog
+        open={extensionOpen}
+        onOpenChange={(openState) => {
+          if (!extensionLoading) {
+            setExtensionOpen(openState)
+            if (!openState) setExtensionData(null)
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarClock className="w-5 h-5 text-primary" />
+              Prorrogar Parcela {(extensionData?.idx ?? 0) + 1}
+            </DialogTitle>
+          </DialogHeader>
+
+          {extensionData && (
+            <div className="space-y-4 py-2">
+              <div className="bg-muted/60 border rounded-lg p-3 space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Vencimento Atual:</span>
+                  <span className="font-semibold">{formatDate(extensionData.originalDueDate)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Valor Atual da Parcela:</span>
+                  <span className="font-semibold">
+                    R${' '}
+                    {extensionData.originalValue.toLocaleString('pt-BR', {
+                      minimumFractionDigits: 2,
+                    })}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Taxa da Operação CCB:</span>
+                  <span className="font-semibold text-primary">
+                    {extensionData.monthlyRate.toFixed(2)}% a.m. (
+                    {(extensionData.monthlyRate / 30).toFixed(4)}% ao dia)
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="ext-new-due-date">Novo Vencimento</Label>
+                <Input
+                  id="ext-new-due-date"
+                  type="date"
+                  min={extensionData.originalDueDate}
+                  value={extensionData.newDueDate}
+                  onChange={(e) => handleExtensionDateChange(e.target.value)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Dias de prorrogação:{' '}
+                  <span className="font-semibold text-foreground">
+                    {extensionData.daysExtended} dia(s)
+                  </span>
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="ext-interest">Juros Pro Rata (R$)</Label>
+                  <Input
+                    id="ext-interest"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={extensionData.interest}
+                    onChange={(e) =>
+                      setExtensionData({ ...extensionData, interest: e.target.value })
+                    }
+                  />
+                  <span className="text-[10px] text-muted-foreground">
+                    Calculado automaticamente
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ext-penalty">Multa / Encargos (R$)</Label>
+                  <Input
+                    id="ext-penalty"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={extensionData.penalty}
+                    onChange={(e) =>
+                      setExtensionData({ ...extensionData, penalty: e.target.value })
+                    }
+                  />
+                  <span className="text-[10px] text-muted-foreground">Opcional</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="ext-reason">Motivo / Justificativa</Label>
+                <Input
+                  id="ext-reason"
+                  placeholder="Ex: Solicitação do tomador para ajuste de fluxo"
+                  value={extensionData.reason}
+                  onChange={(e) => setExtensionData({ ...extensionData, reason: e.target.value })}
+                />
+              </div>
+
+              <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg flex justify-between items-center text-sm">
+                <div>
+                  <span className="font-medium text-foreground block">Novo Valor da Parcela:</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    (Valor original + Juros prorrogados)
+                  </span>
+                </div>
+                <span className="text-lg font-bold text-primary">
+                  R${' '}
+                  {(
+                    extensionData.originalValue +
+                    Number(extensionData.interest || 0) +
+                    Number(extensionData.penalty || 0)
+                  ).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setExtensionOpen(false)
+                setExtensionData(null)
+              }}
+              disabled={extensionLoading}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleConfirmExtension}
+              disabled={extensionLoading}
+              className="gap-1.5"
+            >
+              {extensionLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-1 animate-spin" /> Prorrogando...
+                </>
+              ) : (
+                <>
+                  <CalendarClock className="w-4 h-4" /> Confirmar Prorrogação
+                </>
               )}
             </Button>
           </DialogFooter>

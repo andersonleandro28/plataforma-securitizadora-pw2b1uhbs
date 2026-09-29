@@ -382,8 +382,41 @@ export function ReceivablesToReceiveReportTab({
             rawStatus === 'liquidado' ||
             Boolean(b.payment_date || b.data_pagamento)
 
-          const faceVal = Number(b.unit_value ?? unitVal ?? 0)
-          const dueStr = b.due_date || todayStr
+          const isExt =
+            rawStatus === 'prorrogado' ||
+            rawStatus === 'prorrogada' ||
+            b.original_due_date != null ||
+            b.extended_due_date != null ||
+            Number(b.extension_interest || b.prorrogacao_juros || b.extended_fee || 0) > 0
+
+          const origVal =
+            b.original_value != null
+              ? Number(b.original_value)
+              : b.valor_original != null
+                ? Number(b.valor_original)
+                : Number(b.unit_value ?? unitVal ?? 0)
+
+          const extInterest = Number(
+            b.prorrogacao_juros ?? b.extension_interest ?? b.extended_fee ?? 0,
+          )
+          const extPenalty = Number(b.prorrogacao_multa ?? b.extension_penalty ?? 0)
+
+          let faceVal = origVal
+          if (isExt) {
+            if (b.valor_atualizado != null && Number(b.valor_atualizado) > 0) {
+              faceVal = Number(b.valor_atualizado)
+            } else if (b.total_devido != null && Number(b.total_devido) > 0) {
+              faceVal = Number(b.total_devido)
+            } else if (b.unit_value != null && Number(b.unit_value) > 0) {
+              faceVal = Number(b.unit_value)
+            } else {
+              faceVal = Number((origVal + extInterest + extPenalty).toFixed(2))
+            }
+          } else {
+            faceVal = Number(b.unit_value ?? unitVal ?? 0)
+          }
+
+          const dueStr = b.due_date || b.dueDate || b.extended_due_date || todayStr
           const dueTime = new Date(dueStr + 'T00:00:00').getTime()
           const diffDays = Math.round((todayTime - dueTime) / (1000 * 60 * 60 * 24))
           const daysLate = diffDays > 0 ? diffDays : 0
@@ -395,6 +428,14 @@ export function ReceivablesToReceiveReportTab({
           if (isPaid) {
             calcStatus = 'recebido'
             calcLabel = 'Recebido'
+          } else if (isExt) {
+            if (dueStr < todayStr) {
+              calcStatus = 'vencido'
+              calcLabel = `Prorrogado (Vencido há ${daysLate}d)`
+            } else {
+              calcStatus = 'prorrogado'
+              calcLabel = 'Prorrogado'
+            }
           } else if (dueStr < todayStr) {
             calcStatus = 'vencido'
             calcLabel = `Vencido há ${daysLate}d`
@@ -417,12 +458,12 @@ export function ReceivablesToReceiveReportTab({
             installmentNumber: idx + 1,
             totalInstallments: count || boletosList.length,
             dueDate: dueStr,
-            originalDueDate: null,
+            originalDueDate: b.original_due_date || null,
             faceValue: faceVal,
-            originalFaceValue: faceVal,
-            isExtended: false,
-            extensionInterest: 0,
-            extensionPenalty: 0,
+            originalFaceValue: origVal,
+            isExtended: isExt,
+            extensionInterest: extInterest,
+            extensionPenalty: extPenalty,
             status: calcStatus,
             statusLabel: calcLabel,
             paymentDate: isPaid ? b.payment_date || b.data_pagamento : null,

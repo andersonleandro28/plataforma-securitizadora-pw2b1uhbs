@@ -20,17 +20,21 @@ export function AccessLogs() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!user)
-      return supabase
-        .from('access_logs')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(10)
-        .then(({ data }) => {
-          if (data) setLogs(data)
-          setLoading(false)
-        })
+    if (!user) {
+      setLoading(false)
+      return
+    }
+
+    supabase
+      .from('access_logs')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(10)
+      .then(({ data }) => {
+        if (data) setLogs(data)
+        setLoading(false)
+      })
   }, [user])
 
   const exportCSV = () => {

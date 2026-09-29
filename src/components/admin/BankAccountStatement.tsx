@@ -208,11 +208,11 @@ export function BankAccountStatement({
   }
 
   const handlePrint = () => {
-    const datesPart =
-      filterStart && filterEnd
-        ? ` — ${new Date(filterStart + 'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(filterEnd + 'T00:00:00').toLocaleDateString('pt-BR')}`
-        : ''
-    const reportTitle = `Extrato Bancário — ${account.bank_name} Ag ${account.agency} CC ${account.account_number}${datesPart}`
+    const datesPart = selectedMonth !== 'todos' ? ` — Competência ${selectedMonth}` : ''
+    const contaPart = selectedAccount
+      ? `${selectedAccount.bank_name} Ag ${selectedAccount.branch || 'S/A'} CC ${selectedAccount.account_number}`
+      : 'Consolidado Geral'
+    const reportTitle = `Extrato Bancário — ${contaPart}${datesPart}`
     printWithReportTitle(reportTitle)
   }
 
