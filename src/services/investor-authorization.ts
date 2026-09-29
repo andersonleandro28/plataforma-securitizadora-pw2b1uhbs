@@ -64,7 +64,7 @@ export async function respondInvestmentAuthorization({
 }: RespondAuthorizationParams): Promise<RespondAuthorizationResult> {
   const resolvedIp = clientIp || (await getClientPublicIp())
 
-  const { data, error } = await (supabase.rpc as any)('respond_investment_authorization', {
+  const { data, error } = await supabase.rpc('respond_investment_authorization', {
     p_investment_id: investmentId,
     p_action: action,
     p_client_ip: resolvedIp,
@@ -75,11 +75,13 @@ export async function respondInvestmentAuthorization({
     throw new Error(error.message || 'Falha ao processar autorização do investimento.')
   }
 
-  return (
-    data || {
-      success: true,
-      status: action === 'accept' ? 'accepted' : 'revision_requested',
-      message: 'Operação concluída com sucesso.',
-    }
-  )
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    return data as unknown as RespondAuthorizationResult
+  }
+
+  return {
+    success: true,
+    status: action === 'accept' ? 'accepted' : 'revision_requested',
+    message: 'Operação concluída com sucesso.',
+  }
 }
