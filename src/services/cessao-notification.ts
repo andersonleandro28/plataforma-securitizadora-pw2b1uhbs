@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase/client'
-import { downloadContractAsBlob, triggerFileDownload } from './subscription-contract'
+import { triggerFileDownload, safeOpenOrDownload } from './subscription-contract'
 import { printWithReportTitle } from '@/lib/print-with-title'
 
 export interface NotificacaoCessaoRecord {
@@ -119,23 +119,45 @@ export async function openOrDownloadCessaoNotification(params: {
 
   const rawUrl = res.signedUrl || res.url || ''
 
-  try {
-    // Baixar como Blob para renderizar no navegador
-    const blob = await downloadContractAsBlob(rawUrl)
-    const blobUrl = URL.createObjectURL(blob)
+  const filename = `Notificacao_Cessao_${opLabel}.pdf`
 
-    // Tenta abrir em nova aba
-    const newWindow = window.open(blobUrl, '_blank')
-    if (!newWindow) {
-      // Bloqueador de popups: salva direto via download
-      triggerFileDownload(blob, `Notificacao_Cessao_${opLabel}.pdf`)
+  try {
+    const targetPath =
+      res.filePath ||
+      (rawUrl.includes('operation-docs/') ? rawUrl.split('operation-docs/')[1]?.split('?')[0] : '')
+    let blobData: Blob | null = null
+
+    if (targetPath) {
+      const { data: storageBlob, error: storageErr } = await supabase.storage
+        .from('operation-docs')
+        .download(targetPath)
+
+      if (!storageErr && storageBlob) {
+        blobData = storageBlob
+      }
+    }
+
+    if (!blobData && rawUrl) {
+      const fetchRes = await fetch(rawUrl)
+      if (fetchRes.ok) {
+        blobData = await fetchRes.blob()
+      }
+    }
+
+    if (blobData) {
+      triggerFileDownload(blobData, filename)
+      return
+    }
+
+    if (rawUrl) {
+      safeOpenOrDownload(rawUrl, filename)
     } else {
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000)
+      throw new Error('Não foi possível obter o arquivo para download.')
     }
   } catch (downloadErr) {
-    console.warn('Falha ao obter blob do PDF, fallback para abertura direta:', downloadErr)
+    console.warn('Falha ao obter blob do PDF, fallback seguro:', downloadErr)
     if (rawUrl) {
-      window.open(rawUrl, '_blank')
+      safeOpenOrDownload(rawUrl, filename)
     } else {
       throw downloadErr
     }

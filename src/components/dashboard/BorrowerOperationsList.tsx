@@ -39,7 +39,9 @@ import {
   FileSignature,
   Percent,
   Info,
+  Download,
 } from 'lucide-react'
+import { openOrDownloadCessaoNotification } from '@/services/cessao-notification'
 
 // Utilizando cores padrão financeiro: Verde (Aprovado/Pago), Amarelo (Análise/Pendência), Vermelho (Reprovado).
 export function getStatusBadge(status?: string | null) {
@@ -93,6 +95,24 @@ export function BorrowerOperationsList() {
   const [opToSign, setOpToSign] = useState<any>(null)
   const [signLoading, setSignLoading] = useState(false)
   const [detailsOp, setDetailsOp] = useState<any>(null)
+  const [downloadingNotifId, setDownloadingNotifId] = useState<string | null>(null)
+
+  const handleDownloadNotificacaoBorrower = async (op: any) => {
+    setDownloadingNotifId(op.id)
+    try {
+      await openOrDownloadCessaoNotification({
+        operationId: op.id,
+        sacadoNome: op.sacado,
+        numeroOperacao: op.id?.split('-')[0]?.toUpperCase(),
+      })
+      toast.success('Download da Notificação de Cessão concluído!')
+    } catch (err: any) {
+      console.error('Download notificacao borrower error:', err)
+      toast.error(err.message || 'Erro ao baixar Notificação de Cessão.')
+    } finally {
+      setDownloadingNotifId(null)
+    }
+  }
 
   const fetchOperations = async () => {
     setLoading(true)
@@ -272,6 +292,31 @@ export function BorrowerOperationsList() {
                                 onClick={() => setDetailsOp(op)}
                               >
                                 <Info className="w-3 h-3" /> Ver Detalhes
+                              </Button>
+                            )}
+
+                            {/* Item 3: Botão de Notificação de Cessão para operações aprovadas/pagas */}
+                            {(op.status === 'aprovado' ||
+                              op.status === 'aguardando_formalizacao' ||
+                              op.status === 'pago' ||
+                              op.status === 'liquidado') && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs gap-1 border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-900 dark:text-blue-300"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleDownloadNotificacaoBorrower(op)
+                                }}
+                                disabled={downloadingNotifId === op.id}
+                                title="Baixar Notificação de Cessão de Crédito (PDF)"
+                              >
+                                {downloadingNotifId === op.id ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Download className="w-3 h-3" />
+                                )}
+                                Notificação
                               </Button>
                             )}
                           </div>
@@ -458,7 +503,28 @@ export function BorrowerOperationsList() {
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="flex flex-col sm:flex-row items-center justify-between gap-2 sm:gap-0">
+            {detailsOp?.status === 'aprovado' ||
+            detailsOp?.status === 'aguardando_formalizacao' ||
+            detailsOp?.status === 'pago' ||
+            detailsOp?.status === 'liquidado' ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-blue-700 border-blue-300 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-300 w-full sm:w-auto"
+                onClick={() => handleDownloadNotificacaoBorrower(detailsOp)}
+                disabled={downloadingNotifId === detailsOp.id}
+              >
+                {downloadingNotifId === detailsOp.id ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Download className="w-3.5 h-3.5" />
+                )}
+                Baixar Notificação de Cessão (PDF)
+              </Button>
+            ) : (
+              <span />
+            )}
             <Button variant="outline" onClick={() => setDetailsOp(null)}>
               Fechar
             </Button>

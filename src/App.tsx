@@ -6,6 +6,7 @@ import { AuthProvider } from './hooks/use-auth'
 import Layout from './components/Layout'
 import NotFound from './pages/NotFound'
 import { ForceChangePassword } from './components/auth/ForceChangePassword'
+import PublicCienciaCessao from './pages/PublicCienciaCessao'
 
 import Index from './pages/Index'
 import Login from './pages/Login'
@@ -233,6 +234,9 @@ const App = () => (
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<SignUp />} />
+          {/* Rotas Públicas de Ciência de Cessão pelo Sacado */}
+          <Route path="/ciencia-cessao/:token" element={<PublicCienciaCessao />} />
+          <Route path="/notificacao-cessao/:token" element={<PublicCienciaCessao />} />
           <Route
             element={
               <AuthGuard>

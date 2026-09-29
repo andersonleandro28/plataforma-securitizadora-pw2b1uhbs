@@ -73,7 +73,9 @@ export default function Operations() {
     setLoading(true)
     const { data } = await supabase
       .from('credit_operations')
-      .select('*, profiles(full_name), operation_calculations(*), credit_managers(id, full_name)')
+      .select(
+        '*, profiles(full_name), operation_calculations(*), credit_managers(id, full_name), notificacoes_cessao(id, status_aceite, status_envio, aceito_em)',
+      )
       .order('issue_date', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })
 
@@ -284,6 +286,7 @@ export default function Operations() {
                     <TableHead>Status</TableHead>
                     <TableHead className="text-center">Taxas</TableHead>
                     <TableHead className="text-center">Formalização</TableHead>
+                    <TableHead className="text-center">Ciência do Sacado</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -354,6 +357,65 @@ export default function Operations() {
                           <div className="flex justify-center">
                             {getSignatureIcon(op.signature_status)}
                           </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {(() => {
+                            const notif = Array.isArray(op.notificacoes_cessao)
+                              ? op.notificacoes_cessao[0]
+                              : op.notificacoes_cessao
+
+                            if (!notif) {
+                              if (!op.sacado_email) {
+                                return (
+                                  <span className="inline-block text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                                    Sem e-mail
+                                  </span>
+                                )
+                              }
+                              return (
+                                <span className="inline-block text-[10px] text-muted-foreground/70 italic">
+                                  -
+                                </span>
+                              )
+                            }
+
+                            if (notif.status_aceite === 'aceito') {
+                              return (
+                                <span
+                                  className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 text-[10px] font-semibold px-1.5 py-0.5 rounded border border-emerald-300 dark:border-emerald-700"
+                                  title={
+                                    notif.aceito_em
+                                      ? `Aceito em ${format(new Date(notif.aceito_em), 'dd/MM/yyyy HH:mm')}`
+                                      : 'Aceito'
+                                  }
+                                >
+                                  <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" /> Aceito
+                                </span>
+                              )
+                            }
+
+                            if (notif.status_envio === 'falha_envio') {
+                              return (
+                                <span className="inline-flex items-center gap-1 bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 text-[10px] font-medium px-1.5 py-0.5 rounded border border-rose-300 dark:border-rose-700">
+                                  Falha envio
+                                </span>
+                              )
+                            }
+
+                            if (notif.status_envio === 'sem_email' || !op.sacado_email) {
+                              return (
+                                <span className="inline-block text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                                  Sem e-mail
+                                </span>
+                              )
+                            }
+
+                            return (
+                              <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 text-[10px] font-medium px-1.5 py-0.5 rounded border border-amber-300 dark:border-amber-700">
+                                Aguardando
+                              </span>
+                            )
+                          })()}
                         </TableCell>
                         <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1.5">

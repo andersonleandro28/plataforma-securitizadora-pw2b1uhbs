@@ -206,6 +206,71 @@ export const KNOWLEDGE_BASE: KnowledgeTopic[] = [
     relatedTopicIds: ['admin-tomador-limite', 'transversal-assinatura-eletronica'],
   },
   {
+    id: 'admin-notificacao-cessao',
+    title: 'Notificação de Cessão de Crédito ao Sacado (Art. 290 Código Civil)',
+    roles: ['admin', 'staff'],
+    category: 'admin',
+    navigationPath:
+      'Menu lateral > Mesa de Operações > Clicar na Operação > Card "Notificação de Cessão de Crédito"',
+    keywords: [
+      'notificacao cessao',
+      'notificacao de cessao',
+      'sacado',
+      'art 290',
+      'ciencia sacado',
+      'reenviar notificacao',
+      'reenvio sacado',
+      'download notificacao',
+      'email sacado',
+      'telefone sacado',
+      'aceite publico',
+      'ciencia da cessao',
+    ],
+    summary:
+      'Fluxo completo da Notificação de Cessão ao sacado: disparo automático pós-aprovação, download de PDF autenticado, reenvio por e-mail e confirmação de ciência pelo link público.',
+    steps: [
+      'Geração Automática: ao aprovar uma operação de antecipação ("aprovado") na Mesa de Operações, o sistema gera assincronamente a Notificação de Cessão formal em PDF e dispara um e-mail com anexo e link de ciência se o sacado possuir e-mail cadastrado.',
+      'Identificação e Acompanhamento: no detalhe da operação (AdminOperationDetails) e na listagem, localize a coluna/badge "Ciência do Sacado" com os estados: "Aceito" (com carimbo de data/hora), "Aguardando ciência", "Falha no envio" ou "Sem e-mail".',
+      'Download do Documento: clique no botão "Notificação de Cessão (PDF)" para baixar o documento através de conexão segura autenticada da plataforma.',
+      'Reenvio Manual ao Sacado: caso o sacado solicite reenvio ou tenha atualizado o e-mail, utilize o botão "Reenviar ao sacado" (ativo se houver e-mail válido).',
+      'Edição de Contato do Sacado: clique em "Editar Contatos do Sacado" para retificar o e-mail e telefone diretamente na operação e no registro de notificação.',
+      'Confirmação pelo Sacado: o sacado acessa a rota pública sem login (/ciencia-cessao/:token), revisa os dados da cessão, instrução bancária da securitizadora e clica em "Confirmar ciência da cessão", gerando hash criptográfico SHA-256 e IP de auditoria.',
+    ],
+    tips: [
+      'O PDF da notificação atende ao art. 290 do Código Civil e adverte o sacado de que pagamentos efetuados ao cedente original não têm eficácia liberatória.',
+      'O link de confirmação do sacado tem validade de 90 dias a contar da emissão.',
+    ],
+    relatedTopicIds: ['admin-lancar-operacao', 'transversal-assinatura-eletronica'],
+  },
+  {
+    id: 'borrower-notificacao-cessao',
+    title: 'Tomador: Download da Notificação de Cessão de Crédito',
+    roles: ['borrower'],
+    category: 'borrower',
+    navigationPath: 'Menu lateral > Minhas Solicitações > Botão "Notificação" na linha da operação',
+    keywords: [
+      'notificacao cessao tomador',
+      'baixar notificacao',
+      'notificacao sacado',
+      'comprovante cessao',
+      'art 290 tomador',
+      'notificacao pdf',
+    ],
+    summary:
+      'Como o tomador pode baixar a Notificação de Cessão em PDF para acompanhar a comunicação enviada aos sacados.',
+    steps: [
+      'No Dashboard do Tomador, acesse a tabela "Minhas Solicitações e Assinaturas".',
+      'Localize a operação de antecipação que já se encontra com status "Aprovado", "Formalização" ou "Pago / Liquidado".',
+      'Na coluna de ações ou dentro do modal "Ver Detalhes", clique no botão "Notificação" (ou "Baixar Notificação de Cessão (PDF)").',
+      'O download seguro do PDF é realizado diretamente pelo navegador, contendo todos os dados do título, da securitizadora cessionária e a advertência de pagamento exclusivo.',
+    ],
+    tips: [
+      'A notificação fica disponível imediatamente após a aprovação da proposta pela mesa.',
+      'A ciência do sacado é formalizada diretamente por ele através do link enviado no e-mail cadastrado.',
+    ],
+    relatedTopicIds: ['borrower-nova-operacao', 'borrower-dashboard-visao'],
+  },
+  {
     id: 'admin-ccb-purchases',
     title: 'Aquisição e Compras de CCB (Cédula de Crédito Bancário)',
     roles: ['admin', 'staff'],
@@ -1119,6 +1184,10 @@ export const FREQUENT_QUESTIONS_BY_ROLE: Record<string, { label: string; query: 
       query: 'onde vejo o relatorio de recebiveis a receber antecipacoes e ccbs?',
     },
     {
+      label: 'Notificação de Cessão (Sacado)',
+      query: 'como funciona a notificacao de cessao de credito ao sacado e confirmacao de ciencia?',
+    },
+    {
       label: 'Regra de Limite do Tomador',
       query: 'como funciona a regra de limite de credito do tomador pago vs liquidado?',
     },
@@ -1170,6 +1239,10 @@ export const FREQUENT_QUESTIONS_BY_ROLE: Record<string, { label: string; query: 
     },
   ],
   borrower: [
+    {
+      label: 'Notificação de Cessão',
+      query: 'onde baixar a notificacao de cessao de credito das minhas operacoes?',
+    },
     { label: 'Simular Antecipação', query: 'como simular e solicitar antecipacao de recebiveis?' },
     { label: 'Contratar CCB Digital', query: 'como simular e pedir uma ccb digital bdigital?' },
     {

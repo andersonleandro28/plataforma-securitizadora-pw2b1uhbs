@@ -854,7 +854,7 @@ Deno.serve(async (req: Request) => {
 
         // URL base do frontend
         const baseUrl = originUrl || 'https://misoqvscsydxqcsfjaux.supabase.co'
-        const linkAceite = `${baseUrl}/notificacao-cessao/${token}`
+        const linkAceite = `${baseUrl}/ciencia-cessao/${token}`
 
         const resEmail = await fetch('https://api.resend.com/emails', {
           method: 'POST',

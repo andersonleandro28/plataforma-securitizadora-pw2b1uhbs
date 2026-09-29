@@ -56,6 +56,20 @@ Deno.serve(async (req: Request) => {
         )
       }
 
+      // Validação de expiração (90 dias)
+      if (notif.expira_em && new Date(notif.expira_em) < new Date()) {
+        return new Response(
+          JSON.stringify({
+            error: 'Este link de notificação expirou. Entre em contato com a securitizadora.',
+            expired: true,
+          }),
+          {
+            status: 410,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          },
+        )
+      }
+
       // Buscar dados da Securitizadora
       const { data: companyData } = await supabase
         .from('company_settings')
@@ -105,6 +119,20 @@ Deno.serve(async (req: Request) => {
           JSON.stringify({ error: 'Notificação não encontrada ou token expirado' }),
           {
             status: 404,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          },
+        )
+      }
+
+      // Validação de expiração
+      if (notif.expira_em && new Date(notif.expira_em) < new Date()) {
+        return new Response(
+          JSON.stringify({
+            error: 'Este link de notificação expirou. Entre em contato com a securitizadora.',
+            expired: true,
+          }),
+          {
+            status: 410,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           },
         )
