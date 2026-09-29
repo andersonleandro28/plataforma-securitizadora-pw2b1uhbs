@@ -53,6 +53,7 @@ import { AdminCreditDialog } from '@/components/admin/AdminCreditDialog'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
 import { evaluateTransactionDeletionEligibility } from '@/services/financial-deletion'
+import { printWithReportTitle } from '@/lib/print-with-title'
 import {
   DeleteFinancialRecordModal,
   type FinancialRecordToDelete,
@@ -138,7 +139,12 @@ export default function Dfc() {
   }
 
   const handlePrint = () => {
-    window.print()
+    const periodLabel =
+      modoPeriodo === 'mes'
+        ? `${MESES[Number(mes)]}/${ano}`
+        : `${new Date(periodoInicio + 'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(periodoFim + 'T00:00:00').toLocaleDateString('pt-BR')}`
+    const reportTitle = `DFC - Demonstração dos Fluxos de Caixa - ${periodLabel}`
+    printWithReportTitle(reportTitle)
   }
 
   const anos = useMemo(() => {

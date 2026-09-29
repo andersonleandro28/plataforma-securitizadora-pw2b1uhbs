@@ -576,11 +576,32 @@ export function printIsolatedUnifiedReport(
 
         cw.addEventListener('afterprint', cleanup, { once: true })
 
-        // Foco e acionamento no contexto isolado do iframe
+        // Foco e acionamento no contexto isolado do iframe, garantindo document.title da janela principal temporariamente sincronizado
+        const originalDocTitle = document.title
+        const desiredTitle = options.title || 'Relatório Financeiro & Operacional Unificado'
+        try {
+          document.title = desiredTitle
+        } catch {
+          // ignore
+        }
+
+        const restoreParentTitle = () => {
+          try {
+            document.title = originalDocTitle
+          } catch {
+            // ignore
+          }
+          cw.removeEventListener('afterprint', restoreParentTitle)
+        }
+
+        cw.addEventListener('afterprint', restoreParentTitle, { once: true })
+        setTimeout(restoreParentTitle, 2000)
+
         cw.focus()
         try {
           cw.print()
         } catch (err) {
+          restoreParentTitle()
           cleanup()
           reject(err)
         }

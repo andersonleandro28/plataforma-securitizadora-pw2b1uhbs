@@ -32,10 +32,12 @@ import {
   CalendarDays,
   Plus,
   Trash2,
+  Printer,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { exportToCSV } from '@/lib/export-utils'
 import { useDre, type DreCategoria, type DreLancamento } from '@/hooks/use-dre'
+import { printWithReportTitle } from '@/lib/print-with-title'
 import { AdminExpenseDialog } from '@/components/admin/AdminExpenseDialog'
 import { AdminCreditDialog } from '@/components/admin/AdminCreditDialog'
 import { cn } from '@/lib/utils'
@@ -118,6 +120,15 @@ export default function Dre() {
     toast.success('DRE exportada em CSV.')
   }
 
+  const handlePrint = () => {
+    const periodLabel =
+      modoPeriodo === 'mes'
+        ? `${MESES[Number(mes)]}/${ano}`
+        : `${new Date(periodoInicio + 'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(periodoFim + 'T00:00:00').toLocaleDateString('pt-BR')}`
+    const reportTitle = `DRE - Demonstração do Resultado do Exercício - ${periodLabel}`
+    printWithReportTitle(reportTitle)
+  }
+
   const anos = useMemo(() => {
     const atual = now.getFullYear()
     const arr = []
@@ -181,6 +192,9 @@ export default function Dre() {
           </Button>
           <Button onClick={() => setExpenseOpen(true)} className="gap-2">
             <Plus className="w-4 h-4" /> Lançar Despesa
+          </Button>
+          <Button onClick={handlePrint} variant="outline" className="gap-2">
+            <Printer className="w-4 h-4" /> Imprimir / PDF
           </Button>
           <Button onClick={handleExportCSV} variant="outline" className="gap-2">
             <FileSpreadsheet className="w-4 h-4" /> Exportar CSV

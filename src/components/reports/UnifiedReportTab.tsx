@@ -52,6 +52,7 @@ import { useAccounting } from '@/hooks/use-accounting'
 import { useCompanySettings } from '@/hooks/use-company-settings'
 import { formatCompanyAddress } from '@/services/company-settings'
 import { cn } from '@/lib/utils'
+import { printWithReportTitle } from '@/lib/print-with-title'
 
 export type ReportTypeKey =
   | 'investor-yields'
@@ -234,19 +235,20 @@ export function UnifiedReportTab() {
   const handlePrint = useCallback(async () => {
     if (!printContainerRef.current) return
     setIsPrinting(true)
+    const unifiedDocTitle = `Relatório Financeiro & Operacional Unificado - ${selectedMonthLabel}`
     try {
       await printIsolatedUnifiedReport(printContainerRef.current, {
-        title: `Relatório Financeiro & Operacional Unificado — ${selectedMonthLabel} — ${secNomeFantasia}`,
+        title: unifiedDocTitle,
         settings,
       })
     } catch (err) {
       console.error('Falha ao gerar impressão isolada do relatório unificado:', err)
-      // Fallback gracioso
-      window.print()
+      // Fallback gracioso com nome correto do relatório no document.title
+      printWithReportTitle(unifiedDocTitle)
     } finally {
       setIsPrinting(false)
     }
-  }, [selectedMonthLabel])
+  }, [selectedMonthLabel, settings])
 
   // Exportação CSV unificada sequencial
   const handleExportUnifiedCSV = useCallback(() => {

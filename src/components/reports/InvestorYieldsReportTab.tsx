@@ -25,6 +25,7 @@ import { formatCompanyAddress } from '@/services/company-settings'
 import { parseProductRate, computeInterestYield } from '@/lib/yield-calculator'
 import { exportToCSV } from '@/lib/export-utils'
 import { formatDate, cn } from '@/lib/utils'
+import { printWithReportTitle } from '@/lib/print-with-title'
 import {
   Search,
   Calendar,
@@ -810,7 +811,10 @@ export function InvestorYieldsReportTab({ embedded = false }: InvestorYieldsRepo
   }
 
   const handlePrint = () => {
-    window.print()
+    const reportTitle = selectedMonthLabel
+      ? `Rendimentos dos Investidores - ${selectedMonthLabel}`
+      : 'Rendimentos dos Investidores'
+    printWithReportTitle(reportTitle)
   }
 
   const toggleGroup = (key: string) => {

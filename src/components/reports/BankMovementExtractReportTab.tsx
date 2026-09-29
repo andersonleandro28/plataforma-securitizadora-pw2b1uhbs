@@ -41,6 +41,7 @@ import { exportToCSV } from '@/lib/export-utils'
 import { useAccounting, type Transaction } from '@/hooks/use-accounting'
 import { useCompanyBankAccounts } from '@/hooks/use-company-bank-accounts'
 import { cn } from '@/lib/utils'
+import { printWithReportTitle } from '@/lib/print-with-title'
 
 function formatDisplayDate(dateStr: string): string {
   if (!dateStr || dateStr.length < 10) return dateStr
@@ -284,8 +285,11 @@ export function BankMovementExtractReportTab({
   }, [displayList, selectedAccountId, selectedAccount, selectedMonth])
 
   const handlePrint = useCallback(() => {
-    window.print()
-  }, [])
+    const periodPart = selectedMonth !== 'todos' ? ` - ${selectedMonthLabel}` : ''
+    const accountPart = selectedAccount ? ` - ${selectedAccount.bank_name}` : ''
+    const reportTitle = `Extrato de Movimentações Bancárias${periodPart}${accountPart}`
+    printWithReportTitle(reportTitle)
+  }, [selectedMonth, selectedMonthLabel, selectedAccount])
 
   return (
     <div className="space-y-6">

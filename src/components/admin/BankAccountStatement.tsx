@@ -40,6 +40,7 @@ import {
   DeleteFinancialRecordModal,
   type FinancialRecordToDelete,
 } from '@/components/admin/DeleteFinancialRecordModal'
+import { printWithReportTitle } from '@/lib/print-with-title'
 
 interface BankAccountStatementProps {
   transactions: Transaction[]
@@ -207,7 +208,12 @@ export function BankAccountStatement({
   }
 
   const handlePrint = () => {
-    window.print()
+    const datesPart =
+      filterStart && filterEnd
+        ? ` - ${new Date(filterStart + 'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(filterEnd + 'T00:00:00').toLocaleDateString('pt-BR')}`
+        : ''
+    const reportTitle = `Extrato Bancário - ${account.bank_name} Ag ${account.agency} CC ${account.account_number}${datesPart}`
+    printWithReportTitle(reportTitle)
   }
 
   return (

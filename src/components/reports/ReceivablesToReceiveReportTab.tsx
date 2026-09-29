@@ -41,6 +41,7 @@ import { formatCompanyAddress } from '@/services/company-settings'
 import { formatDate, cn } from '@/lib/utils'
 import { exportToCSV } from '@/lib/export-utils'
 import { maskCpf, maskCnpj, onlyDigits } from '@/lib/cpf-cnpj'
+import { printWithReportTitle } from '@/lib/print-with-title'
 
 function formatCpfOrCnpj(val: string | null | undefined): string {
   if (!val) return '—'
@@ -701,8 +702,11 @@ export function ReceivablesToReceiveReportTab({
   }, [sortedList, aggregations, activePeriodLabel])
 
   const handlePrint = useCallback(() => {
-    window.print()
-  }, [])
+    const reportTitle = activePeriodLabel
+      ? `Recebíveis a Receber - ${activePeriodLabel}`
+      : 'Recebíveis a Receber'
+    printWithReportTitle(reportTitle)
+  }, [activePeriodLabel])
 
   return (
     <div className="space-y-6">

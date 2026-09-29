@@ -35,6 +35,7 @@ import { exportToCSV } from '@/lib/export-utils'
 import { ReconcileModal } from '@/components/Treasury/ReconcileModal'
 import { useAccounting, type Transaction } from '@/hooks/use-accounting'
 import { TransactionDetailsModal } from '@/components/Treasury/TransactionDetailsModal'
+import { printWithReportTitle } from '@/lib/print-with-title'
 import { useCompanyBankAccounts } from '@/hooks/use-company-bank-accounts'
 import { useAuth } from '@/hooks/use-auth'
 import { evaluateTransactionDeletionEligibility } from '@/services/financial-deletion'
@@ -178,7 +179,12 @@ export default function Accounting() {
   }
 
   const handlePrintPDF = () => {
-    window.print()
+    const datesPart =
+      periodoInicio && periodoFim
+        ? ` - ${new Date(periodoInicio + 'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(periodoFim + 'T00:00:00').toLocaleDateString('pt-BR')}`
+        : ''
+    const reportTitle = `Livro Caixa Contábil${datesPart}`
+    printWithReportTitle(reportTitle)
   }
 
   if (error) {

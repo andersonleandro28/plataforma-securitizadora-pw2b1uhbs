@@ -24,6 +24,7 @@ import { exportToCSV } from '@/lib/export-utils'
 import { formatDate, cn } from '@/lib/utils'
 import { useCompanySettings } from '@/hooks/use-company-settings'
 import { formatCompanyAddress } from '@/services/company-settings'
+import { printWithReportTitle } from '@/lib/print-with-title'
 import {
   fetchInvestorYieldsForMonth,
   fetchDreResultForPeriod,
@@ -1162,7 +1163,10 @@ export function PeriodOperationsReportTab({
   }
 
   const handlePrint = () => {
-    window.print()
+    const reportTitle = selectedMonthLabel
+      ? `Operações do Período - ${selectedMonthLabel}`
+      : 'Operações do Período'
+    printWithReportTitle(reportTitle)
   }
 
   /* ------------------------------------------------------------------ */

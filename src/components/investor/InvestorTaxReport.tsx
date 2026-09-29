@@ -33,6 +33,7 @@ import { generateAnnualTaxReport, TaxReportAnnualData } from '@/lib/tax-report-u
 import type { ManualYieldEntry } from '@/services/manual-yield'
 import { useCompanySettings } from '@/hooks/use-company-settings'
 import { formatCompanyAddress } from '@/services/company-settings'
+import { printWithReportTitle } from '@/lib/print-with-title'
 
 interface InvestorTaxReportProps {
   investorProfile: any
@@ -96,7 +97,9 @@ export function InvestorTaxReport({
   }, [selectedYear, investorProfile, investments, redemptions, manualYieldMap])
 
   const handlePrint = () => {
-    window.print()
+    const investorNamePart = reportData.investorName ? ` - ${reportData.investorName}` : ''
+    const reportTitle = `Informe de Rendimentos Financeiros - Ano-Calendário ${reportData.year}${investorNamePart}`
+    printWithReportTitle(reportTitle)
   }
 
   return (
