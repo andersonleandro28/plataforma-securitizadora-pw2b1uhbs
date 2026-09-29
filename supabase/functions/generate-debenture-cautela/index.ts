@@ -205,11 +205,14 @@ Deno.serve(async (req: Request) => {
       companyData?.debenture_numero_arquivamento_padrao || 'ED009857000'
 
     // 2. Fetch Investment and Related Product + Debenture Info
+    // Desambiguação explícita de foreign key: a tabela investments possui duas FKs para profiles:
+    // investments_user_id_fkey e investments_created_by_admin_fkey.
+    // Usamos explicitamente profiles!investments_user_id_fkey para evitar ambiguidade PGRST201/300.
     const { data: inv, error } = await supabase
       .from('investments')
       .select(`
         *,
-        profiles (*),
+        profiles:profiles!investments_user_id_fkey (*),
         investment_products (
           *,
           debenture_series (
@@ -221,7 +224,51 @@ Deno.serve(async (req: Request) => {
       .eq('id', investmentId)
       .single()
 
-    if (error || !inv) throw new Error('Investimento não encontrado')
+    if (error || !inv) {
+      console.error('generate-debenture-cautela: erro ao consultar investimento:', error)
+      throw new Error('Investimento não encontrado')
+    }
+
+    // Validação de titularidade / permissão de acesso:
+    // Se a chamada forneceu um cabeçalho Authorization com usuário autenticado,
+    // verifica se o usuário é o titular do investimento (user_id) OU se é admin/staff.
+    const authHeader = req.headers.get('Authorization')
+    if (authHeader) {
+      try {
+        const authClient = createClient(
+          supabaseUrl,
+          Deno.env.get('SUPABASE_ANON_KEY') || supabaseKey,
+          {
+            global: { headers: { Authorization: authHeader } },
+          },
+        )
+        const { data: authData } = await authClient.auth.getUser()
+        const callerUser = authData?.user
+        if (callerUser && callerUser.id !== inv.user_id) {
+          // Checa se é admin ou staff
+          const { data: callerProfile } = await supabase
+            .from('profiles')
+            .select('role, is_admin, is_staff')
+            .eq('id', callerUser.id)
+            .maybeSingle()
+
+          const isAdminOrStaff =
+            callerProfile?.is_admin ||
+            callerProfile?.is_staff ||
+            callerProfile?.role === 'admin' ||
+            callerProfile?.role === 'staff'
+
+          if (!isAdminOrStaff) {
+            throw new Error('Acesso não autorizado a este investimento.')
+          }
+        }
+      } catch (authErr: any) {
+        if (authErr.message?.includes('Acesso não autorizado')) {
+          throw authErr
+        }
+        console.warn('generate-debenture-cautela: verificação secundária de auth:', authErr)
+      }
+    }
 
     // Se já tiver cautela_url gravada e não for regeneração forçada, retorna cache
     const existingFileName = `Cautela_Debentures_${inv.id.substring(0, 8)}.pdf`
