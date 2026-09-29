@@ -85,7 +85,7 @@ export function useAccounting() {
         supabase
           .from('investments')
           .select(
-            'id, user_id, quotas, redeemed_quotas, unit_price, total_value, transfer_value, transfer_date, status, created_at, profiles(id, full_name, document_number, pj_company_name), debenture_subscriptions(id, total_amount, subscription_date, status)',
+            'id, user_id, quotas, redeemed_quotas, unit_price, total_value, transfer_value, transfer_date, status, created_at, profiles!investments_user_id_fkey(id, full_name, document_number, pj_company_name), debenture_subscriptions(id, total_amount, subscription_date, status)',
           ),
         supabase
           .from('recebiveis_ccb')

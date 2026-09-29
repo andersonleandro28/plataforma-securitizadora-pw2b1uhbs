@@ -177,7 +177,9 @@ export default function InvestmentsReview() {
     const [invRes, proofsRes] = await Promise.all([
       supabase
         .from('investments')
-        .select('*, profiles(full_name, document_number), investment_products(*)')
+        .select(
+          '*, profiles!investments_user_id_fkey(full_name, document_number), investment_products(*)',
+        )
         .order('created_at', { ascending: false }),
       supabase.from('investment_proofs').select('*').order('uploaded_at', { ascending: false }),
     ])
