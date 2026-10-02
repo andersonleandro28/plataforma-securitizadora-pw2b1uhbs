@@ -31,7 +31,7 @@ export interface ProjectedCashflowItem {
   entityDocument?: string | null
   category: string
   amount: number
-  status: 'previsto' | 'pendente' | 'em_aberto'
+  status: 'previsto' | 'pendente' | 'em_aberto' | 'realizado'
   referenceId?: string | null
   isManual?: boolean
   manualNotes?: string | null
@@ -228,17 +228,23 @@ export async function getConsolidatedProjectedCashflow(
   const todayTime = new Date(todayStr + 'T00:00:00').getTime()
 
   // 1. Saldo inicial real em caixa
-  // Se options.startDate for informada:
-  // - Se for uma data no passado (ou no início do mês), apura o saldo exatamente até a véspera (data-base inicial)
-  // Se for maior ou igual a hoje (projeção para frente), usa o saldo atual em tempo real
+  // Regra de consistência financeira com Livro Caixa (/admin/accounting) e Extrato Bancário (/admin/bank-accounts):
+  // - Quando a projeção parte de hoje ou do futuro (startDate >= todayStr):
+  //   o Saldo Inicial deve ser a posição real consolidada de caixa DE HOJE (sem corte retroativo, asOfCutoff = undefined),
+  //   garantindo que baixas registradas hoje reflitam imediatamente no caixa inicial.
+  // - Quando a projeção parte no passado (startDate < todayStr):
+  //   o Saldo Inicial é apurado até a véspera da data inicial (startDate - 1 dia).
+  //   Em compensação, as parcelas baixadas (pagas/liquidadas) dentro do período selecionado
+  //   (startDate <= paymentDate <= todayStr) entram como ENTRADAS REALIZADAS no mês correspondente do relatório,
+  //   evitando que o valor desapareça do fluxo (nem no saldo inicial, nem nos recebíveis).
   let asOfCutoff: string | undefined = undefined
-  if (options.startDate) {
-    if (options.startDate < todayStr) {
-      // Saldo no início da data de projeção: transações anteriores a startDate
-      const d = new Date(options.startDate + 'T00:00:00')
-      d.setDate(d.getDate() - 1)
-      asOfCutoff = d.toISOString().split('T')[0]
-    }
+  const isPastStart = Boolean(options.startDate && options.startDate < todayStr)
+
+  if (isPastStart && options.startDate) {
+    // Saldo no início da data de projeção: transações anteriores a startDate
+    const d = new Date(options.startDate + 'T00:00:00')
+    d.setDate(d.getDate() - 1)
+    asOfCutoff = d.toISOString().split('T')[0]
   }
 
   const { totalBalance: initialCashBalance, accounts } = await fetchCurrentCashBalances(asOfCutoff)
@@ -597,16 +603,6 @@ export async function getConsolidatedProjectedCashflow(
     const tomadorDoc = prof?.document_number || ''
     const docNum = op.document_number || `OP-${op.id.substring(0, 8).toUpperCase()}`
 
-    const isOpFullyPaid =
-      ((op.status || '').toLowerCase() === 'pago' ||
-        (op.status || '').toLowerCase() === 'liquidado') &&
-      Boolean(op.liquidation_date)
-
-    if (isOpFullyPaid) {
-      // Já liquidado totalmente no passado — não entra na projeção de fluxo futuro
-      return
-    }
-
     const arr = Array.isArray(op.installments_data) ? op.installments_data : []
     const instCount = Number(op.installments || 1)
 
@@ -620,6 +616,8 @@ export async function getConsolidatedProjectedCashflow(
               due_date: op.due_date || op.issue_date || todayStr,
               value: Number(op.face_value || 0),
               status: op.status,
+              payment_date: op.liquidation_date || null,
+              data_pagamento: op.liquidation_date || null,
             },
           ]
 
@@ -630,10 +628,62 @@ export async function getConsolidatedProjectedCashflow(
         rawStatus === 'liquidado' ||
         Boolean(inst.payment_date || inst.data_pagamento)
 
-      if (isPaid) return // parcela já recebida
-
       const dueStr = inst.dueDate || inst.due_date || op.due_date || todayStr
+      const sacado = op.sacado ? ` (Sacado: ${op.sacado})` : ''
 
+      if (isPaid) {
+        // Se a projeção partiu no passado (startDate < todayStr), as parcelas baixadas
+        // dentro da janela do relatório (startDate <= paymentDate <= todayStr) devem entrar
+        // como ENTRADAS REALIZADAS no mês correspondente, pois ficaram de fora do Saldo Inicial.
+        // Se a projeção parte de hoje/futuro, o valor já está incorporado no saldo inicial em tempo real.
+        if (isPastStart && options.startDate) {
+          const rawPayDate =
+            inst.payment_date || inst.data_pagamento || op.liquidation_date || dueStr
+          const payDateStr = String(rawPayDate).split('T')[0]
+
+          // Somente inclui se a baixa ocorreu a partir de startDate (não estava no saldo inicial)
+          // e até hoje / endDate
+          if (payDateStr >= options.startDate && payDateStr <= todayStr) {
+            let paidVal =
+              inst.amount_paid != null && Number(inst.amount_paid) > 0
+                ? Number(inst.amount_paid)
+                : inst.valor_atualizado != null && Number(inst.valor_atualizado) > 0
+                  ? Number(inst.valor_atualizado)
+                  : inst.total_devido != null && Number(inst.total_devido) > 0
+                    ? Number(inst.total_devido)
+                    : inst.valor_original != null
+                      ? Number(inst.valor_original)
+                      : inst.original_value != null
+                        ? Number(inst.original_value)
+                        : inst.value != null
+                          ? Number(inst.value)
+                          : instCount > 0
+                            ? Number(op.face_value || 0) / instCount
+                            : 0
+
+            if (paidVal > 0) {
+              items.push({
+                id: `ant-rec-paid-${op.id}-${idx}`,
+                date: payDateStr,
+                type: 'in',
+                origin: 'recebivel_antecipacao',
+                originLabel: 'Antecipação Realizada',
+                description: `Parcela ${inst.number || idx + 1}/${Math.max(instCount, rawList.length)} (Baixada) — ${docNum}${sacado}`,
+                entityName: tomadorName,
+                entityDocument: tomadorDoc,
+                category: 'Recebimento de Antecipação (Realizado)',
+                amount: paidVal,
+                status: 'realizado',
+                referenceId: op.id,
+                isManual: false,
+              })
+            }
+          }
+        }
+        return // Parcela paga tratada; não entra como projetada futura
+      }
+
+      // Parcela PENDENTE / PREVISTA
       // Valor da parcela
       let faceVal =
         inst.valor_original != null
@@ -653,8 +703,6 @@ export async function getConsolidatedProjectedCashflow(
       }
 
       if (faceVal <= 0) return
-
-      const sacado = op.sacado ? ` (Sacado: ${op.sacado})` : ''
 
       items.push({
         id: `ant-rec-${op.id}-${idx}`,
@@ -698,10 +746,61 @@ export async function getConsolidatedProjectedCashflow(
         rawStatus === 'liquidado' ||
         Boolean(b.payment_date || b.data_pagamento)
 
-      if (isPaid) return // boleto já quitado
-
       const dueStr = b.due_date || b.vencimento || b.dueDate || todayStr
 
+      if (isPaid) {
+        // Se a projeção partiu no passado (startDate < todayStr), as parcelas de CCB baixadas
+        // dentro da janela do relatório (startDate <= paymentDate <= todayStr) devem entrar
+        // como ENTRADAS REALIZADAS no mês correspondente, pois ficaram de fora do Saldo Inicial.
+        // Se a projeção parte de hoje/futuro, o valor já está incorporado no saldo inicial em tempo real.
+        if (isPastStart && options.startDate) {
+          const rawPayDate = b.payment_date || b.data_pagamento || dueStr
+          const payDateStr = String(rawPayDate).split('T')[0]
+
+          if (payDateStr >= options.startDate && payDateStr <= todayStr) {
+            let paidVal =
+              b.amount_paid != null && Number(b.amount_paid) > 0
+                ? Number(b.amount_paid)
+                : Number(b.unit_value ?? unitVal ?? 0) +
+                  Number(b.interest_applied ?? 0) +
+                  Number(b.penalty_applied ?? 0)
+
+            if (paidVal <= 0) {
+              paidVal =
+                b.valor_atualizado != null && Number(b.valor_atualizado) > 0
+                  ? Number(b.valor_atualizado)
+                  : b.total_devido != null && Number(b.total_devido) > 0
+                    ? Number(b.total_devido)
+                    : b.original_value != null
+                      ? Number(b.original_value)
+                      : b.valor_original != null
+                        ? Number(b.valor_original)
+                        : Number(b.unit_value ?? unitVal ?? 0)
+            }
+
+            if (paidVal > 0) {
+              items.push({
+                id: `ccb-rec-paid-${ccb.id}-${idx}`,
+                date: payDateStr,
+                type: 'in',
+                origin: 'recebivel_ccb',
+                originLabel: 'CCB Realizada',
+                description: `Boleto ${b.number || b.numero || idx + 1}/${boletosList.length || ccb.boleto_count || 1} (Baixado) — ${contractNum}`,
+                entityName: tomadorName,
+                entityDocument: tomadorDoc,
+                category: 'Recebimento de CCB (Realizado)',
+                amount: paidVal,
+                status: 'realizado',
+                referenceId: ccb.id,
+                isManual: false,
+              })
+            }
+          }
+        }
+        return // Parcela de CCB paga tratada; não entra como projetada futura
+      }
+
+      // Parcela PENDENTE / PREVISTA
       let val =
         b.valor_atualizado != null && Number(b.valor_atualizado) > 0
           ? Number(b.valor_atualizado)

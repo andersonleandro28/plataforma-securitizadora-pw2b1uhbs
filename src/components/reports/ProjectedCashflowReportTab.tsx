@@ -465,7 +465,12 @@ export function ProjectedCashflowReportTab() {
       Documento: i.entityDocument || '',
       Categoria: i.category,
       'Valor Projetado (R$)': i.type === 'in' ? i.amount : -i.amount,
-      Situação: i.status === 'em_aberto' ? 'Em Aberto' : 'Previsto',
+      Situação:
+        i.status === 'realizado'
+          ? 'Realizado'
+          : i.status === 'em_aberto'
+            ? 'Em Aberto'
+            : 'Previsto',
       'É Manual': i.isManual ? 'Sim' : 'Não',
     }))
 
@@ -494,12 +499,27 @@ export function ProjectedCashflowReportTab() {
   }
 
   // Helper para badge de origem
-  const renderOriginBadge = (origin: ProjectedCashflowItem['origin'], label: string) => {
+  const renderOriginBadge = (
+    origin: ProjectedCashflowItem['origin'],
+    label: string,
+    status?: ProjectedCashflowItem['status'],
+  ) => {
+    if (status === 'realizado') {
+      return (
+        <Badge
+          variant="outline"
+          className="bg-emerald-100/70 text-emerald-800 border-emerald-300 text-[11px] font-medium"
+        >
+          ✓ {label || 'Realizado'}
+        </Badge>
+      )
+    }
+
     switch (origin) {
       case 'recebivel_antecipacao':
         return (
           <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-[11px]">
-            Antecipação
+            {label || 'Antecipação'}
           </Badge>
         )
       case 'recebivel_ccb':
@@ -508,7 +528,7 @@ export function ProjectedCashflowReportTab() {
             variant="outline"
             className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[11px]"
           >
-            CCB
+            {label || 'CCB'}
           </Badge>
         )
       case 'conta_pagar':
@@ -1116,7 +1136,7 @@ export function ProjectedCashflowReportTab() {
                                 {formatDate(item.date)}
                               </TableCell>
                               <TableCell>
-                                {renderOriginBadge(item.origin, item.originLabel)}
+                                {renderOriginBadge(item.origin, item.originLabel, item.status)}
                               </TableCell>
                               <TableCell>
                                 <div className="font-medium text-foreground">
