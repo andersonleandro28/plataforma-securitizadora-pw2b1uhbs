@@ -38,7 +38,14 @@ import {
   Pencil,
   Trash2,
   AlertTriangle,
+  Repeat,
+  Calendar,
+  Layers,
+  Filter,
 } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { Badge } from '@/components/ui/badge'
+import { generateRecurringInstallments } from '@/lib/recurring-expenses'
 import { useAuth } from '@/hooks/use-auth'
 import { cn, formatDate } from '@/lib/utils'
 import { onlyDigits, maskCpf, maskCnpj, validateCpf, validateCnpj } from '@/lib/cpf-cnpj'
@@ -80,9 +87,15 @@ export default function Expenses() {
     payment_date: '',
     status: 'pending',
     bank_account_id: '',
+    // Campos de despesa recorrente
+    is_recurring: false,
+    installments_count: '12',
+    amount_mode: 'per_installment' as 'per_installment' | 'total',
   })
   const [file, setFile] = useState<File | null>(null)
   const [categoryHighlight, setCategoryHighlight] = useState(false)
+  const [recurrenceFilter, setRecurrenceFilter] = useState<'all' | 'recurring' | 'single'>('all')
+  const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>('all')
 
   useEffect(() => {
     fetchData()
@@ -242,6 +255,9 @@ export default function Expenses() {
       payment_date: '',
       status: 'pending',
       bank_account_id: activeAccount?.id || '',
+      is_recurring: false,
+      installments_count: '12',
+      amount_mode: 'per_installment',
     })
     setFile(null)
     setCategoryHighlight(false)
@@ -260,6 +276,9 @@ export default function Expenses() {
       payment_date: e.payment_date || '',
       status: e.status || 'pending',
       bank_account_id: e.bank_account_id || activeAccount?.id || '',
+      is_recurring: Boolean(e.recurrence_group_id),
+      installments_count: e.total_installments ? String(e.total_installments) : '12',
+      amount_mode: 'per_installment',
     })
     setFile(null)
     setCategoryHighlight(false)
@@ -447,6 +466,109 @@ export default function Expenses() {
         setExpenseOpen(false)
         fetchData()
       }
+    } else if (expForm.is_recurring) {
+      // LANÇAMENTO DE DESPESA RECORRENTE
+      const numInstallments = parseInt(expForm.installments_count, 10)
+      if (isNaN(numInstallments) || numInstallments < 2 || numInstallments > 60) {
+        toast.error('Informe uma quantidade de parcelas válida (entre 2 e 60).')
+        setSaving(false)
+        return
+      }
+
+      const rawAmount = Number(expForm.amount)
+      if (isNaN(rawAmount) || rawAmount <= 0) {
+        toast.error('Informe um valor válido.')
+        setSaving(false)
+        return
+      }
+
+      const recurrenceGroupId = crypto.randomUUID()
+      const schedule = generateRecurringInstallments({
+        baseDescription: expForm.description,
+        startDate: expForm.due_date,
+        installmentsCount: numInstallments,
+        amountMode: expForm.amount_mode,
+        amount: rawAmount,
+      })
+
+      const rowsToInsert = schedule.map((item) => {
+        const row: any = {
+          supplier_id: expForm.supplier_id,
+          description: item.fullDescription,
+          category: expForm.category,
+          amount: item.amount,
+          due_date: item.dueDate,
+          // A 1ª parcela herda o status escolhido no form; as parcelas subsequentes futuras (2..N) entram como 'pending'
+          status: item.installmentNumber === 1 ? expForm.status : 'pending',
+          bank_account_id: finalBankAccountId,
+          recurrence_group_id: recurrenceGroupId,
+          installment_number: item.installmentNumber,
+          total_installments: item.totalInstallments,
+        }
+
+        if (item.installmentNumber === 1 && expForm.status === 'paid') {
+          row.payment_date = expForm.payment_date || new Date().toISOString().split('T')[0]
+        } else {
+          row.payment_date = null
+        }
+
+        if (filePath && item.installmentNumber === 1) {
+          row.invoice_file_path = filePath
+        }
+
+        return row
+      })
+
+      const { data: insertedRows, error: insertError } = await supabase
+        .from('expenses')
+        .insert(rowsToInsert)
+        .select('*, suppliers(company_name)')
+
+      if (insertError) {
+        toast.error('Erro ao lançar grupo recorrente: ' + insertError.message)
+      } else {
+        // Se a 1ª parcela foi marcada como paga, registra o outflow de tesouraria
+        if (expForm.status === 'paid' && insertedRows && insertedRows.length > 0) {
+          const firstRow =
+            insertedRows.find((r: any) => r.installment_number === 1) || insertedRows[0]
+          await registerTreasuryOutflow(firstRow, true)
+        }
+
+        // Registrar trilha de auditoria para o lançamento do grupo recorrente
+        try {
+          const userResp = await supabase.auth.getUser()
+          const totalCalculated = schedule.reduce((sum, s) => sum + s.amount, 0)
+          await (supabase.from('audit_logs') as any).insert({
+            user_id: userResp.data.user?.id || null,
+            action: 'CREATE_RECURRING_EXPENSE_GROUP',
+            entity_type: 'expenses',
+            entity_id: recurrenceGroupId,
+            details: {
+              recurrence_group_id: recurrenceGroupId,
+              supplier_id: expForm.supplier_id,
+              supplier_name:
+                suppliers.find((s) => s.id === expForm.supplier_id)?.company_name || 'Desconhecido',
+              description: expForm.description,
+              category: expForm.category,
+              installments_count: numInstallments,
+              amount_mode: expForm.amount_mode,
+              input_amount: rawAmount,
+              total_group_amount: Number(totalCalculated.toFixed(2)),
+              first_due_date: expForm.due_date,
+              last_due_date: schedule[schedule.length - 1]?.dueDate,
+              first_installment_paid: expForm.status === 'paid',
+            },
+          })
+        } catch (auditErr) {
+          console.warn('Falha ao gravar audit_log de despesa recorrente:', auditErr)
+        }
+
+        toast.success(
+          `Despesa recorrente lançada com sucesso (${numInstallments} parcelas geradas).`,
+        )
+        setExpenseOpen(false)
+        fetchData()
+      }
     } else {
       const { data: newExp, error } = await supabase
         .from('expenses')
@@ -543,133 +665,267 @@ export default function Expenses() {
 
         <TabsContent value="expenses">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Lançamentos (Contas a Pagar)</CardTitle>
-              {!isReadOnly && (
-                <Button onClick={handleNewExpense}>
-                  <Plus className="w-4 h-4 mr-2" /> Nova Despesa
-                </Button>
-              )}
+            <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <CardTitle>Lançamentos (Contas a Pagar)</CardTitle>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Despesas simples e parcelas de despesas recorrentes agendadas no contas a pagar.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {!isReadOnly && (
+                  <Button onClick={handleNewExpense}>
+                    <Plus className="w-4 h-4 mr-2" /> Nova Despesa
+                  </Button>
+                )}
+              </div>
             </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Descrição</TableHead>
-                    <TableHead>Fornecedor</TableHead>
-                    <TableHead>Conta Bancária</TableHead>
-                    <TableHead>Categoria</TableHead>
-                    <TableHead>Vencimento</TableHead>
-                    <TableHead>Valor</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {expenses.map((e) => (
-                    <TableRow key={e.id}>
-                      <TableCell className="font-medium">{e.description}</TableCell>
-                      <TableCell>{e.suppliers?.company_name}</TableCell>
-                      <TableCell className="whitespace-nowrap text-xs">
-                        {e.company_bank_accounts ? (
-                          <div className="flex flex-col">
-                            <span className="font-medium text-foreground">
-                              {e.company_bank_accounts.bank_name}
-                            </span>
-                            <span className="text-[11px] text-muted-foreground font-mono">
-                              {e.company_bank_accounts.branch
-                                ? `${e.company_bank_accounts.branch} / `
-                                : ''}
-                              {e.company_bank_accounts.account_number}
-                              {e.company_bank_accounts.is_active && (
-                                <span className="ml-1 text-[10px] text-emerald-600 font-semibold">
-                                  (Principal)
-                                </span>
+            <CardContent className="space-y-4">
+              {/* Filtros rápidos: Todas, Apenas Recorrentes, Apenas Simples */}
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-muted/40 rounded-lg border text-sm">
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Filtro por Tipo:
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant={recurrenceFilter === 'all' ? 'default' : 'outline'}
+                      size="sm"
+                      className="h-7 text-xs px-2.5"
+                      onClick={() => {
+                        setRecurrenceFilter('all')
+                        setSelectedGroupFilter('all')
+                      }}
+                    >
+                      Todas ({expenses.length})
+                    </Button>
+                    <Button
+                      variant={recurrenceFilter === 'recurring' ? 'default' : 'outline'}
+                      size="sm"
+                      className="h-7 text-xs px-2.5 flex items-center gap-1"
+                      onClick={() => setRecurrenceFilter('recurring')}
+                    >
+                      <Repeat className="w-3 h-3 text-indigo-500" />
+                      Recorrentes ({expenses.filter((e) => Boolean(e.recurrence_group_id)).length})
+                    </Button>
+                    <Button
+                      variant={recurrenceFilter === 'single' ? 'default' : 'outline'}
+                      size="sm"
+                      className="h-7 text-xs px-2.5"
+                      onClick={() => {
+                        setRecurrenceFilter('single')
+                        setSelectedGroupFilter('all')
+                      }}
+                    >
+                      Avulsas ({expenses.filter((e) => !e.recurrence_group_id).length})
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Filtro por grupo recorrente se houver grupos */}
+                {recurrenceFilter === 'recurring' && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-muted-foreground">Grupo:</span>
+                    <Select value={selectedGroupFilter} onValueChange={setSelectedGroupFilter}>
+                      <SelectTrigger className="h-7 text-xs w-[220px]">
+                        <SelectValue placeholder="Todos os grupos" />
+                      </SelectTrigger>
+                      <SelectContent className="z-[9999]">
+                        <SelectItem value="all">Todos os grupos recorrentes</SelectItem>
+                        {Array.from(
+                          new Set(
+                            expenses
+                              .filter((e) => Boolean(e.recurrence_group_id))
+                              .map((e) => e.recurrence_group_id),
+                          ),
+                        ).map((gid) => {
+                          const sample = expenses.find((e) => e.recurrence_group_id === gid)
+                          const baseTitle =
+                            sample?.description?.split(' — Parcela')[0] || 'Despesa Recorrente'
+                          return (
+                            <SelectItem key={gid} value={gid}>
+                              {baseTitle} ({sample?.total_installments || '?'}x)
+                            </SelectItem>
+                          )
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+
+              {/* Tabela de despesas */}
+              {(() => {
+                const displayedExpenses = expenses.filter((e) => {
+                  if (recurrenceFilter === 'recurring') {
+                    if (!e.recurrence_group_id) return false
+                    if (
+                      selectedGroupFilter !== 'all' &&
+                      e.recurrence_group_id !== selectedGroupFilter
+                    ) {
+                      return false
+                    }
+                    return true
+                  }
+                  if (recurrenceFilter === 'single') {
+                    return !e.recurrence_group_id
+                  }
+                  return true
+                })
+
+                return (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Descrição</TableHead>
+                        <TableHead>Fornecedor</TableHead>
+                        <TableHead>Conta Bancária</TableHead>
+                        <TableHead>Categoria</TableHead>
+                        <TableHead>Vencimento</TableHead>
+                        <TableHead>Valor</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {displayedExpenses.map((e) => (
+                        <TableRow key={e.id}>
+                          <TableCell className="font-medium">
+                            <div className="flex flex-col gap-1">
+                              <span className="text-foreground">{e.description}</span>
+                              {e.recurrence_group_id && (
+                                <div className="flex items-center gap-1.5">
+                                  <Badge
+                                    variant="outline"
+                                    className="w-fit text-[10px] px-1.5 py-0 bg-indigo-50 text-indigo-700 border-indigo-200 flex items-center gap-1 font-medium"
+                                  >
+                                    <Repeat className="w-2.5 h-2.5" />
+                                    {e.installment_number && e.total_installments
+                                      ? `Recorrente: ${e.installment_number}/${e.total_installments}`
+                                      : 'Recorrente'}
+                                  </Badge>
+                                  {recurrenceFilter !== 'recurring' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setRecurrenceFilter('recurring')
+                                        setSelectedGroupFilter(e.recurrence_group_id)
+                                      }}
+                                      className="text-[10px] text-muted-foreground hover:text-indigo-600 underline"
+                                      title="Filtrar todas as parcelas deste grupo"
+                                    >
+                                      ver grupo
+                                    </button>
+                                  )}
+                                </div>
                               )}
+                            </div>
+                          </TableCell>
+                          <TableCell>{e.suppliers?.company_name}</TableCell>
+                          <TableCell className="whitespace-nowrap text-xs">
+                            {e.company_bank_accounts ? (
+                              <div className="flex flex-col">
+                                <span className="font-medium text-foreground">
+                                  {e.company_bank_accounts.bank_name}
+                                </span>
+                                <span className="text-[11px] text-muted-foreground font-mono">
+                                  {e.company_bank_accounts.branch
+                                    ? `${e.company_bank_accounts.branch} / `
+                                    : ''}
+                                  {e.company_bank_accounts.account_number}
+                                  {e.company_bank_accounts.is_active && (
+                                    <span className="ml-1 text-[10px] text-emerald-600 font-semibold">
+                                      (Principal)
+                                    </span>
+                                  )}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground italic text-xs">
+                                Conta Principal
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell>{e.category}</TableCell>
+                          <TableCell>{formatDate(e.due_date)}</TableCell>
+                          <TableCell>
+                            R${' '}
+                            {Number(e.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </TableCell>
+                          <TableCell>
+                            <span
+                              className={`px-2 py-1 rounded text-xs ${e.status === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}
+                            >
+                              {e.status === 'paid' ? 'Pago' : 'Pendente'}
                             </span>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground italic text-xs">
-                            Conta Principal
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell>{e.category}</TableCell>
-                      <TableCell>{formatDate(e.due_date)}</TableCell>
-                      <TableCell>
-                        R$ {Number(e.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </TableCell>
-                      <TableCell>
-                        <span
-                          className={`px-2 py-1 rounded text-xs ${e.status === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}
-                        >
-                          {e.status === 'paid' ? 'Pago' : 'Pendente'}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          {e.status === 'pending' && !isReadOnly && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleMarkPaid(e.id)}
-                              className="text-emerald-600 px-2"
-                              title="Baixar"
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                            </Button>
-                          )}
-                          {e.invoice_file_path && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() =>
-                                window.open(
-                                  `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/operation-docs/${e.invoice_file_path}`,
-                                  '_blank',
-                                )
-                              }
-                              className="px-2"
-                              title="Ver Anexo"
-                            >
-                              <FileUp className="w-4 h-4" />
-                            </Button>
-                          )}
-                          {!isReadOnly && (isAdmin || e.status === 'pending') && (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleEditExpense(e)}
-                                className="px-2 text-blue-600 hover:text-blue-700"
-                                title="Editar"
-                              >
-                                <Pencil className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => confirmDelete(e)}
-                                className="px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                title="Excluir"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {expenses.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                        Nenhuma despesa lançada.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              {e.status === 'pending' && !isReadOnly && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleMarkPaid(e.id)}
+                                  className="text-emerald-600 px-2"
+                                  title="Baixar esta parcela"
+                                >
+                                  <CheckCircle className="w-4 h-4" />
+                                </Button>
+                              )}
+                              {e.invoice_file_path && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() =>
+                                    window.open(
+                                      `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/operation-docs/${e.invoice_file_path}`,
+                                      '_blank',
+                                    )
+                                  }
+                                  className="px-2"
+                                  title="Ver Anexo"
+                                >
+                                  <FileUp className="w-4 h-4" />
+                                </Button>
+                              )}
+                              {!isReadOnly && (isAdmin || e.status === 'pending') && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleEditExpense(e)}
+                                    className="px-2 text-blue-600 hover:text-blue-700"
+                                    title="Editar"
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => confirmDelete(e)}
+                                    className="px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    title="Excluir"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {displayedExpenses.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                            Nenhuma despesa encontrada para o filtro selecionado.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                )
+              })()}
             </CardContent>
           </Card>
         </TabsContent>
@@ -852,13 +1108,48 @@ export default function Expenses() {
       </Dialog>
 
       <Dialog open={expenseOpen} onOpenChange={setExpenseOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{expForm.id ? 'Editar Despesa' : 'Lançar Despesa / NF'}</DialogTitle>
+            <DialogTitle>
+              {expForm.id
+                ? 'Editar Despesa'
+                : expForm.is_recurring
+                  ? 'Lançar Despesa Recorrente'
+                  : 'Lançar Despesa / NF'}
+            </DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          <div className="grid gap-4 py-3">
+            {/* Opção de Despesa Recorrente (visível apenas em novos lançamentos) */}
+            {!expForm.id && (
+              <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center">
+                    <Repeat className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <Label
+                      htmlFor="is-recurring-switch"
+                      className="text-sm font-semibold cursor-pointer"
+                    >
+                      Despesa recorrente
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Repete no mesmo dia dos meses subsequentes com N parcelas mensais.
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  id="is-recurring-switch"
+                  checked={expForm.is_recurring}
+                  onCheckedChange={(checked) =>
+                    setExpForm((prev) => ({ ...prev, is_recurring: checked }))
+                  }
+                />
+              </div>
+            )}
+
             <div className="space-y-2">
-              <Label>Fornecedor</Label>
+              <Label>Fornecedor *</Label>
               <Select value={expForm.supplier_id || undefined} onValueChange={handleSupplierChange}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione o fornecedor" />
@@ -872,19 +1163,33 @@ export default function Expenses() {
                 </SelectContent>
               </Select>
             </div>
+
             <div className="space-y-2">
-              <Label>Descrição</Label>
+              <Label>Descrição Base *</Label>
               <Input
                 value={expForm.description}
                 onChange={(e) => setExpForm({ ...expForm, description: e.target.value })}
+                placeholder={
+                  expForm.is_recurring
+                    ? 'Ex.: Licença de Software / Aluguel do Escritório'
+                    : 'Ex.: Serviço de TI'
+                }
               />
+              {expForm.is_recurring && (
+                <p className="text-[11px] text-muted-foreground">
+                  Cada parcela receberá automaticamente o sufixo: &ldquo;— Parcela X/
+                  {expForm.installments_count}&rdquo;.
+                </p>
+              )}
             </div>
-            <div className="grid grid-cols-2 gap-4">
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2 relative">
                 <Label>Categoria</Label>
                 <Input
                   value={expForm.category}
                   onChange={(e) => setExpForm({ ...expForm, category: e.target.value })}
+                  placeholder="Ex.: Tecnologia, Administrativo..."
                   className={cn(
                     'transition-all duration-500',
                     categoryHighlight
@@ -899,27 +1204,176 @@ export default function Expenses() {
                   </span>
                 )}
               </div>
+
               <div className="space-y-2">
-                <Label>Valor (R$)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={expForm.amount}
-                  onChange={(e) => setExpForm({ ...expForm, amount: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Vencimento</Label>
+                <Label>Vencimento da 1ª Parcela *</Label>
                 <Input
                   type="date"
                   value={expForm.due_date}
                   onChange={(e) => setExpForm({ ...expForm, due_date: e.target.value })}
                 />
               </div>
+            </div>
+
+            {/* Configurações específicas de recorrência */}
+            {expForm.is_recurring && !expForm.id && (
+              <div className="p-3.5 rounded-lg border border-indigo-100 bg-indigo-50/40 space-y-3">
+                <div className="flex items-center gap-2 text-indigo-950 font-medium text-xs">
+                  <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                  Configuração das Parcelas Recorrentes
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Quantidade de Parcelas (Meses) *</Label>
+                    <Input
+                      type="number"
+                      min="2"
+                      max="60"
+                      value={expForm.installments_count}
+                      onChange={(e) =>
+                        setExpForm((prev) => ({ ...prev, installments_count: e.target.value }))
+                      }
+                      placeholder="Ex: 12"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Como deseja informar o valor?</Label>
+                    <Select
+                      value={expForm.amount_mode}
+                      onValueChange={(v: 'per_installment' | 'total') =>
+                        setExpForm((prev) => ({ ...prev, amount_mode: v }))
+                      }
+                    >
+                      <SelectTrigger className="h-9 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="z-[9999]">
+                        <SelectItem value="per_installment">Valor por Parcela (R$/mês)</SelectItem>
+                        <SelectItem value="total">
+                          Valor Total do Contrato (Dividir em N)
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs">
+                    {expForm.amount_mode === 'per_installment'
+                      ? 'Valor de Cada Parcela (R$) *'
+                      : 'Valor Total do Grupo (R$) *'}
+                  </Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={expForm.amount}
+                    onChange={(e) => setExpForm({ ...expForm, amount: e.target.value })}
+                    placeholder="0,00"
+                  />
+                </div>
+
+                {/* Resumo/Demonstrativo em tempo real */}
+                {(() => {
+                  const n = parseInt(expForm.installments_count, 10)
+                  const v = Number(expForm.amount)
+                  if (!n || n <= 0 || !v || v <= 0 || !expForm.due_date) {
+                    return (
+                      <p className="text-[11px] text-muted-foreground italic">
+                        Preencha a data de vencimento, parcelas e valor para visualizar o
+                        cronograma.
+                      </p>
+                    )
+                  }
+
+                  const preview = generateRecurringInstallments({
+                    baseDescription: expForm.description || 'Despesa',
+                    startDate: expForm.due_date,
+                    installmentsCount: n,
+                    amountMode: expForm.amount_mode,
+                    amount: v,
+                  })
+
+                  const totalSum = preview.reduce((acc, p) => acc + p.amount, 0)
+                  const samplePerInstallment = preview[0]?.amount || 0
+
+                  return (
+                    <div className="space-y-2 pt-2 border-t border-indigo-200/60">
+                      <div className="flex flex-wrap items-center justify-between text-xs gap-2">
+                        <div>
+                          <span className="text-muted-foreground">Valor por parcela: </span>
+                          <strong className="text-indigo-900">
+                            R${' '}
+                            {samplePerInstallment.toLocaleString('pt-BR', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </strong>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Total das {n} parcelas: </span>
+                          <strong className="text-indigo-900">
+                            R${' '}
+                            {totalSum.toLocaleString('pt-BR', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </strong>
+                        </div>
+                      </div>
+
+                      {/* Lista resumida de datas das parcelas */}
+                      <div className="rounded border bg-background/80 p-2 text-[11px] max-h-36 overflow-y-auto space-y-1">
+                        <div className="font-semibold text-muted-foreground mb-1 flex items-center gap-1">
+                          <Calendar className="w-3 h-3 text-indigo-500" />
+                          Cronograma Previsto (mesmo dia ou último dia de cada mês):
+                        </div>
+                        {preview.slice(0, 6).map((item) => (
+                          <div key={item.installmentNumber} className="flex justify-between py-0.5">
+                            <span className="text-foreground">
+                              {item.installmentNumber}ª: {formatDate(item.dueDate)}
+                            </span>
+                            <span className="font-mono text-muted-foreground">
+                              R${' '}
+                              {item.amount.toLocaleString('pt-BR', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </span>
+                          </div>
+                        ))}
+                        {preview.length > 6 && (
+                          <div className="text-muted-foreground text-center py-0.5 italic">
+                            ... e mais {preview.length - 6} parcelas subsequentes até{' '}
+                            {formatDate(preview[preview.length - 1].dueDate)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
+
+            {/* Campo de valor caso NÃO seja recorrente */}
+            {(!expForm.is_recurring || expForm.id) && (
               <div className="space-y-2">
-                <Label>Status</Label>
+                <Label>Valor (R$) *</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={expForm.amount}
+                  onChange={(e) => setExpForm({ ...expForm, amount: e.target.value })}
+                  placeholder="0,00"
+                />
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>{expForm.is_recurring ? 'Status da 1ª Parcela' : 'Status'}</Label>
                 <Select
                   value={expForm.status}
                   onValueChange={(v) => setExpForm({ ...expForm, status: v })}
@@ -932,21 +1386,29 @@ export default function Expenses() {
                     <SelectItem value="paid">Pago</SelectItem>
                   </SelectContent>
                 </Select>
+                {expForm.is_recurring && (
+                  <p className="text-[11px] text-muted-foreground">
+                    As parcelas 2 em diante serão criadas como &ldquo;Pendente&rdquo; para baixa
+                    mensal futura.
+                  </p>
+                )}
               </div>
+
+              {expForm.status === 'paid' && (
+                <div className="space-y-2 animate-fade-in">
+                  <Label>Data de Pagamento (1ª parcela)</Label>
+                  <Input
+                    type="date"
+                    value={expForm.payment_date}
+                    onChange={(e) => setExpForm({ ...expForm, payment_date: e.target.value })}
+                    required
+                  />
+                </div>
+              )}
             </div>
-            {expForm.status === 'paid' && (
-              <div className="space-y-2 animate-fade-in">
-                <Label>Data de Pagamento</Label>
-                <Input
-                  type="date"
-                  value={expForm.payment_date}
-                  onChange={(e) => setExpForm({ ...expForm, payment_date: e.target.value })}
-                  required
-                />
-              </div>
-            )}
+
             <div className="space-y-2">
-              <Label>Anexar Nota Fiscal (PDF/XML)</Label>
+              <Label>Anexar Nota Fiscal / Contrato (PDF/XML)</Label>
               <Input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
             </div>
 
@@ -957,13 +1419,20 @@ export default function Expenses() {
               required={accounts.length > 0}
             />
           </div>
-          <DialogFooter>
-            {' '}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setExpenseOpen(false)}>
+              Cancelar
+            </Button>
             <Button
               onClick={handleSaveExpense}
               disabled={saving || !expForm.supplier_id || !expForm.amount || !expForm.due_date}
             >
-              {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Salvar Despesa
+              {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {expForm.id
+                ? 'Salvar Alterações'
+                : expForm.is_recurring
+                  ? `Gerar ${expForm.installments_count || ''} Parcelas Recorrentes`
+                  : 'Salvar Despesa'}
             </Button>
           </DialogFooter>
         </DialogContent>
