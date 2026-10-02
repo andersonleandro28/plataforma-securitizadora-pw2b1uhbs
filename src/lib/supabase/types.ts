@@ -1,11 +1,17 @@
 // AVOID UPDATING THIS FILE DIRECTLY. It is automatically generated.
-export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
 
 export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: '14.5'
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -90,11 +96,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'border_items_border_id_fkey'
-            columns: ['border_id']
+            foreignKeyName: "border_items_border_id_fkey"
+            columns: ["border_id"]
             isOneToOne: false
-            referencedRelation: 'borders'
-            referencedColumns: ['id']
+            referencedRelation: "borders"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -167,11 +173,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'ccb_avalistas_ccb_id_fkey'
-            columns: ['ccb_id']
+            foreignKeyName: "ccb_avalistas_ccb_id_fkey"
+            columns: ["ccb_id"]
             isOneToOne: false
-            referencedRelation: 'ccb_solicitacoes'
-            referencedColumns: ['id']
+            referencedRelation: "ccb_solicitacoes"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -199,11 +205,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'ccb_avalistas_documentos_ccb_id_fkey'
-            columns: ['ccb_id']
+            foreignKeyName: "ccb_avalistas_documentos_ccb_id_fkey"
+            columns: ["ccb_id"]
             isOneToOne: false
-            referencedRelation: 'ccb_solicitacoes'
-            referencedColumns: ['id']
+            referencedRelation: "ccb_solicitacoes"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -237,11 +243,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'ccb_conjuges_ccb_id_fkey'
-            columns: ['ccb_id']
+            foreignKeyName: "ccb_conjuges_ccb_id_fkey"
+            columns: ["ccb_id"]
             isOneToOne: false
-            referencedRelation: 'ccb_solicitacoes'
-            referencedColumns: ['id']
+            referencedRelation: "ccb_solicitacoes"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -299,11 +305,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'ccb_solicitacoes_user_id_fkey'
-            columns: ['user_id']
+            foreignKeyName: "ccb_solicitacoes_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: 'profiles'
-            referencedColumns: ['id']
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -529,18 +535,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'contract_versions_created_by_fkey'
-            columns: ['created_by']
+            foreignKeyName: "contract_versions_created_by_fkey"
+            columns: ["created_by"]
             isOneToOne: false
-            referencedRelation: 'profiles'
-            referencedColumns: ['id']
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'contract_versions_operation_id_fkey'
-            columns: ['operation_id']
+            foreignKeyName: "contract_versions_operation_id_fkey"
+            columns: ["operation_id"]
             isOneToOne: false
-            referencedRelation: 'credit_operations'
-            referencedColumns: ['id']
+            referencedRelation: "credit_operations"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -679,18 +685,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'credit_operations_borrower_id_fkey'
-            columns: ['borrower_id']
+            foreignKeyName: "credit_operations_borrower_id_fkey"
+            columns: ["borrower_id"]
             isOneToOne: false
-            referencedRelation: 'profiles'
-            referencedColumns: ['id']
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'credit_operations_manager_id_fkey'
-            columns: ['manager_id']
+            foreignKeyName: "credit_operations_manager_id_fkey"
+            columns: ["manager_id"]
             isOneToOne: false
-            referencedRelation: 'credit_managers'
-            referencedColumns: ['id']
+            referencedRelation: "credit_managers"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -736,11 +742,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'dados_bancarios_ccb_ccb_id_fkey'
-            columns: ['ccb_id']
+            foreignKeyName: "dados_bancarios_ccb_ccb_id_fkey"
+            columns: ["ccb_id"]
             isOneToOne: false
-            referencedRelation: 'ccb_solicitacoes'
-            referencedColumns: ['id']
+            referencedRelation: "ccb_solicitacoes"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -777,11 +783,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'debenture_series_debenture_id_fkey'
-            columns: ['debenture_id']
+            foreignKeyName: "debenture_series_debenture_id_fkey"
+            columns: ["debenture_id"]
             isOneToOne: false
-            referencedRelation: 'debentures'
-            referencedColumns: ['id']
+            referencedRelation: "debentures"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -833,25 +839,25 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'debenture_subscriptions_investment_id_fkey'
-            columns: ['investment_id']
+            foreignKeyName: "debenture_subscriptions_investment_id_fkey"
+            columns: ["investment_id"]
             isOneToOne: false
-            referencedRelation: 'investments'
-            referencedColumns: ['id']
+            referencedRelation: "investments"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'debenture_subscriptions_investment_id_fkey'
-            columns: ['investment_id']
+            foreignKeyName: "debenture_subscriptions_investment_id_fkey"
+            columns: ["investment_id"]
             isOneToOne: false
-            referencedRelation: 'investments_view'
-            referencedColumns: ['id']
+            referencedRelation: "investments_view"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'debenture_subscriptions_series_id_fkey'
-            columns: ['series_id']
+            foreignKeyName: "debenture_subscriptions_series_id_fkey"
+            columns: ["series_id"]
             isOneToOne: false
-            referencedRelation: 'debenture_series'
-            referencedColumns: ['id']
+            referencedRelation: "debenture_series"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -951,25 +957,25 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'expenses_bank_account_id_fkey'
-            columns: ['bank_account_id']
+            foreignKeyName: "expenses_bank_account_id_fkey"
+            columns: ["bank_account_id"]
             isOneToOne: false
-            referencedRelation: 'company_bank_accounts'
-            referencedColumns: ['id']
+            referencedRelation: "company_bank_accounts"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'expenses_category_id_fkey'
-            columns: ['category_id']
+            foreignKeyName: "expenses_category_id_fkey"
+            columns: ["category_id"]
             isOneToOne: false
-            referencedRelation: 'transaction_categories'
-            referencedColumns: ['id']
+            referencedRelation: "transaction_categories"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'expenses_supplier_id_fkey'
-            columns: ['supplier_id']
+            foreignKeyName: "expenses_supplier_id_fkey"
+            columns: ["supplier_id"]
             isOneToOne: false
-            referencedRelation: 'suppliers'
-            referencedColumns: ['id']
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1048,11 +1054,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'financial_parameters_updated_by_fkey'
-            columns: ['updated_by']
+            foreignKeyName: "financial_parameters_updated_by_fkey"
+            columns: ["updated_by"]
             isOneToOne: false
-            referencedRelation: 'profiles'
-            referencedColumns: ['id']
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1191,11 +1197,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'investment_products_series_id_fkey'
-            columns: ['series_id']
+            foreignKeyName: "investment_products_series_id_fkey"
+            columns: ["series_id"]
             isOneToOne: false
-            referencedRelation: 'debenture_series'
-            referencedColumns: ['id']
+            referencedRelation: "debenture_series"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1226,18 +1232,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'investment_proofs_investment_id_fkey'
-            columns: ['investment_id']
+            foreignKeyName: "investment_proofs_investment_id_fkey"
+            columns: ["investment_id"]
             isOneToOne: false
-            referencedRelation: 'investments'
-            referencedColumns: ['id']
+            referencedRelation: "investments"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'investment_proofs_investment_id_fkey'
-            columns: ['investment_id']
+            foreignKeyName: "investment_proofs_investment_id_fkey"
+            columns: ["investment_id"]
             isOneToOne: false
-            referencedRelation: 'investments_view'
-            referencedColumns: ['id']
+            referencedRelation: "investments_view"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1307,32 +1313,32 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'investment_redemptions_investment_id_fkey'
-            columns: ['investment_id']
+            foreignKeyName: "investment_redemptions_investment_id_fkey"
+            columns: ["investment_id"]
             isOneToOne: false
-            referencedRelation: 'investments'
-            referencedColumns: ['id']
+            referencedRelation: "investments"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'investment_redemptions_investment_id_fkey'
-            columns: ['investment_id']
+            foreignKeyName: "investment_redemptions_investment_id_fkey"
+            columns: ["investment_id"]
             isOneToOne: false
-            referencedRelation: 'investments_view'
-            referencedColumns: ['id']
+            referencedRelation: "investments_view"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'investment_redemptions_reinvestment_product_id_fkey'
-            columns: ['reinvestment_product_id']
+            foreignKeyName: "investment_redemptions_reinvestment_product_id_fkey"
+            columns: ["reinvestment_product_id"]
             isOneToOne: false
-            referencedRelation: 'investment_products'
-            referencedColumns: ['id']
+            referencedRelation: "investment_products"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'investment_redemptions_user_id_fkey'
-            columns: ['user_id']
+            foreignKeyName: "investment_redemptions_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: 'profiles'
-            referencedColumns: ['id']
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1411,32 +1417,32 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'investments_bank_account_id_fkey'
-            columns: ['bank_account_id']
+            foreignKeyName: "investments_bank_account_id_fkey"
+            columns: ["bank_account_id"]
             isOneToOne: false
-            referencedRelation: 'company_bank_accounts'
-            referencedColumns: ['id']
+            referencedRelation: "company_bank_accounts"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'investments_created_by_admin_fkey'
-            columns: ['created_by_admin']
+            foreignKeyName: "investments_created_by_admin_fkey"
+            columns: ["created_by_admin"]
             isOneToOne: false
-            referencedRelation: 'profiles'
-            referencedColumns: ['id']
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'investments_product_id_fkey'
-            columns: ['product_id']
+            foreignKeyName: "investments_product_id_fkey"
+            columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: 'investment_products'
-            referencedColumns: ['id']
+            referencedRelation: "investment_products"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'investments_user_id_fkey'
-            columns: ['user_id']
+            foreignKeyName: "investments_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: 'profiles'
-            referencedColumns: ['id']
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1512,18 +1518,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'manual_yield_entries_created_by_fkey'
-            columns: ['created_by']
+            foreignKeyName: "manual_yield_entries_created_by_fkey"
+            columns: ["created_by"]
             isOneToOne: false
-            referencedRelation: 'profiles'
-            referencedColumns: ['id']
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'manual_yield_entries_product_id_fkey'
-            columns: ['product_id']
+            foreignKeyName: "manual_yield_entries_product_id_fkey"
+            columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: 'investment_products'
-            referencedColumns: ['id']
+            referencedRelation: "investment_products"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1557,11 +1563,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'mapeamento_movimentacoes_movimentacao_caixa_id_fkey'
-            columns: ['movimentacao_caixa_id']
+            foreignKeyName: "mapeamento_movimentacoes_movimentacao_caixa_id_fkey"
+            columns: ["movimentacao_caixa_id"]
             isOneToOne: false
-            referencedRelation: 'movimentacoes_caixa'
-            referencedColumns: ['id']
+            referencedRelation: "movimentacoes_caixa"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1625,18 +1631,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'movimentacoes_caixa_bank_account_id_fkey'
-            columns: ['bank_account_id']
+            foreignKeyName: "movimentacoes_caixa_bank_account_id_fkey"
+            columns: ["bank_account_id"]
             isOneToOne: false
-            referencedRelation: 'company_bank_accounts'
-            referencedColumns: ['id']
+            referencedRelation: "company_bank_accounts"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'movimentacoes_caixa_transfer_counterpart_account_id_fkey'
-            columns: ['transfer_counterpart_account_id']
+            foreignKeyName: "movimentacoes_caixa_transfer_counterpart_account_id_fkey"
+            columns: ["transfer_counterpart_account_id"]
             isOneToOne: false
-            referencedRelation: 'company_bank_accounts'
-            referencedColumns: ['id']
+            referencedRelation: "company_bank_accounts"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1709,11 +1715,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'notificacoes_cessao_operation_id_fkey'
-            columns: ['operation_id']
+            foreignKeyName: "notificacoes_cessao_operation_id_fkey"
+            columns: ["operation_id"]
             isOneToOne: false
-            referencedRelation: 'credit_operations'
-            referencedColumns: ['id']
+            referencedRelation: "credit_operations"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1753,11 +1759,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'notifications_user_id_fkey'
-            columns: ['user_id']
+            foreignKeyName: "notifications_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: 'profiles'
-            referencedColumns: ['id']
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1797,11 +1803,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'operacoes_antecipacao_ccb_id_fkey'
-            columns: ['ccb_id']
+            foreignKeyName: "operacoes_antecipacao_ccb_id_fkey"
+            columns: ["ccb_id"]
             isOneToOne: true
-            referencedRelation: 'ccb_solicitacoes'
-            referencedColumns: ['id']
+            referencedRelation: "ccb_solicitacoes"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1859,11 +1865,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'operation_calculations_operation_id_fkey'
-            columns: ['operation_id']
+            foreignKeyName: "operation_calculations_operation_id_fkey"
+            columns: ["operation_id"]
             isOneToOne: true
-            referencedRelation: 'credit_operations'
-            referencedColumns: ['id']
+            referencedRelation: "credit_operations"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1903,18 +1909,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'operation_documents_operation_id_fkey'
-            columns: ['operation_id']
+            foreignKeyName: "operation_documents_operation_id_fkey"
+            columns: ["operation_id"]
             isOneToOne: false
-            referencedRelation: 'credit_operations'
-            referencedColumns: ['id']
+            referencedRelation: "credit_operations"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'operation_documents_uploaded_by_fkey'
-            columns: ['uploaded_by']
+            foreignKeyName: "operation_documents_uploaded_by_fkey"
+            columns: ["uploaded_by"]
             isOneToOne: false
-            referencedRelation: 'profiles'
-            referencedColumns: ['id']
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1951,18 +1957,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'operation_status_history_changed_by_fkey'
-            columns: ['changed_by']
+            foreignKeyName: "operation_status_history_changed_by_fkey"
+            columns: ["changed_by"]
             isOneToOne: false
-            referencedRelation: 'profiles'
-            referencedColumns: ['id']
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'operation_status_history_operation_id_fkey'
-            columns: ['operation_id']
+            foreignKeyName: "operation_status_history_operation_id_fkey"
+            columns: ["operation_id"]
             isOneToOne: false
-            referencedRelation: 'credit_operations'
-            referencedColumns: ['id']
+            referencedRelation: "credit_operations"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1990,18 +1996,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'parameter_history_changed_by_fkey'
-            columns: ['changed_by']
+            foreignKeyName: "parameter_history_changed_by_fkey"
+            columns: ["changed_by"]
             isOneToOne: false
-            referencedRelation: 'profiles'
-            referencedColumns: ['id']
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'parameter_history_parameter_id_fkey'
-            columns: ['parameter_id']
+            foreignKeyName: "parameter_history_parameter_id_fkey"
+            columns: ["parameter_id"]
             isOneToOne: false
-            referencedRelation: 'financial_parameters'
-            referencedColumns: ['id']
+            referencedRelation: "financial_parameters"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -2094,7 +2100,7 @@ export type Database = {
           kyc_signature_envelope_id: string | null
           kyc_signature_status: string | null
           kyc_signature_url: string | null
-          kyc_status: Database['public']['Enums']['kyc_status'] | null
+          kyc_status: Database["public"]["Enums"]["kyc_status"] | null
           lgpd_accepted: boolean | null
           lgpd_accepted_at: string | null
           pf_birth_city: string | null
@@ -2119,7 +2125,7 @@ export type Database = {
           pj_tax_regime: string | null
           pj_trade_name: string | null
           requires_password_change: boolean | null
-          role: Database['public']['Enums']['app_role']
+          role: Database["public"]["Enums"]["app_role"]
           updated_at: string | null
           wallet_balance: number | null
         }
@@ -2151,7 +2157,7 @@ export type Database = {
           kyc_signature_envelope_id?: string | null
           kyc_signature_status?: string | null
           kyc_signature_url?: string | null
-          kyc_status?: Database['public']['Enums']['kyc_status'] | null
+          kyc_status?: Database["public"]["Enums"]["kyc_status"] | null
           lgpd_accepted?: boolean | null
           lgpd_accepted_at?: string | null
           pf_birth_city?: string | null
@@ -2176,7 +2182,7 @@ export type Database = {
           pj_tax_regime?: string | null
           pj_trade_name?: string | null
           requires_password_change?: boolean | null
-          role?: Database['public']['Enums']['app_role']
+          role?: Database["public"]["Enums"]["app_role"]
           updated_at?: string | null
           wallet_balance?: number | null
         }
@@ -2208,7 +2214,7 @@ export type Database = {
           kyc_signature_envelope_id?: string | null
           kyc_signature_status?: string | null
           kyc_signature_url?: string | null
-          kyc_status?: Database['public']['Enums']['kyc_status'] | null
+          kyc_status?: Database["public"]["Enums"]["kyc_status"] | null
           lgpd_accepted?: boolean | null
           lgpd_accepted_at?: string | null
           pf_birth_city?: string | null
@@ -2233,7 +2239,7 @@ export type Database = {
           pj_tax_regime?: string | null
           pj_trade_name?: string | null
           requires_password_change?: boolean | null
-          role?: Database['public']['Enums']['app_role']
+          role?: Database["public"]["Enums"]["app_role"]
           updated_at?: string | null
           wallet_balance?: number | null
         }
@@ -2338,25 +2344,25 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'recebiveis_ccb_ccb_id_fkey'
-            columns: ['ccb_id']
+            foreignKeyName: "recebiveis_ccb_ccb_id_fkey"
+            columns: ["ccb_id"]
             isOneToOne: false
-            referencedRelation: 'ccb_solicitacoes'
-            referencedColumns: ['id']
+            referencedRelation: "ccb_solicitacoes"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'recebiveis_ccb_manager_id_fkey'
-            columns: ['manager_id']
+            foreignKeyName: "recebiveis_ccb_manager_id_fkey"
+            columns: ["manager_id"]
             isOneToOne: false
-            referencedRelation: 'credit_managers'
-            referencedColumns: ['id']
+            referencedRelation: "credit_managers"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'recebiveis_ccb_tomador_id_fkey'
-            columns: ['tomador_id']
+            foreignKeyName: "recebiveis_ccb_tomador_id_fkey"
+            columns: ["tomador_id"]
             isOneToOne: false
-            referencedRelation: 'profiles'
-            referencedColumns: ['id']
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -2396,11 +2402,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'risk_analysis_history_operation_id_fkey'
-            columns: ['operation_id']
+            foreignKeyName: "risk_analysis_history_operation_id_fkey"
+            columns: ["operation_id"]
             isOneToOne: false
-            referencedRelation: 'credit_operations'
-            referencedColumns: ['id']
+            referencedRelation: "credit_operations"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -2563,25 +2569,25 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'treasury_transactions_bank_account_id_fkey'
-            columns: ['bank_account_id']
+            foreignKeyName: "treasury_transactions_bank_account_id_fkey"
+            columns: ["bank_account_id"]
             isOneToOne: false
-            referencedRelation: 'company_bank_accounts'
-            referencedColumns: ['id']
+            referencedRelation: "company_bank_accounts"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'treasury_transactions_category_id_fkey'
-            columns: ['category_id']
+            foreignKeyName: "treasury_transactions_category_id_fkey"
+            columns: ["category_id"]
             isOneToOne: false
-            referencedRelation: 'transaction_categories'
-            referencedColumns: ['id']
+            referencedRelation: "transaction_categories"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'treasury_transactions_expense_id_fkey'
-            columns: ['expense_id']
+            foreignKeyName: "treasury_transactions_expense_id_fkey"
+            columns: ["expense_id"]
             isOneToOne: true
-            referencedRelation: 'expenses'
-            referencedColumns: ['id']
+            referencedRelation: "expenses"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -2636,11 +2642,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'user_bank_accounts_user_id_fkey'
-            columns: ['user_id']
+            foreignKeyName: "user_bank_accounts_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: 'profiles'
-            referencedColumns: ['id']
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -2707,11 +2713,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'usuarios_avalistas_ccb_id_fkey'
-            columns: ['ccb_id']
+            foreignKeyName: "usuarios_avalistas_ccb_id_fkey"
+            columns: ["ccb_id"]
             isOneToOne: false
-            referencedRelation: 'ccb_solicitacoes'
-            referencedColumns: ['id']
+            referencedRelation: "ccb_solicitacoes"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -2772,11 +2778,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'usuarios_conjuges_ccb_id_fkey'
-            columns: ['ccb_id']
+            foreignKeyName: "usuarios_conjuges_ccb_id_fkey"
+            columns: ["ccb_id"]
             isOneToOne: false
-            referencedRelation: 'ccb_solicitacoes'
-            referencedColumns: ['id']
+            referencedRelation: "ccb_solicitacoes"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -2857,32 +2863,32 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'investments_bank_account_id_fkey'
-            columns: ['bank_account_id']
+            foreignKeyName: "investments_bank_account_id_fkey"
+            columns: ["bank_account_id"]
             isOneToOne: false
-            referencedRelation: 'company_bank_accounts'
-            referencedColumns: ['id']
+            referencedRelation: "company_bank_accounts"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'investments_created_by_admin_fkey'
-            columns: ['created_by_admin']
+            foreignKeyName: "investments_created_by_admin_fkey"
+            columns: ["created_by_admin"]
             isOneToOne: false
-            referencedRelation: 'profiles'
-            referencedColumns: ['id']
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'investments_product_id_fkey'
-            columns: ['product_id']
+            foreignKeyName: "investments_product_id_fkey"
+            columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: 'investment_products'
-            referencedColumns: ['id']
+            referencedRelation: "investment_products"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'investments_user_id_fkey'
-            columns: ['user_id']
+            foreignKeyName: "investments_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: 'profiles'
-            referencedColumns: ['id']
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -3054,8 +3060,8 @@ export type Database = {
           user_id: string
         }
         SetofOptions: {
-          from: '*'
-          to: 'notifications'
+          from: "*"
+          to: "notifications"
           isOneToOne: true
           isSetofReturn: false
         }
@@ -3070,8 +3076,8 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: 'admin' | 'investor' | 'borrower' | 'staff' | 'accountant'
-      kyc_status: 'pending' | 'under_review' | 'approved' | 'rejected'
+      app_role: "admin" | "investor" | "borrower" | "staff" | "accountant"
+      kyc_status: "pending" | "under_review" | "approved" | "rejected"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -3079,31 +3085,33 @@ export type Database = {
   }
 }
 
-type DatabaseWithoutInternals = Omit<Database, '__InternalSupabase'>
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
 
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, 'public'>]
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
-    | keyof (DefaultSchema['Tables'] & DefaultSchema['Views'])
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
-        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])
-    : never = never,
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
-      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])[TableName] extends {
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
     ? R
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema['Tables'] & DefaultSchema['Views'])
-    ? (DefaultSchema['Tables'] & DefaultSchema['Views'])[DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
         Row: infer R
       }
       ? R
@@ -3112,23 +3120,23 @@ export type Tables<
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema['Tables']
+    | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
-    : never = never,
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Insert: infer I
     }
     ? I
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema['Tables']
-    ? DefaultSchema['Tables'][DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
         Insert: infer I
       }
       ? I
@@ -3137,23 +3145,23 @@ export type TablesInsert<
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema['Tables']
+    | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
-    : never = never,
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U
     }
     ? U
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema['Tables']
-    ? DefaultSchema['Tables'][DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
         Update: infer U
       }
       ? U
@@ -3162,43 +3170,44 @@ export type TablesUpdate<
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema['Enums']
+    | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums']
-    : never = never,
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums'][EnumName]
-  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema['Enums']
-    ? DefaultSchema['Enums'][DefaultSchemaEnumNameOrOptions]
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
     : never
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema['CompositeTypes']
+    | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes']
-    : never = never,
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes'][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema['CompositeTypes']
-    ? DefaultSchema['CompositeTypes'][PublicCompositeTypeNameOrOptions]
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
 
 export const Constants = {
   public: {
     Enums: {
-      app_role: ['admin', 'investor', 'borrower', 'staff', 'accountant'],
-      kyc_status: ['pending', 'under_review', 'approved', 'rejected'],
+      app_role: ["admin", "investor", "borrower", "staff", "accountant"],
+      kyc_status: ["pending", "under_review", "approved", "rejected"],
     },
   },
 } as const
+
