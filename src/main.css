@@ -130,3 +130,143 @@
     }
   }
 }
+
+/* ==========================================================================
+   REGRAS GLOBAIS DE IMPRESSÃO / GERAÇÃO DE PDF (window.print)
+   ========================================================================== */
+@page {
+  size: A4 auto;
+  margin: 10mm;
+}
+
+@media print {
+  /* 1. Base limpa e fundo branco */
+  html,
+  body {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    width: 100% !important;
+    font-size: 9pt;
+    line-height: 1.35;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* 2. Ocultação estrita de elementos de navegação, layout e ferramentas */
+  aside,
+  header,
+  nav,
+  [data-sidebar],
+  [data-sidebar='sidebar'],
+  [data-sidebar='trigger'],
+  .sidebar,
+  .app-sidebar,
+  #assistant-chat,
+  .assistant-chat-container,
+  [role='tooltip'],
+  [data-radix-popper-content-wrapper],
+  .no-print,
+  [data-no-print='true'],
+  .print\:hidden {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* 3. Desbloqueio completo de containers pais para permitir quebras de página */
+  #root,
+  #root > div,
+  main,
+  [data-sidebar='inset'],
+  .flex,
+  .flex-1,
+  .min-h-screen,
+  .h-screen {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    transform: none !important;
+    box-shadow: none !important;
+    animation: none !important;
+  }
+
+  /* 4. Ocultação de botões dentro de ferramentas/filtros */
+  .no-print button,
+  .print\:hidden button {
+    display: none !important;
+  }
+
+  /* 5. Estilização de cards para impressão limpa (sem sombras) */
+  .card,
+  [class*='rounded-xl'],
+  [class*='rounded-lg'] {
+    box-shadow: none !important;
+    border-color: #cbd5e1 !important;
+    background-color: #ffffff !important;
+  }
+
+  /* 6. Formatação robusta de tabelas para quebra de página contínua */
+  .overflow-x-auto,
+  .overflow-y-auto,
+  .overflow-hidden,
+  .overflow-auto,
+  div:has(> table) {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    width: 100% !important;
+    display: block !important;
+  }
+
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  tbody {
+    display: table-row-group !important;
+  }
+
+  tfoot {
+    display: table-footer-group !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  th,
+  td {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .print-break-inside-avoid,
+  .print-avoid-break {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}

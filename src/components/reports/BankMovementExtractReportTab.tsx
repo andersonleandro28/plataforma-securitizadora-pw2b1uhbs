@@ -302,38 +302,6 @@ export function BankMovementExtractReportTab({
           }
 
           @media print {
-            html, body {
-              overflow: visible !important;
-              height: auto !important;
-              min-height: auto !important;
-              max-height: none !important;
-              background: white !important;
-              color: black !important;
-            }
-
-            body * {
-              visibility: hidden;
-            }
-
-            #root,
-            #root > div,
-            main,
-            header,
-            nav,
-            aside,
-            [data-sidebar="inset"],
-            .flex,
-            .flex-1,
-            .space-y-6,
-            .space-y-4 {
-              overflow: visible !important;
-              height: auto !important;
-              min-height: auto !important;
-              max-height: none !important;
-              transform: none !important;
-              animation: none !important;
-            }
-
             #print-bank-extract-report,
             #print-bank-extract-report * {
               visibility: visible;
@@ -344,7 +312,6 @@ export function BankMovementExtractReportTab({
               display: none !important;
               visibility: hidden !important;
             }
-
             #print-bank-extract-report {
               position: static !important;
               display: block !important;

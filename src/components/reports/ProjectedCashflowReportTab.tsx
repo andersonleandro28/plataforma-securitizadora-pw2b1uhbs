@@ -555,8 +555,42 @@ export function ProjectedCashflowReportTab() {
 
   return (
     <div className="space-y-6">
-      {/* Cabeçalho Executivo do Relatório */}
-      <div className="bg-card rounded-lg border p-6 shadow-sm">
+      {/* Cabeçalho de Impressão Oficial Institucional (oculto em tela, visível ao imprimir/PDF) */}
+      <div className="hidden print:block border-b pb-4 mb-4">
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">{secRazaoSocial}</h1>
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              {secNomeFantasia} — Securitizadora de Créditos & Emissora de Debêntures
+            </div>
+            <h2 className="text-lg font-semibold text-foreground mt-1">Fluxo de Caixa Projetado</h2>
+            <div className="text-[11px] text-muted-foreground mt-0.5 space-x-2">
+              <span>CNPJ: {secCnpj}</span>
+              {secEndereco && <span>• {secEndereco}</span>}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Previsão de liquidez consolidando Contas a Pagar, Resgates de Investimentos e
+              Recebíveis
+            </p>
+          </div>
+          <div className="text-right text-xs text-muted-foreground">
+            <div>
+              Corte / Período: <strong className="text-foreground">{filterPeriodLabel}</strong>
+            </div>
+            <div>
+              Gerado em: {new Date().toLocaleDateString('pt-BR')} às{' '}
+              {new Date().toLocaleTimeString('pt-BR')}
+            </div>
+            <div>
+              Total de Lançamentos:{' '}
+              <strong className="text-foreground">{filteredItems.length}</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Cabeçalho Executivo do Relatório (Tela) */}
+      <div className="bg-card rounded-lg border p-6 shadow-sm print:hidden">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -574,7 +608,7 @@ export function ProjectedCashflowReportTab() {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 print:hidden">
             <Button
               variant="outline"
               size="sm"
@@ -611,7 +645,7 @@ export function ProjectedCashflowReportTab() {
       </div>
 
       {/* Cards de Resumo Executivo */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5 print-break-inside-avoid">
         {/* Card 1: Saldo Inicial Real de Caixa */}
         <Card className="border-l-4 border-l-blue-500 bg-blue-50/10">
           <CardHeader className="pb-2">
@@ -757,7 +791,7 @@ export function ProjectedCashflowReportTab() {
       </div>
 
       {/* Barra de Filtros (Padrão Recebíveis a Receber) */}
-      <Card>
+      <Card className="print:hidden">
         <CardHeader className="pb-3 border-b">
           <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
             <div className="flex items-center gap-2">

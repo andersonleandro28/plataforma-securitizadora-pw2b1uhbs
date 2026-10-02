@@ -760,38 +760,6 @@ export function ReceivablesToReceiveReportTab({
           }
 
           @media print {
-            html, body {
-              overflow: visible !important;
-              height: auto !important;
-              min-height: auto !important;
-              max-height: none !important;
-              background: white !important;
-              color: black !important;
-            }
-
-            body * {
-              visibility: hidden;
-            }
-
-            #root,
-            #root > div,
-            main,
-            header,
-            nav,
-            aside,
-            [data-sidebar="inset"],
-            .flex,
-            .flex-1,
-            .space-y-6,
-            .space-y-4 {
-              overflow: visible !important;
-              height: auto !important;
-              min-height: auto !important;
-              max-height: none !important;
-              transform: none !important;
-              animation: none !important;
-            }
-
             #print-receivables-to-receive-report,
             #print-receivables-to-receive-report * {
               visibility: visible;
@@ -802,7 +770,6 @@ export function ReceivablesToReceiveReportTab({
               display: none !important;
               visibility: hidden !important;
             }
-
             #print-receivables-to-receive-report {
               position: static !important;
               display: block !important;

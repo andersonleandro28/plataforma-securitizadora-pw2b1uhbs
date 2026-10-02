@@ -466,7 +466,7 @@ export function UnifiedReportTab() {
       </div>
 
       {/* Card de Seleção de Competência e Relatórios */}
-      <Card className="no-print border-primary/20 bg-primary/5">
+      <Card className="no-print print:hidden border-primary/20 bg-primary/5">
         <CardHeader className="pb-3 border-b">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
             <div>

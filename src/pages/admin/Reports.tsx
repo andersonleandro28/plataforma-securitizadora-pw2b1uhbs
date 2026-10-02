@@ -19,8 +19,8 @@ export default function Reports() {
     activeRole === 'admin' || activeRole === 'staff' || activeRole === 'accountant'
 
   return (
-    <div className="flex-1 space-y-4 p-8 pt-6">
-      <div className="flex items-center justify-between space-y-2">
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Relatórios e Inteligência</h2>
           <p className="text-muted-foreground text-sm">
@@ -30,7 +30,8 @@ export default function Reports() {
         </div>
       </div>
       <Tabs defaultValue={isAdminOrStaff ? 'investor-yields' : 'extract'} className="space-y-4">
-        <TabsList className="flex flex-wrap h-auto gap-2">
+        <TabsList className="flex flex-wrap h-auto gap-2 print:hidden">
+          {' '}
           {isAdminOrStaff && (
             <TabsTrigger value="unified-report" className="font-medium text-primary font-semibold">
               Gerador Unificado

@@ -203,7 +203,39 @@ export default function Accounting() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up pb-10">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+      {/* Cabeçalho de Impressão Oficial Institucional (visível no print/PDF) */}
+      <div className="hidden print:block border-b pb-4 mb-4">
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-2xl font-bold">Nexum Securitizadora S.A.</h1>
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Nexum Security 360º — Securitizadora de Créditos & Emissora de Debêntures
+            </div>
+            <h2 className="text-lg font-semibold text-foreground mt-1">
+              Livro Caixa Contábil Consolidado
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Extrato detalhado de movimentações e conciliação bancária
+            </p>
+          </div>
+          <div className="text-right text-xs text-muted-foreground">
+            <div>
+              Período:{' '}
+              <strong className="text-foreground">
+                {periodoInicio && periodoFim
+                  ? `${new Date(periodoInicio + 'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(periodoFim + 'T00:00:00').toLocaleDateString('pt-BR')}`
+                  : 'Geral'}
+              </strong>
+            </div>
+            <div>
+              Gerado em: {new Date().toLocaleDateString('pt-BR')} às{' '}
+              {new Date().toLocaleTimeString('pt-BR')}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 print:hidden">
         <div>
           <div className="text-sm text-muted-foreground mb-1">Home &gt; Contabilidade</div>
           <h1 className="text-3xl font-bold tracking-tight">Contabilidade — Livro Caixa</h1>
@@ -291,7 +323,7 @@ export default function Accounting() {
         </Card>
       </div>
 
-      <Card>
+      <Card className="print:hidden">
         <CardContent className="p-4 flex flex-wrap gap-4 items-end">
           <div className="grid gap-1 flex-1 min-w-[200px]">
             <span className="text-xs font-medium text-muted-foreground">Busca</span>

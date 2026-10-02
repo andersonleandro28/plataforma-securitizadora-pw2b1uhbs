@@ -855,41 +855,6 @@ export function InvestorYieldsReportTab({ embedded = false }: InvestorYieldsRepo
           }
 
           @media print {
-            /* Desativa overflow oculto ou scroll de todos os elementos e ancestrais que travam a paginação em navegadores (Chromium / Firefox / Safari) */
-            html, body {
-              overflow: visible !important;
-              height: auto !important;
-              min-height: auto !important;
-              max-height: none !important;
-              background: white !important;
-              color: black !important;
-            }
-
-            /* Oculta layout e outros elementos da aplicação */
-            body * {
-              visibility: hidden;
-            }
-
-            /* Garante que os pais e ancestrais do relatório não cortem altura nem restrinjam overflow/flex/grid */
-            #root,
-            #root > div,
-            main,
-            header,
-            nav,
-            aside,
-            [data-sidebar="inset"],
-            .flex,
-            .flex-1,
-            .space-y-6,
-            .space-y-4 {
-              overflow: visible !important;
-              height: auto !important;
-              min-height: auto !important;
-              max-height: none !important;
-              transform: none !important;
-              animation: none !important;
-            }
-
             /* Relatório visível em fluxo natural de documento contínuo */
             #print-yields-report,
             #print-yields-report * {

@@ -174,8 +174,39 @@ export default function Dfc() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up pb-10">
+      {/* Cabeçalho de Impressão Oficial Institucional (visível no print/PDF) */}
+      <div className="hidden print:block border-b pb-4 mb-4">
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-2xl font-bold">Nexum Securitizadora S.A.</h1>
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Nexum Security 360º — Securitizadora de Créditos & Emissora de Debêntures
+            </div>
+            <h2 className="text-lg font-semibold text-foreground mt-1">
+              DFC — Demonstração dos Fluxos de Caixa (FASB 95)
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Método Direto · Atividades Operacionais, Investimento e Financiamento
+            </p>
+          </div>
+          <div className="text-right text-xs text-muted-foreground">
+            <div>
+              Período:{' '}
+              <strong className="text-foreground">
+                {new Date(periodoInicio + 'T00:00:00').toLocaleDateString('pt-BR')} a{' '}
+                {new Date(periodoFim + 'T00:00:00').toLocaleDateString('pt-BR')}
+              </strong>
+            </div>
+            <div>
+              Gerado em: {new Date().toLocaleDateString('pt-BR')} às{' '}
+              {new Date().toLocaleTimeString('pt-BR')}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Abas Superiores DRE / DFC */}
-      <div className="flex border-b border-border/80 pb-2 gap-2">
+      <div className="flex border-b border-border/80 pb-2 gap-2 print:hidden">
         <Link
           to="/admin/dre"
           className="px-4 py-2 text-sm font-medium rounded-md transition-colors text-muted-foreground hover:text-foreground hover:bg-muted/50"
@@ -190,8 +221,8 @@ export default function Dfc() {
         </Link>
       </div>
 
-      {/* Cabeçalho */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+      {/* Cabeçalho (Tela) */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 print:hidden">
         <div>
           <div className="text-sm text-muted-foreground mb-1">
             Home &gt; Financeiro &gt; DFC (FASB 95)
@@ -245,10 +276,12 @@ export default function Dfc() {
       />
 
       {/* Card de Consistência e Auditoria das Captações */}
-      <CaptacoesConsistencyCard />
+      <div className="print:hidden">
+        <CaptacoesConsistencyCard />
+      </div>
 
       {/* Filtro de período */}
-      <Card>
+      <Card className="print:hidden">
         <CardContent className="p-4 flex flex-wrap gap-4 items-end">
           <div className="grid gap-1">
             <span className="text-xs font-medium text-muted-foreground">Modo</span>

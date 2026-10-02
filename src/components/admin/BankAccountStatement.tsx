@@ -218,8 +218,45 @@ export function BankAccountStatement({
 
   return (
     <div className="space-y-6">
+      {/* Cabeçalho de Impressão Oficial Institucional (visível no print/PDF) */}
+      <div className="hidden print:block border-b pb-4 mb-4">
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-2xl font-bold">Nexum Securitizadora S.A.</h1>
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Nexum Security 360º — Securitizadora de Créditos & Emissora de Debêntures
+            </div>
+            <h2 className="text-lg font-semibold text-foreground mt-1">
+              Extrato Bancário Contábil
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Conta:{' '}
+              {selectedAccount
+                ? `${selectedAccount.bank_name} (Ag: ${selectedAccount.branch || 'S/A'} | C/C: ${selectedAccount.account_number})`
+                : 'Consolidado — Todas as Contas'}
+            </p>
+          </div>
+          <div className="text-right text-xs text-muted-foreground">
+            <div>
+              Competência:{' '}
+              <strong className="text-foreground">
+                {selectedMonth === 'todos' ? 'Histórico Completo' : selectedMonth}
+              </strong>
+            </div>
+            <div>
+              Gerado em: {new Date().toLocaleDateString('pt-BR')} às{' '}
+              {new Date().toLocaleTimeString('pt-BR')}
+            </div>
+            <div>
+              Total de Lançamentos:{' '}
+              <strong className="text-foreground">{displayList.length}</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Cards de Saldo no Topo do Extrato */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-4 print-break-inside-avoid">
         {accounts.map((acc) => {
           const bal = balances[acc.id] ?? 0
           const isSelected = selectedAccountId === acc.id
@@ -311,7 +348,7 @@ export function BankAccountStatement({
 
       {/* Barra de Filtros e Ferramentas do Extrato */}
       <Card>
-        <CardHeader className="pb-3 border-b">
+        <CardHeader className="pb-3 border-b print:hidden">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
             <div>
               <CardTitle className="text-lg font-bold flex items-center gap-2">
@@ -341,7 +378,7 @@ export function BankAccountStatement({
           </div>
         </CardHeader>
         <CardContent className="pt-4 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 print:hidden">
             {/* Seletor de Conta */}
             <div className="space-y-1">
               <span className="text-xs font-semibold text-muted-foreground">Conta Bancária</span>
@@ -612,7 +649,7 @@ export function BankAccountStatement({
 
           {/* Paginação */}
           {!loading && totalPages > 1 && (
-            <div className="flex items-center justify-between border-t pt-3">
+            <div className="flex items-center justify-between border-t pt-3 print:hidden">
               <span className="text-xs text-muted-foreground">
                 Exibindo {(page - 1) * itemsPerPage + 1} a{' '}
                 {Math.min(page * itemsPerPage, displayList.length)} de {displayList.length}{' '}

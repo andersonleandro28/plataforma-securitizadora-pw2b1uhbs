@@ -1184,38 +1184,6 @@ export function PeriodOperationsReportTab({
           }
 
           @media print {
-            html, body {
-              overflow: visible !important;
-              height: auto !important;
-              min-height: auto !important;
-              max-height: none !important;
-              background: white !important;
-              color: black !important;
-            }
-
-            body * {
-              visibility: hidden;
-            }
-
-            #root,
-            #root > div,
-            main,
-            header,
-            nav,
-            aside,
-            [data-sidebar="inset"],
-            .flex,
-            .flex-1,
-            .space-y-6,
-            .space-y-4 {
-              overflow: visible !important;
-              height: auto !important;
-              min-height: auto !important;
-              max-height: none !important;
-              transform: none !important;
-              animation: none !important;
-            }
-
             #print-period-operations-report,
             #print-period-operations-report * {
               visibility: visible;
