@@ -1049,6 +1049,14 @@ export function ProjectedCashflowReportTab() {
                                 <div className="font-medium text-foreground">
                                   {item.description}
                                 </div>
+                                {item.principalAmount !== undefined &&
+                                  item.yieldAmount !== undefined &&
+                                  item.yieldAmount > 0 && (
+                                    <div className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">
+                                      Principal: {formatCurrency(item.principalAmount)} +
+                                      Rendimentos: {formatCurrency(item.yieldAmount)}
+                                    </div>
+                                  )}
                                 {item.manualNotes && (
                                   <div className="text-[11px] text-muted-foreground italic">
                                     Nota: {item.manualNotes}

@@ -1,7 +1,17 @@
 import { supabase } from '@/lib/supabase/client'
-import { evaluateGracePeriod } from '@/lib/redemption-utils'
+import {
+  evaluateGracePeriod,
+  calculateRedemptionMetrics,
+  type InvestmentForRedemption,
+} from '@/lib/redemption-utils'
+import { fetchManualYieldEntries, type ManualYieldEntry } from '@/services/manual-yield'
+import {
+  fetchConsolidatedAccountingLedger,
+  type BankAccountBalanceSummary,
+} from '@/lib/accounting-ledger'
 
 export type ProjectedEntryType = 'in' | 'out'
+
 export type ProjectedOriginType =
   | 'recebivel_antecipacao'
   | 'recebivel_ccb'
@@ -25,6 +35,8 @@ export interface ProjectedCashflowItem {
   referenceId?: string | null
   isManual?: boolean
   manualNotes?: string | null
+  principalAmount?: number
+  yieldAmount?: number
 }
 
 export interface ManualProjectedEntry {
@@ -79,55 +91,32 @@ export interface FetchProjectedCashflowOptions {
 /**
  * Consulta o saldo inicial de caixa a partir do Livro Caixa das contas cadastradas.
  */
-export async function fetchCurrentCashBalances(): Promise<{
+export async function fetchCurrentCashBalances(asOfDate?: string): Promise<{
   totalBalance: number
   accounts: BankAccountBalanceInfo[]
 }> {
   try {
-    const { data: accountsData, error: accErr } = await supabase
-      .from('company_bank_accounts')
-      .select('id, bank_name, branch, account_number, is_active')
-      .order('is_active', { ascending: false })
+    // Alinha a apuração de saldos com a fonte primária oficial do Livro Caixa (useAccounting / /admin/accounting)
+    // Se asOfDate for informada, o saldo reflete o acumulado histórico até o início da projeção
+    const ledger = await fetchConsolidatedAccountingLedger({ asOfDate })
 
-    if (accErr || !accountsData) {
-      console.warn('Erro ao carregar contas da empresa para saldo:', accErr)
-      return { totalBalance: 0, accounts: [] }
+    const accounts: BankAccountBalanceInfo[] = ledger.accountSummaries.map(
+      (acc: BankAccountBalanceSummary) => ({
+        id: acc.id,
+        bankName: acc.bank_name,
+        accountNumber: acc.account_number,
+        branch: acc.branch || '',
+        balance: acc.balance,
+        isActive: acc.is_active,
+      }),
+    )
+
+    return {
+      totalBalance: ledger.totalCashBalance,
+      accounts,
     }
-
-    let total = 0
-    const accounts: BankAccountBalanceInfo[] = []
-
-    for (const acc of accountsData) {
-      try {
-        const { data: balData } = await (supabase.rpc as any)('get_bank_account_balance', {
-          p_bank_account_id: acc.id,
-        })
-        const bal = Number(balData || 0)
-        total += bal
-        accounts.push({
-          id: acc.id,
-          bankName: acc.bank_name,
-          accountNumber: acc.account_number,
-          branch: acc.branch,
-          balance: bal,
-          isActive: Boolean(acc.is_active),
-        })
-      } catch (err) {
-        console.warn(`Erro ao consultar saldo da conta ${acc.id}:`, err)
-        accounts.push({
-          id: acc.id,
-          bankName: acc.bank_name,
-          accountNumber: acc.account_number,
-          branch: acc.branch,
-          balance: 0,
-          isActive: Boolean(acc.is_active),
-        })
-      }
-    }
-
-    return { totalBalance: total, accounts }
   } catch (err) {
-    console.error('Falha geral ao buscar saldos de caixa:', err)
+    console.error('Falha ao consolidar saldos de caixa via Livro Caixa:', err)
     return { totalBalance: 0, accounts: [] }
   }
 }
@@ -238,8 +227,10 @@ export async function getConsolidatedProjectedCashflow(
   const todayStr = new Date().toISOString().split('T')[0]
   const todayTime = new Date(todayStr + 'T00:00:00').getTime()
 
-  // 1. Saldo inicial real em caixa
-  const { totalBalance: initialCashBalance, accounts } = await fetchCurrentCashBalances()
+  // 1. Saldo inicial real em caixa (se options.startDate for informada, pode apurar até essa data)
+  const { totalBalance: initialCashBalance, accounts } = await fetchCurrentCashBalances(
+    options.startDate,
+  )
 
   // 2. Contas a pagar (tabela expenses, status != 'paid' ou payment_date IS NULL)
   // Observação: mesmo que todas hoje estejam pagas no seed, buscamos as que estiverem pendentes
@@ -404,8 +395,11 @@ export async function getConsolidatedProjectedCashflow(
     console.error('Erro ao buscar CCBs para fluxo projetado:', ccbErr)
   }
 
-  // 6. Lançamentos manuais projetados
-  const manualEntries = await fetchManualProjectedEntries()
+  // 6. Lançamentos manuais projetados e rendimentos manuais (Forex) para resgates
+  const [manualEntries, manualYieldEntries] = await Promise.all([
+    fetchManualProjectedEntries(),
+    fetchManualYieldEntries(),
+  ])
 
   // CONSOLIDAÇÃO DOS ITENS PROJETADOS
   const items: ProjectedCashflowItem[] = []
@@ -434,7 +428,7 @@ export async function getConsolidatedProjectedCashflow(
     })
   })
 
-  // B. Processar Resgates de Investimentos (Saídas)
+  // B. Processar Resgates de Investimentos (Saídas com Principal + Juros/Rendimentos)
   // b.1: Resgates pendentes solicitados formalmente
   ;(pendingRedemptions || []).forEach((red: any) => {
     const prof = Array.isArray(red.profiles) ? red.profiles[0] : red.profiles
@@ -448,6 +442,40 @@ export async function getConsolidatedProjectedCashflow(
     // Data projetada: data de solicitação ou hoje se anterior
     const reqDate = red.created_at ? red.created_at.split('T')[0] : todayStr
     const projDate = reqDate < todayStr ? todayStr : reqDate
+    const projDateObj = new Date(projDate + 'T12:00:00Z')
+
+    // Se já tiver gross_value calculado na solicitação formal, usamos; caso contrário ou se for apenas principal,
+    // calculamos via calculateRedemptionMetrics com data projetada
+    let grossVal = Number(red.gross_value || red.net_value || 0)
+    let principalVal = 0
+    let yieldVal = 0
+
+    if (inv && prod) {
+      const calcMetrics = calculateRedemptionMetrics(
+        {
+          id: inv.id,
+          user_id: red.profiles?.id || '',
+          product_id: prod.id,
+          quotas: red.requested_quotas,
+          redeemed_quotas: 0,
+          unit_price: inv.unit_price,
+          total_value: Number(red.requested_quotas) * Number(inv.unit_price || 1000),
+          status: 'pending',
+          transfer_date: red.created_at,
+          created_at: red.created_at,
+          investment_products: prod,
+        },
+        Number(red.requested_quotas || 0),
+        manualYieldEntries,
+        projDateObj,
+      )
+
+      principalVal = calcMetrics.principal
+      yieldVal = calcMetrics.yieldAmount
+      grossVal = Math.max(grossVal, calcMetrics.grossValue)
+    } else {
+      principalVal = grossVal
+    }
 
     items.push({
       id: `red-solic-${red.id}`,
@@ -455,11 +483,13 @@ export async function getConsolidatedProjectedCashflow(
       type: 'out',
       origin: 'resgate_investimento',
       originLabel: 'Resgate Solicitado',
-      description: `Resgate pendente — ${prod?.title || 'Debêntures'} (${red.requested_quotas} cotas)`,
+      description: `Resgate pendente — ${prod?.title || 'Debêntures'} (${red.requested_quotas} cotas) [Principal R$ ${principalVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} + Juros R$ ${yieldVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}]`,
       entityName: investorName,
       entityDocument: investorDoc,
       category: 'Resgate de Investimento',
-      amount: Number(red.net_value || red.gross_value || 0),
+      amount: grossVal,
+      principalAmount: principalVal,
+      yieldAmount: yieldVal,
       status: 'pendente',
       referenceId: red.id,
       isManual: false,
@@ -468,6 +498,7 @@ export async function getConsolidatedProjectedCashflow(
 
   // b.2: Resgates projetados por término de carência das aplicações ativas
   // Projeta a liquidação/saída na data do fim da carência quando esta vence no futuro
+  // Inclui PRINCIPAL + JUROS acumulados até a data da carência (ou hoje se já decorrida)
   ;(activeInvestments || []).forEach((inv: any) => {
     const prof = Array.isArray(inv.profiles) ? inv.profiles[0] : inv.profiles
     const prod = Array.isArray(inv.investment_products)
@@ -481,22 +512,21 @@ export async function getConsolidatedProjectedCashflow(
     const principal = remainingQuotas * unitPrice
 
     if (prod) {
-      const graceEval = evaluateGracePeriod(
-        {
-          id: inv.id,
-          user_id: inv.user_id,
-          product_id: inv.product_id,
-          quotas: inv.quotas,
-          redeemed_quotas: inv.redeemed_quotas,
-          unit_price: unitPrice,
-          total_value: principal,
-          status: inv.status,
-          transfer_date: inv.transfer_date,
-          created_at: inv.created_at,
-          investment_products: prod,
-        },
-        new Date(),
-      )
+      const invObj: InvestmentForRedemption = {
+        id: inv.id,
+        user_id: inv.user_id,
+        product_id: inv.product_id,
+        quotas: inv.quotas,
+        redeemed_quotas: inv.redeemed_quotas,
+        unit_price: unitPrice,
+        total_value: principal,
+        status: inv.status,
+        transfer_date: inv.transfer_date,
+        created_at: inv.created_at,
+        investment_products: prod,
+      }
+
+      const graceEval = evaluateGracePeriod(invObj, new Date())
 
       // Se a carência terminar em data futura (ou carência recente não sacada)
       if (graceEval.graceReleaseDate) {
@@ -506,17 +536,29 @@ export async function getConsolidatedProjectedCashflow(
           const investorName = prof?.pj_company_name || prof?.full_name || 'Investidor'
           const investorDoc = prof?.document_number || ''
 
+          // Calcula juros acumulados até a data projetada da carência
+          const redemptionMetrics = calculateRedemptionMetrics(
+            invObj,
+            remainingQuotas,
+            manualYieldEntries,
+            graceEval.graceReleaseDate,
+          )
+
+          const projectedTotalWithYield = redemptionMetrics.grossValue // principal + juros
+
           items.push({
             id: `inv-carencia-${inv.id}`,
             date: releaseStr,
             type: 'out',
             origin: 'resgate_investimento',
             originLabel: 'Vencimento de Carência',
-            description: `Vencimento de carência (${graceEval.gracePeriodMonths}m) — ${prod.title || 'Debêntures'}`,
+            description: `Vencimento de carência (${graceEval.gracePeriodMonths}m) — ${prod.title || 'Debêntures'} [Principal R$ ${redemptionMetrics.principal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} + Juros R$ ${redemptionMetrics.yieldAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}]`,
             entityName: investorName,
             entityDocument: investorDoc,
             category: 'Resgate Programado',
-            amount: principal,
+            amount: projectedTotalWithYield,
+            principalAmount: redemptionMetrics.principal,
+            yieldAmount: redemptionMetrics.yieldAmount,
             status: 'previsto',
             referenceId: inv.id,
             isManual: false,
