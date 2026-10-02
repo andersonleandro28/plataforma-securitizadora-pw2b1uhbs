@@ -21,12 +21,17 @@ export interface NewManualYieldEntry {
   created_by?: string
 }
 
-export async function fetchManualYieldEntries(productId: string): Promise<ManualYieldEntry[]> {
-  const { data, error } = await supabase
+export async function fetchManualYieldEntries(productId?: string): Promise<ManualYieldEntry[]> {
+  let query = supabase
     .from('manual_yield_entries')
     .select('*')
-    .eq('product_id', productId)
     .order('period', { ascending: false })
+
+  if (productId) {
+    query = query.eq('product_id', productId)
+  }
+
+  const { data, error } = await query
 
   if (error) throw error
   return (data || []) as ManualYieldEntry[]

@@ -227,10 +227,21 @@ export async function getConsolidatedProjectedCashflow(
   const todayStr = new Date().toISOString().split('T')[0]
   const todayTime = new Date(todayStr + 'T00:00:00').getTime()
 
-  // 1. Saldo inicial real em caixa (se options.startDate for informada, pode apurar até essa data)
-  const { totalBalance: initialCashBalance, accounts } = await fetchCurrentCashBalances(
-    options.startDate,
-  )
+  // 1. Saldo inicial real em caixa
+  // Se options.startDate for informada:
+  // - Se for uma data no passado (ou no início do mês), apura o saldo exatamente até a véspera (data-base inicial)
+  // Se for maior ou igual a hoje (projeção para frente), usa o saldo atual em tempo real
+  let asOfCutoff: string | undefined = undefined
+  if (options.startDate) {
+    if (options.startDate < todayStr) {
+      // Saldo no início da data de projeção: transações anteriores a startDate
+      const d = new Date(options.startDate + 'T00:00:00')
+      d.setDate(d.getDate() - 1)
+      asOfCutoff = d.toISOString().split('T')[0]
+    }
+  }
+
+  const { totalBalance: initialCashBalance, accounts } = await fetchCurrentCashBalances(asOfCutoff)
 
   // 2. Contas a pagar (tabela expenses, status != 'paid' ou payment_date IS NULL)
   // Observação: mesmo que todas hoje estejam pagas no seed, buscamos as que estiverem pendentes
@@ -528,42 +539,52 @@ export async function getConsolidatedProjectedCashflow(
 
       const graceEval = evaluateGracePeriod(invObj, new Date())
 
-      // Se a carência terminar em data futura (ou carência recente não sacada)
-      if (graceEval.graceReleaseDate) {
-        const releaseStr = graceEval.graceReleaseDate.toISOString().split('T')[0]
-        // Se a liberação for futura, projetamos como potencial saída de resgate programado
-        if (releaseStr >= todayStr) {
-          const investorName = prof?.pj_company_name || prof?.full_name || 'Investidor'
-          const investorDoc = prof?.document_number || ''
+      // Se a carência terminar em data futura (ou se a carência já tiver sido cumprida e as cotas continuam ativas)
+      // Projeta o vencimento da carência na data prevista ou hoje se a carência já expirou e ainda não foi resgatada
+      if (graceEval.graceReleaseDate || !graceEval.isWithinGracePeriod) {
+        const targetDate =
+          graceEval.graceReleaseDate &&
+          graceEval.graceReleaseDate.toISOString().split('T')[0] >= todayStr
+            ? graceEval.graceReleaseDate
+            : new Date(todayStr + 'T12:00:00Z')
+        const releaseStr = targetDate.toISOString().split('T')[0]
 
-          // Calcula juros acumulados até a data projetada da carência
-          const redemptionMetrics = calculateRedemptionMetrics(
-            invObj,
-            remainingQuotas,
-            manualYieldEntries,
-            graceEval.graceReleaseDate,
-          )
+        const investorName = prof?.pj_company_name || prof?.full_name || 'Investidor'
+        const investorDoc = prof?.document_number || ''
 
-          const projectedTotalWithYield = redemptionMetrics.grossValue // principal + juros
+        // Calcula juros acumulados até a data projetada (término de carência ou data atual)
+        const redemptionMetrics = calculateRedemptionMetrics(
+          invObj,
+          remainingQuotas,
+          manualYieldEntries,
+          targetDate,
+        )
 
-          items.push({
-            id: `inv-carencia-${inv.id}`,
-            date: releaseStr,
-            type: 'out',
-            origin: 'resgate_investimento',
-            originLabel: 'Vencimento de Carência',
-            description: `Vencimento de carência (${graceEval.gracePeriodMonths}m) — ${prod.title || 'Debêntures'} [Principal R$ ${redemptionMetrics.principal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} + Juros R$ ${redemptionMetrics.yieldAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}]`,
-            entityName: investorName,
-            entityDocument: investorDoc,
-            category: 'Resgate Programado',
-            amount: projectedTotalWithYield,
-            principalAmount: redemptionMetrics.principal,
-            yieldAmount: redemptionMetrics.yieldAmount,
-            status: 'previsto',
-            referenceId: inv.id,
-            isManual: false,
-          })
-        }
+        const projectedTotalWithYield = redemptionMetrics.grossValue // principal + juros
+
+        const labelCarencia =
+          graceEval.gracePeriodMonths > 0
+            ? `carência de ${graceEval.gracePeriodMonths}m`
+            : 'sem carência'
+
+        items.push({
+          id: `inv-carencia-${inv.id}`,
+          date: releaseStr,
+          type: 'out',
+          origin: 'resgate_investimento',
+          originLabel:
+            releaseStr > todayStr ? 'Vencimento de Carência' : 'Carência Cumprida (Disponível)',
+          description: `Resgate projetado (${labelCarencia}) — ${prod.title || 'Debêntures'} (${remainingQuotas} cotas) [Principal R$ ${redemptionMetrics.principal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} + Juros R$ ${redemptionMetrics.yieldAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}]`,
+          entityName: investorName,
+          entityDocument: investorDoc,
+          category: 'Resgate de Investimento',
+          amount: projectedTotalWithYield,
+          principalAmount: redemptionMetrics.principal,
+          yieldAmount: redemptionMetrics.yieldAmount,
+          status: releaseStr > todayStr ? 'previsto' : 'pendente',
+          referenceId: inv.id,
+          isManual: false,
+        })
       }
     }
   })

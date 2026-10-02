@@ -154,33 +154,6 @@ export function ProjectedCashflowReportTab() {
     return options
   }, [])
 
-  // Carrega dados consolidados
-  const loadData = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await getConsolidatedProjectedCashflow()
-      setData(res)
-
-      // Inicializa os 3 primeiros meses expandidos por padrão
-      const initialExpanded: Record<string, boolean> = {}
-      res.monthlySummaries.slice(0, 3).forEach((m) => {
-        initialExpanded[m.monthKey] = true
-      })
-      setExpandedMonths((prev) => ({ ...initialExpanded, ...prev }))
-
-      const manuals = await fetchManualProjectedEntries()
-      setManualList(manuals)
-    } catch (err) {
-      console.error('Erro ao carregar dados do fluxo projetado:', err)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    loadData()
-  }, [loadData])
-
   // Determinar limites de data baseados no modo de filtro ativo
   const { filterStartDate, filterEndDate, filterPeriodLabel } = useMemo(() => {
     if (filterMode === 'competencia') {
@@ -220,6 +193,39 @@ export function ProjectedCashflowReportTab() {
       }
     }
   }, [filterMode, startMonth, horizonMonths, startDate, endDate])
+
+  // Carrega dados consolidados com saldo inicial apurado na data inicial da projeção
+  const loadData = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await getConsolidatedProjectedCashflow({
+        startDate: filterStartDate || undefined,
+        endDate: filterEndDate || undefined,
+      })
+      setData(res)
+
+      // Mantém meses expandidos ou inicializa os 3 primeiros por padrão
+      setExpandedMonths((prev) => {
+        if (Object.keys(prev).length > 0) return prev
+        const initialExpanded: Record<string, boolean> = {}
+        res.monthlySummaries.slice(0, 3).forEach((m) => {
+          initialExpanded[m.monthKey] = true
+        })
+        return initialExpanded
+      })
+
+      const manuals = await fetchManualProjectedEntries()
+      setManualList(manuals)
+    } catch (err) {
+      console.error('Erro ao carregar dados do fluxo projetado:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [filterStartDate, filterEndDate])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   // Itens filtrados por período, origem e busca
   const filteredItems = useMemo(() => {
@@ -311,13 +317,27 @@ export function ProjectedCashflowReportTab() {
     return list
   }, [data, filteredItems])
 
-  // Totais do horizonte filtrado
-  const { totalIn, totalOut, netBalance, finalBalance } = useMemo(() => {
+  // Totais do horizonte filtrado e detalhamento de resgates
+  const { totalIn, totalOut, netBalance, finalBalance, redemptionBreakdown } = useMemo(() => {
     let tin = 0
     let tout = 0
+    let redPrincipal = 0
+    let redYield = 0
+    let redTotal = 0
+    let redCount = 0
+
     filteredItems.forEach((i) => {
-      if (i.type === 'in') tin += i.amount
-      else tout += i.amount
+      if (i.type === 'in') {
+        tin += i.amount
+      } else {
+        tout += i.amount
+        if (i.origin === 'resgate_investimento') {
+          redCount += 1
+          redTotal += i.amount
+          redPrincipal += i.principalAmount ?? i.amount
+          redYield += i.yieldAmount ?? 0
+        }
+      }
     })
     const net = tin - tout
     const final = (data?.initialCashBalance || 0) + net
@@ -326,6 +346,12 @@ export function ProjectedCashflowReportTab() {
       totalOut: tout,
       netBalance: net,
       finalBalance: final,
+      redemptionBreakdown: {
+        count: redCount,
+        total: redTotal,
+        principal: redPrincipal,
+        yield: redYield,
+      },
     }
   }, [filteredItems, data])
 
@@ -643,7 +669,20 @@ export function ProjectedCashflowReportTab() {
             <div className="text-2xl font-bold font-mono text-rose-600 dark:text-rose-400">
               -{formatCurrency(totalOut)}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Contas a Pagar + Resgates</p>
+            {redemptionBreakdown.count > 0 ? (
+              <div className="text-[11px] text-muted-foreground mt-1 space-y-0.5">
+                <div className="font-semibold text-foreground">
+                  Resgates: {formatCurrency(redemptionBreakdown.total)} ({redemptionBreakdown.count}
+                  )
+                </div>
+                <div className="text-[10px] text-amber-700 dark:text-amber-400">
+                  Principal: {formatCurrency(redemptionBreakdown.principal)} + Rendimentos:{' '}
+                  {formatCurrency(redemptionBreakdown.yield)}
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground mt-1">Contas a Pagar + Resgates</p>
+            )}
           </CardContent>
         </Card>
 

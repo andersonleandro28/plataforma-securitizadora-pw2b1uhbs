@@ -502,10 +502,8 @@ export async function fetchConsolidatedAccountingLedger(
     })
   }
 
-  // Se options.asOfDate foi passado, o saldo total de caixa é a soma das contas até essa data
-  const totalCashBalance = cutoffDate
-    ? Object.values(balancesByAccount).reduce((sum, v) => sum + (v || 0), 0)
-    : runningGlobal
+  // Se options.asOfDate foi passado, o saldo total de caixa é a soma de todas as contas da securitizadora até essa data
+  const totalCashBalance = Object.values(balancesByAccount).reduce((sum, v) => sum + (v || 0), 0)
 
   // Monta resumo das contas
   const accountSummaries: BankAccountBalanceSummary[] = (companyBanks || []).map((b: any) => ({
