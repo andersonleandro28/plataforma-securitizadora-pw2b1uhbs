@@ -8,6 +8,7 @@ import { InvestorYieldsReportTab } from '@/components/reports/InvestorYieldsRepo
 import { PeriodOperationsReportTab } from '@/components/reports/PeriodOperationsReportTab'
 import { BankMovementExtractReportTab } from '@/components/reports/BankMovementExtractReportTab'
 import { ReceivablesToReceiveReportTab } from '@/components/reports/ReceivablesToReceiveReportTab'
+import { ProjectedCashflowReportTab } from '@/components/reports/ProjectedCashflowReportTab'
 import { UnifiedReportTab } from '@/components/reports/UnifiedReportTab'
 import { useAuth } from '@/hooks/use-auth'
 
@@ -52,6 +53,14 @@ export default function Reports() {
           )}
           {isAdminOrStaff && (
             <TabsTrigger
+              value="projected-cashflow"
+              className="font-medium text-emerald-600 dark:text-emerald-400 font-semibold"
+            >
+              Fluxo de Caixa Projetado
+            </TabsTrigger>
+          )}
+          {isAdminOrStaff && (
+            <TabsTrigger
               value="receivables-to-receive"
               className="font-medium text-blue-600 dark:text-blue-400 font-semibold"
             >
@@ -78,6 +87,9 @@ export default function Reports() {
             </TabsContent>
             <TabsContent value="bank-movements" className="space-y-4">
               <BankMovementExtractReportTab />
+            </TabsContent>
+            <TabsContent value="projected-cashflow" className="space-y-4">
+              <ProjectedCashflowReportTab />
             </TabsContent>
             <TabsContent value="receivables-to-receive" className="space-y-4">
               <ReceivablesToReceiveReportTab />

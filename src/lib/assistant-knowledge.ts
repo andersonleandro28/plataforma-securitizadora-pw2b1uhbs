@@ -679,6 +679,63 @@ export const KNOWLEDGE_BASE: KnowledgeTopic[] = [
     ],
   },
   {
+    id: 'admin-relatorios-fluxo-caixa-projetado',
+    title: 'Relatório: Fluxo de Caixa Projetado (Previsão de Liquidez & Tesouraria)',
+    roles: ['admin', 'staff', 'accountant'],
+    category: 'admin',
+    navigationPath: 'Menu lateral > Relatórios > Aba "Fluxo de Caixa Projetado"',
+    keywords: [
+      'fluxo de caixa projetado',
+      'previsao de caixa',
+      'projecao de caixa',
+      'fluxo futuro',
+      'saldo acumulado',
+      'contas a pagar projetadas',
+      'resgates projetados',
+      'recebiveis futuros manuais',
+      'pagamentos futuros manuais',
+      'horizonte de projecao',
+      'liquidez futura',
+      'ponto de partida caixa',
+      'saldo inicial em caixa',
+      'previsao financeira',
+    ],
+    summary:
+      'Demonstrativo gerencial preditivo de fluxo de caixa da Securitizadora, projetando saídas (contas a pagar e resgates de investidores), entradas (parcelas de recebíveis de antecipação e CCBs) e lançamentos manuais com apuração do saldo acumulado mês a mês.',
+    steps: [
+      'Acesse "Relatórios" no menu lateral e clique na aba destacada "Fluxo de Caixa Projetado".',
+      'Defina o horizonte de projeção pelos filtros no topo:',
+      '  - Modo Competência & Horizonte: selecione o Mês de Início e o horizonte futuro desejado (3, 6, 12, 24 meses ou todos os meses).',
+      '  - Modo Intervalo: informe livremente a Data Inicial e Data Final para uma janela temporal customizada.',
+      'Analise os 5 Cards de Resumo no topo:',
+      '  1. Saldo Inicial em Caixa: ponto de partida com o saldo real em caixa das contas bancárias cadastradas no Livro Caixa.',
+      '  2. Entradas Projetadas: soma de parcelas a receber (antecipações e CCBs) mais recebíveis manuais futuros.',
+      '  3. Saídas Projetadas: soma de contas a pagar em aberto e resgates de cotas (pendentes e término de carência).',
+      '  4. Resultado do Período: saldo líquido (Entradas - Saídas) do horizonte selecionado.',
+      '  5. Saldo Acumulado Final: caixa inicial somado ao resultado líquido projetado.',
+      'COMO ADICIONAR PREVISÕES MANUAIS:',
+      '  - Para prever novas receitas ou aportes: clique no botão verde "+ Recebível Futuro", informe descrição, valor, data prevista e categoria.',
+      '  - Para prever despesas orçamentárias ou investimentos da empresa: clique no botão vermelho "+ Pagamento Futuro".',
+      '  - Você pode editar ou excluir lançamentos manuais a qualquer momento clicando nos ícones da tabela dentro do mês.',
+      '  - IMPORTANTE: os lançamentos manuais são puramente preditivos e não impactam o Livro Caixa oficial, DRE ou DFC.',
+      'COMO INTERPRETAR O SALDO ACUMULADO:',
+      '  - Cada mês exibe seu saldo inicial (que é o saldo final do mês anterior), o montante de entradas, saídas, o resultado líquido do mês e o saldo acumulado final.',
+      '  - Se o saldo acumulado final ficar negativo em algum mês, o card e o valor ficam em destaque vermelho, alertando a administração para necessidade de captação de recursos ou remanejamento de vencimentos.',
+      'EXPORTAÇÃO:',
+      '  - Clique em "Exportar CSV" para baixar a planilha detalhada com todos os lançamentos e linha de totais.',
+      '  - Clique em "Imprimir / PDF" para gerar o relatório impresso com o nome do arquivo e cabeçalho institucional formatado.',
+    ],
+    tips: [
+      'O relatório consolida tanto resgates pendentes já solicitados quanto resgates previstos pelo término da carência contratual das debêntures ativas.',
+      'Use o filtro de Origem para isolar apenas Despesas, apenas Resgates, apenas Recebíveis ou apenas Lançamentos Manuais.',
+    ],
+    relatedTopicIds: [
+      'admin-relatorios-recebiveis-a-receber',
+      'admin-relatorios-unificado',
+      'admin-parametros-securitizadora',
+    ],
+  },
+  {
     id: 'admin-relatorios-recebiveis-a-receber',
     title: 'Relatório: Recebíveis a Receber (Posição Futura de Caixa da Carteira)',
     roles: ['admin', 'staff', 'accountant'],
@@ -717,7 +774,12 @@ export const KNOWLEDGE_BASE: KnowledgeTopic[] = [
       'O relatório é somente leitura e reflete as datas reais de vencimento e valores de cada título contratado na esteira da Securitizadora.',
       'Valores prorrogados na mesa de operações já incorporam automaticamente os juros e encargos pactuados no valor total devido da parcela.',
     ],
-    relatedTopicIds: ['admin-relatorios-unificado', 'admin-lancar-operacao', 'admin-ccb-purchases'],
+    relatedTopicIds: [
+      'admin-relatorios-fluxo-caixa-projetado',
+      'admin-relatorios-unificado',
+      'admin-lancar-operacao',
+      'admin-ccb-purchases',
+    ],
   },
   {
     id: 'admin-parametros-securitizadora',
@@ -1180,6 +1242,11 @@ export const FREQUENT_QUESTIONS_BY_ROLE: Record<string, { label: string; query: 
       query: 'como funciona a autorizacao do cliente pos lancamento interno e status de aceite?',
     },
     {
+      label: 'Fluxo de Caixa Projetado',
+      query:
+        'como usar o fluxo de caixa projetado, adicionar recebiveis futuros e interpretar o saldo acumulado?',
+    },
+    {
       label: 'Recebíveis a Receber',
       query: 'onde vejo o relatorio de recebiveis a receber antecipacoes e ccbs?',
     },
@@ -1418,6 +1485,15 @@ export function searchKnowledgeBase(userQuery: string, userRole?: string): Assis
       topic.id === 'admin-tomador-limite'
     ) {
       score += 40
+    }
+    if (
+      (normalizedQuery.includes('fluxo') ||
+        normalizedQuery.includes('projetado') ||
+        normalizedQuery.includes('projecao') ||
+        normalizedQuery.includes('saldo acumulado')) &&
+      topic.id === 'admin-relatorios-fluxo-caixa-projetado'
+    ) {
+      score += 50
     }
     if (
       (normalizedQuery.includes('a receber') || normalizedQuery.includes('recebiveis a receber')) &&
