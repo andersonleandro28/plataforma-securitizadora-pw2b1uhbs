@@ -242,7 +242,7 @@ export async function getConsolidatedProjectedCashflow(
   const isPastStart = Boolean(options.startDate && options.startDate < todayStr)
 
   if (isPastStart && options.startDate) {
-    // Saldo no início da data de projeção: transações anteriores a startDate
+    // Saldo no início da data de projeção: transações anteriores a startDate (corte retroativo)
     const d = new Date(options.startDate + 'T00:00:00')
     d.setDate(d.getDate() - 1)
     asOfCutoff = d.toISOString().split('T')[0]
