@@ -193,6 +193,48 @@ export function ProductForm({
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-1.5">
+            <Label>Regime de Rendimentos / Resgate</Label>
+            <Select
+              value={data.yield_payment_regime || 'accumulated'}
+              onValueChange={(v) => {
+                onChange('yield_payment_regime', v)
+                if (v === 'monthly' && !data.monthly_payment_day) {
+                  onChange('monthly_payment_day', 1)
+                }
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o regime de rendimentos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="accumulated">
+                  Juros Acumulados (Padrão — Resgate no Vencimento)
+                </SelectItem>
+                <SelectItem value="monthly">
+                  Juros Mensais (Resgate Mensal de Rendimentos)
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {data.yield_payment_regime === 'monthly' && (
+            <div className="space-y-1.5">
+              <Label>Dia de Liberação Mensal do Juro</Label>
+              <Input
+                type="number"
+                min="1"
+                max="31"
+                value={data.monthly_payment_day ?? 1}
+                onChange={(e) =>
+                  onChange(
+                    'monthly_payment_day',
+                    Math.min(31, Math.max(1, parseInt(e.target.value) || 1)),
+                  )
+                }
+                placeholder="Ex: 1, 5, 10..."
+              />
+            </div>
+          )}
         </div>
         <div className="bg-muted/30 p-3 rounded-md border text-sm flex justify-between">
           <span>

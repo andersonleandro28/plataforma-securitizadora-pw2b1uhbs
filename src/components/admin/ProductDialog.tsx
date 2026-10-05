@@ -100,6 +100,8 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
           min_quotas_per_investor: 1,
           max_quotas_per_investor: 100,
           is_archived: false,
+          yield_payment_regime: 'accumulated',
+          monthly_payment_day: 1,
           yield_split_pct: 50,
         })
       }
@@ -399,6 +401,64 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
                   </SelectContent>
                 </Select>
               </div>
+
+              <div className="space-y-2">
+                <Label>Regime de Rendimentos / Resgate</Label>
+                <Select
+                  disabled={isReadOnly}
+                  value={formData.yield_payment_regime || 'accumulated'}
+                  onValueChange={(v) =>
+                    setFormData({
+                      ...formData,
+                      yield_payment_regime: v,
+                      monthly_payment_day: formData.monthly_payment_day || 1,
+                    })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o regime de rendimentos" />
+                  </SelectTrigger>
+                  <SelectContent className="z-[1100]">
+                    <SelectItem value="accumulated">
+                      Juros Acumulados (Padrão — Resgate no Vencimento)
+                    </SelectItem>
+                    <SelectItem value="monthly">
+                      Juros Mensais (Resgate de Juros Mensalmente)
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  No regime de juros mensais, o investidor pode solicitar o resgate do rendimento
+                  acumulado de cada mês sem resgatar as cotas do principal.
+                </p>
+              </div>
+
+              {formData.yield_payment_regime === 'monthly' && (
+                <div className="space-y-2">
+                  <Label>Dia de Liberação Mensal do Juro</Label>
+                  <Input
+                    disabled={isReadOnly}
+                    type="number"
+                    min="1"
+                    max="31"
+                    value={formData.monthly_payment_day ?? 1}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        monthly_payment_day: Math.min(
+                          31,
+                          Math.max(1, parseInt(e.target.value) || 1),
+                        ),
+                      })
+                    }
+                    placeholder="Dia do mês (ex: 1, 5, 10...)"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Dia mensal em que o rendimento apurado fica disponível para resgate pelo
+                    investidor.
+                  </p>
+                </div>
+              )}
 
               {formData.type === 'Rendimento Variável (Forex Manual)' && (
                 <div className="space-y-2 md:col-span-2">

@@ -257,17 +257,25 @@ function InvestmentList({
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
-                    Taxa / Alvo
+                    Taxa / Regime
                   </p>
                   <p className="font-semibold text-emerald-600">
                     {inv.investment_products?.rate || '-'}
                   </p>
-                  {inv.investment_products?.interest_type && (
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                      {inv.investment_products.interest_type === 'composto'
-                        ? 'Juro Composto'
-                        : 'Juro Simples'}
-                    </p>
+                  {inv.investment_products?.yield_payment_regime === 'monthly' ? (
+                    <div className="mt-1">
+                      <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px] font-medium py-0 px-1.5">
+                        Resgate Mensal (Dia {inv.investment_products?.monthly_payment_day || 1})
+                      </Badge>
+                    </div>
+                  ) : (
+                    inv.investment_products?.interest_type && (
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {inv.investment_products.interest_type === 'composto'
+                          ? 'Juro Composto'
+                          : 'Juro Simples'}
+                      </p>
+                    )
                   )}
                 </div>
                 <div>
@@ -482,23 +490,25 @@ export function InvestorDashboard() {
           .select(
             `*,
             investment_products(
-              id,
-              title,
-              type,
-              rate,
-              term,
-              quota_value,
-              interest_type,
-              min_grace_period_months,
-              grace_period,
-              allow_early_redemption,
-              early_redemption_penalty_pct,
-              early_redemption_discount_pct,
-              redemption_cotization_months,
-              redemption_rules,
-              ir_rules,
-              yield_split_pct
-            )`,
+  id,
+  title,
+  type,
+  rate,
+  term,
+  quota_value,
+  interest_type,
+  yield_payment_regime,
+  monthly_payment_day,
+  min_grace_period_months,
+  grace_period,
+  allow_early_redemption,
+  early_redemption_penalty_pct,
+  early_redemption_discount_pct,
+  redemption_cotization_months,
+  redemption_rules,
+  ir_rules,
+  yield_split_pct
+)`,
           )
           .eq('user_id', user.id)
           .order('created_at', { ascending: false }),
@@ -507,16 +517,18 @@ export function InvestorDashboard() {
           .select(
             `*,
             investments(
-              id,
-              unit_price,
-              transfer_date,
-              created_at,
-              investment_products(
-                title,
-                rate,
-                type
-              )
-            )`,
+  id,
+  unit_price,
+  transfer_date,
+  created_at,
+  investment_products(
+    title,
+    rate,
+    type,
+    yield_payment_regime,
+    monthly_payment_day
+  )
+)`,
           )
           .eq('user_id', user.id)
           .order('created_at', { ascending: false }),

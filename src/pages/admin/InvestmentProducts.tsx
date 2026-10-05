@@ -87,6 +87,9 @@ export default function InvestmentProducts() {
                   Capitalização
                 </th>
                 <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                  Regime
+                </th>
+                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
                   Visível
                 </th>
                 <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
@@ -97,7 +100,7 @@ export default function InvestmentProducts() {
             <tbody className="[&_tr:last-child]:border-0">
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="p-8 text-center">
+                  <td colSpan={10} className="p-8 text-center">
                     <div className="flex items-center justify-center">
                       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                     </div>
@@ -105,7 +108,7 @@ export default function InvestmentProducts() {
                 </tr>
               ) : products.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="p-8 text-center text-muted-foreground">
+                  <td colSpan={10} className="p-8 text-center text-muted-foreground">
                     Nenhum produto cadastrado no banco.
                   </td>
                 </tr>
@@ -122,6 +125,20 @@ export default function InvestmentProducts() {
                       <Badge variant="outline" className="text-xs font-normal">
                         {p.interest_type === 'composto' ? 'Juro Composto' : 'Juro Simples'}
                       </Badge>
+                    </td>
+                    <td className="p-4 align-middle">
+                      {p.yield_payment_regime === 'monthly' ? (
+                        <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 border-emerald-300 text-xs font-medium whitespace-nowrap">
+                          Juros Mensais (Dia {p.monthly_payment_day || 1})
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="text-xs text-muted-foreground font-normal"
+                        >
+                          Acumulado
+                        </Badge>
+                      )}
                     </td>
                     <td className="p-4 align-middle">
                       <span
