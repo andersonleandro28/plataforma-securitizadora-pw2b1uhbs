@@ -656,6 +656,7 @@ export async function getConsolidatedProjectedCashflow(
     const principal = remainingQuotas * unitPrice
 
     // Juros mensais calculados pela MESMA fórmula do sistema: computeInterestYield
+    // Projeção contínua e sem regressões para regime de juros mensais
     const monthlyRate = parseProductRate(prod.rate)
     const monthlyYieldAmount = computeInterestYield(principal, monthlyRate, prod.type)
 
