@@ -3763,7 +3763,7 @@ export const KNOWLEDGE_BASE: KnowledgeTopic[] = [
     ],
   },
   {
-    id: 'admin-despesas-nf-TAIL_ANCHOR',
+    id: 'admin-despesas-nf',
     roles: ['admin', 'staff', 'accountant'],
     category: 'admin',
     navigationPath: 'Menu lateral > Fornecedores & Despesas',
