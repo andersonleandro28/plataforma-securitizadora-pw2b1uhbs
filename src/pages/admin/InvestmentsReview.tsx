@@ -510,6 +510,32 @@ export default function InvestmentsReview() {
   }
 
   const handleOpenApproveModal = (red: any) => {
+    const isInterestOnly = red.redemption_type === 'interest_only'
+    if (isInterestOnly) {
+      // Para resgate de rendimentos mensais: juros e retenções já foram pré-calculados na solicitação
+      const gross = Number(red.gross_value || red.yield_amount || 0)
+      const tax = Number(red.tax_amount || 0)
+      const taxRate = Number(red.tax_rate || 0)
+      const net = Number(red.net_value || gross - tax)
+      setApproveData({
+        red,
+        metrics: {
+          principal: 0,
+          yieldAmount: Number(red.yield_amount || gross),
+          penalty: 0,
+          discount: 0,
+          taxRate,
+          taxAmount: tax,
+          netValue: net,
+          grossValue: gross,
+          daysElapsed: 30,
+        },
+      })
+      setManualTax(tax.toFixed(2))
+      setApproveModalOpen(true)
+      return
+    }
+
     const dateStr = toISODate(red.updated_at || red.created_at)
     const metrics = calculateInvestmentMetricsToDate(red.investments, red.requested_quotas, dateStr)
     setApproveData({ red, metrics })
@@ -1266,27 +1292,43 @@ export default function InvestmentsReview() {
                         </div>
                       </TableCell>
                       <TableCell>{red.investments?.investment_products?.title}</TableCell>
-                      <TableCell>{red.requested_quotas}</TableCell>
+                      <TableCell>
+                        {red.redemption_type === 'interest_only' ? (
+                          <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                            0 cotas (Preservadas)
+                          </span>
+                        ) : (
+                          red.requested_quotas
+                        )}
+                      </TableCell>
                       <TableCell className="font-mono font-medium text-emerald-600">
                         {formatC(red.net_value)}
                       </TableCell>
                       <TableCell>{formatDate(red.updated_at || red.created_at)}</TableCell>
                       <TableCell className="space-y-1">
-                        <div>
-                          {red.status === 'paid' ? (
-                            <Badge className="bg-emerald-500">Liquidado</Badge>
-                          ) : red.status === 'approved' ? (
-                            <Badge className="bg-primary">Aprovado</Badge>
-                          ) : red.status === 'rejected' ? (
-                            <Badge variant="destructive">Rejeitado</Badge>
-                          ) : (
-                            <Badge
-                              variant="outline"
-                              className="bg-amber-100 text-amber-800 border-amber-200"
-                            >
-                              Pendente
+                        <div className="flex flex-col gap-1">
+                          {red.redemption_type === 'interest_only' && (
+                            <Badge className="bg-emerald-600 text-white hover:bg-emerald-700 gap-1 text-[11px] font-medium w-fit shadow-xs">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Rendimento Mensal (Cotas Preservadas)
                             </Badge>
                           )}
+                          <div>
+                            {red.status === 'paid' ? (
+                              <Badge className="bg-emerald-500">Liquidado</Badge>
+                            ) : red.status === 'approved' ? (
+                              <Badge className="bg-primary">Aprovado</Badge>
+                            ) : red.status === 'rejected' ? (
+                              <Badge variant="destructive">Rejeitado</Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="bg-amber-100 text-amber-800 border-amber-200"
+                              >
+                                Pendente
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                         {red.is_reinvestment && (
                           <div>
@@ -1363,6 +1405,29 @@ export default function InvestmentsReview() {
           </DialogHeader>
           {approveData && (
             <div className="space-y-4 py-4">
+              {approveData.red.redemption_type === 'interest_only' && (
+                <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-100 p-3.5 rounded-lg text-xs leading-relaxed space-y-1">
+                  <div className="flex items-center gap-1.5 font-semibold text-emerald-800 dark:text-emerald-200 text-sm">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>Resgate Exclusivo de Rendimento Mensal</span>
+                    {approveData.red.period_month && (
+                      <Badge className="bg-emerald-600 text-white text-[10px] ml-auto">
+                        Competência {approveData.red.period_month}
+                      </Badge>
+                    )}
+                  </div>
+                  <p>
+                    Esta liquidação paga{' '}
+                    <strong>
+                      exclusivamente os juros da competência {approveData.red.period_month || ''}
+                    </strong>
+                    . O principal aplicado e as cotas do investidor{' '}
+                    <strong>permanecem 100% ativos e preservados</strong>, gerando novos rendimentos
+                    nos próximos ciclos.
+                  </p>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-muted-foreground block">Valor Bruto</span>

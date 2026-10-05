@@ -17,6 +17,7 @@ export type ProjectedOriginType =
   | 'recebivel_ccb'
   | 'conta_pagar'
   | 'resgate_investimento'
+  | 'juros_mensais_debenture'
   | 'manual_entrada'
   | 'manual_saida'
 
@@ -338,14 +339,40 @@ export async function getConsolidatedProjectedCashflow(
         min_grace_period_months,
         allow_early_redemption,
         early_redemption_penalty_pct,
-        early_redemption_discount_pct
+        early_redemption_discount_pct,
+        yield_payment_regime,
+        monthly_payment_day
       )
     `)
     .in('status', ['approved', 'transfer_confirmed'])
-
   if (invErr) {
     console.error('Erro ao buscar investimentos para carência:', invErr)
   }
+
+  // 3.1. Resgates de rendimento mensal já solicitados ou pagos (para suprimir competências)
+  const { data: monthlyRedemptionsData, error: mRedErr } = await supabase
+    .from('investment_redemptions')
+    .select(`
+      id,
+      investment_id,
+      redemption_type,
+      period_month,
+      status
+    `)
+    .eq('redemption_type', 'interest_only')
+    .not('status', 'eq', 'rejected')
+
+  if (mRedErr) {
+    console.error('Erro ao buscar resgates de rendimento mensal:', mRedErr)
+  }
+
+  // Mapa de competências já processadas ou solicitadas: `invId:YYYY-MM` -> true
+  const paidOrRequestedMonthlyMonths = new Set<string>()
+  ;(monthlyRedemptionsData || []).forEach((r: any) => {
+    if (r.investment_id && r.period_month) {
+      paidOrRequestedMonthlyMonths.add(`${r.investment_id}:${r.period_month}`)
+    }
+  })
 
   // 4. Recebíveis a Receber - Antecipações (credit_operations)
   const { data: creditOpsData, error: opsErr } = await supabase
@@ -591,6 +618,143 @@ export async function getConsolidatedProjectedCashflow(
           referenceId: inv.id,
           isManual: false,
         })
+      }
+    }
+  })
+
+  // b.3: Saída Mensal Recorrente de Juros de Debêntures (yield_payment_regime = 'monthly')
+  // Calcula o desembolso de juros mensais recorrentes para cada investimento ativo em regime mensal
+  const horizonEndStr =
+    options.endDate ||
+    (() => {
+      const d = new Date()
+      d.setFullYear(d.getFullYear() + 2)
+      return d.toISOString().split('T')[0]
+    })()
+  const horizonStartStr = options.startDate || todayStr
+
+  const [startYearNum, startMonthNum] = horizonStartStr.slice(0, 7).split('-').map(Number)
+  const [endYearNum, endMonthNum] = horizonEndStr.slice(0, 7).split('-').map(Number)
+
+  ;(activeInvestments || []).forEach((inv: any) => {
+    const prod = Array.isArray(inv.investment_products)
+      ? inv.investment_products[0]
+      : inv.investment_products
+
+    if (!prod || prod.yield_payment_regime !== 'monthly') {
+      return
+    }
+
+    const remainingQuotas = Math.max(0, Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0))
+    if (remainingQuotas <= 0) return
+
+    const prof = Array.isArray(inv.profiles) ? inv.profiles[0] : inv.profiles
+    const investorName = prof?.pj_company_name || prof?.full_name || 'Investidor'
+    const investorDoc = prof?.document_number || ''
+
+    const unitPrice = Number(inv.unit_price || prod.quota_value || 1000)
+    const principal = remainingQuotas * unitPrice
+
+    // Juros mensais calculados pela MESMA fórmula do sistema: computeInterestYield
+    const monthlyRate = parseProductRate(prod.rate)
+    const monthlyYieldAmount = computeInterestYield(principal, monthlyRate, prod.type)
+
+    if (monthlyYieldAmount <= 0) return
+
+    // Dia de pagamento mensal do produto (default: dia 1)
+    const paymentDayConfig = Math.max(1, Math.min(31, Number(prod.monthly_payment_day || 1)))
+
+    // Avaliação de carência do produto para suprimir meses anteriores à liberação
+    const invObjForGrace: InvestmentForRedemption = {
+      id: inv.id,
+      user_id: inv.user_id,
+      product_id: inv.product_id,
+      quotas: inv.quotas,
+      redeemed_quotas: inv.redeemed_quotas,
+      unit_price: unitPrice,
+      total_value: principal,
+      status: inv.status,
+      transfer_date: inv.transfer_date,
+      created_at: inv.created_at,
+      investment_products: prod,
+    }
+    const graceEval = evaluateGracePeriod(invObjForGrace, new Date())
+    const graceReleaseStr = graceEval.graceReleaseDate
+      ? graceEval.graceReleaseDate.toISOString().split('T')[0]
+      : null
+
+    // Data de início do investimento
+    const invStartDate = getInvestmentStartDate(inv)
+    const invStartStr = invStartDate.toISOString().split('T')[0]
+
+    // Percorrer cada mês do horizonte
+    let curYear = startYearNum
+    let curMonth = startMonthNum
+
+    while (curYear < endYearNum || (curYear === endYearNum && curMonth <= endMonthNum)) {
+      const monthKey = `${curYear}-${String(curMonth).padStart(2, '0')}`
+
+      // Último dia do mês para ajustar o dia configurado quando não existir
+      const lastDayOfCurMonth = new Date(curYear, curMonth, 0).getDate()
+      const actualDay = Math.min(paymentDayConfig, lastDayOfCurMonth)
+      const payDateStr = `${monthKey}-${String(actualDay).padStart(2, '0')}`
+
+      // 1. Respeitar data de início do investimento (não projetar para meses anteriores ao aporte)
+      const monthEndStr = `${monthKey}-${String(lastDayOfCurMonth).padStart(2, '0')}`
+      if (monthEndStr < invStartStr) {
+        curMonth++
+        if (curMonth > 12) {
+          curMonth = 1
+          curYear++
+        }
+        continue
+      }
+
+      // 2. Respeitar carência: se aplicável e payDateStr for anterior à data de liberação da carência
+      if (graceReleaseStr && payDateStr < graceReleaseStr) {
+        curMonth++
+        if (curMonth > 12) {
+          curMonth = 1
+          curYear++
+        }
+        continue
+      }
+
+      // 3. Descontar/suprimir competências já pagas ou já solicitadas pelo investidor
+      if (paidOrRequestedMonthlyMonths.has(`${inv.id}:${monthKey}`)) {
+        curMonth++
+        if (curMonth > 12) {
+          curMonth = 1
+          curYear++
+        }
+        continue
+      }
+
+      // 4. Somente inclui no horizonte solicitado
+      if (payDateStr >= horizonStartStr && payDateStr <= horizonEndStr) {
+        items.push({
+          id: `debenture-yield-${inv.id}-${monthKey}`,
+          date: payDateStr,
+          type: 'out',
+          origin: 'juros_mensais_debenture',
+          originLabel: 'Juros Mensais — Debênture',
+          description: `Rendimento Mensal (${monthKey}) — ${prod.title || 'Debêntures'} (${remainingQuotas} cotas preservadas)`,
+          entityName: investorName,
+          entityDocument: investorDoc,
+          category: 'Juros Mensais de Debêntures',
+          amount: monthlyYieldAmount,
+          principalAmount: 0,
+          yieldAmount: monthlyYieldAmount,
+          status: payDateStr < todayStr ? 'em_aberto' : 'previsto',
+          referenceId: inv.id,
+          isManual: false,
+        })
+      }
+
+      curMonth++
+      if (curMonth > 12) {
+        curMonth = 1
+        curYear++
       }
     }
   })

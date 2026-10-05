@@ -241,7 +241,14 @@ export function ProjectedCashflowReportTab() {
         if (originFilter === 'antecipacao' && item.origin !== 'recebivel_antecipacao') return false
         if (originFilter === 'ccb' && item.origin !== 'recebivel_ccb') return false
         if (originFilter === 'despesa' && item.origin !== 'conta_pagar') return false
-        if (originFilter === 'resgate' && item.origin !== 'resgate_investimento') return false
+        if (
+          originFilter === 'resgate' &&
+          item.origin !== 'resgate_investimento' &&
+          item.origin !== 'juros_mensais_debenture'
+        )
+          return false
+        if (originFilter === 'juros_mensais' && item.origin !== 'juros_mensais_debenture')
+          return false
         if (
           originFilter === 'manual' &&
           item.origin !== 'manual_entrada' &&
@@ -331,11 +338,12 @@ export function ProjectedCashflowReportTab() {
         tin += i.amount
       } else {
         tout += i.amount
-        if (i.origin === 'resgate_investimento') {
+        if (i.origin === 'resgate_investimento' || i.origin === 'juros_mensais_debenture') {
           redCount += 1
           redTotal += i.amount
-          redPrincipal += i.principalAmount ?? i.amount
-          redYield += i.yieldAmount ?? 0
+          redPrincipal +=
+            i.principalAmount ?? (i.origin === 'juros_mensais_debenture' ? 0 : i.amount)
+          redYield += i.yieldAmount ?? (i.origin === 'juros_mensais_debenture' ? i.amount : 0)
         }
       }
     })
@@ -544,6 +552,15 @@ export function ProjectedCashflowReportTab() {
             className="bg-amber-50 text-amber-700 border-amber-200 text-[11px]"
           >
             Resgate
+          </Badge>
+        )
+      case 'juros_mensais_debenture':
+        return (
+          <Badge
+            variant="outline"
+            className="bg-emerald-50 text-emerald-700 border-emerald-300 text-[11px] font-medium"
+          >
+            Juros Mensais
           </Badge>
         )
       case 'manual_entrada':
@@ -918,6 +935,7 @@ export function ProjectedCashflowReportTab() {
                   <SelectItem value="antecipacao">Antecipações (Recebíveis)</SelectItem>
                   <SelectItem value="ccb">CCBs (Parcelas)</SelectItem>
                   <SelectItem value="despesa">Contas a Pagar (Despesas)</SelectItem>
+                  <SelectItem value="juros_mensais">Juros Mensais — Debênture</SelectItem>
                   <SelectItem value="resgate">Resgates de Investimentos</SelectItem>
                   <SelectItem value="manual">Lançamentos Manuais</SelectItem>
                 </SelectContent>
