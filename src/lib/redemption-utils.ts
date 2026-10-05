@@ -19,6 +19,8 @@ export interface ProductRedemptionRules {
   ir_rules?: string | null
   interest_type?: string | null
   yield_split_pct?: number | null
+  yield_payment_regime?: string | null
+  monthly_payment_day?: number | null
 }
 
 export interface InvestmentForRedemption {

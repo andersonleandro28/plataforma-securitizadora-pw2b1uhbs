@@ -4,6 +4,11 @@ import {
   calculateRedemptionMetrics,
   type InvestmentForRedemption,
 } from '@/lib/redemption-utils'
+import {
+  computeInterestYield,
+  parseProductRate,
+  getInvestmentStartDate,
+} from '@/lib/yield-calculator'
 import { fetchManualYieldEntries, type ManualYieldEntry } from '@/services/manual-yield'
 import {
   fetchConsolidatedAccountingLedger,
