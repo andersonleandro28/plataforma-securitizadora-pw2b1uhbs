@@ -134,7 +134,7 @@ export function useDre() {
         supabase
           .from('expenses')
           .select(
-            'id, amount, description, payment_date, due_date, status, category, supplier_id, suppliers(company_name)',
+            'id, amount, description, payment_date, due_date, status, category, recurrence_group_id, supplier_id, suppliers(company_name)',
           )
           .or(
             `and(payment_date.gte.${inicio},payment_date.lte.${fim}),and(payment_date.is.null,and(due_date.gte.${inicio},due_date.lte.${fim}))`,
@@ -331,10 +331,12 @@ export function useDre() {
 
       // 3. Despesas operacionais (expenses) pagas no período.
       // Considera despesas com status "paid" (pagas); usa payment_date quando
-      // houver, senão due_date.
+      // houver, senão due_date. Despesas recorrentes futuras sem pagamento não são computadas.
       const expenseIdsInDre = new Set<string>()
       ;(expsRes.data || []).forEach((exp) => {
         if (exp.status !== 'paid') return
+        // Filtro estrito: se for recorrente e não possuir payment_date com vencimento futuro, não computa
+        if (exp.recurrence_group_id && !exp.payment_date) return
         expenseIdsInDre.add(exp.id)
         const sup = Array.isArray(exp.suppliers) ? exp.suppliers[0] : exp.suppliers
         const fornecedor = sup?.company_name

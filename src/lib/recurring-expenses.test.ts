@@ -73,4 +73,61 @@ describe('recurring-expenses utility', () => {
     expect(result[1].dueDate).toBe('2026-02-28')
     expect(result[2].dueDate).toBe('2026-03-31')
   })
+
+  it('determines installment status correctly: future installments must be pending with null payment_date', () => {
+    const today = '2026-10-06'
+    const schedule = generateRecurringInstallments({
+      baseDescription: 'Licença Nexum',
+      startDate: '2026-10-25', // futuro
+      installmentsCount: 3,
+      amountMode: 'per_installment',
+      amount: 500,
+    })
+
+    const rows = schedule.map((item) => {
+      const isFirst = item.installmentNumber === 1
+      const shouldBePaid = isFirst && item.dueDate <= today
+      return {
+        ...item,
+        status: shouldBePaid ? 'paid' : 'pending',
+        payment_date: shouldBePaid ? item.dueDate : null,
+      }
+    })
+
+    // Todas as parcelas futuras devem nascer pending e sem payment_date
+    expect(rows[0].status).toBe('pending')
+    expect(rows[0].payment_date).toBeNull()
+    expect(rows[1].status).toBe('pending')
+    expect(rows[1].payment_date).toBeNull()
+  })
+
+  it('allows 1st installment to be paid immediately when start date is today or in the past', () => {
+    const today = '2026-10-06'
+    const schedule = generateRecurringInstallments({
+      baseDescription: 'Tarifa Mensal',
+      startDate: '2026-10-06', // hoje
+      installmentsCount: 3,
+      amountMode: 'per_installment',
+      amount: 100,
+    })
+
+    const rows = schedule.map((item) => {
+      const isFirst = item.installmentNumber === 1
+      const shouldBePaid = isFirst && item.dueDate <= today
+      return {
+        ...item,
+        status: shouldBePaid ? 'paid' : 'pending',
+        payment_date: shouldBePaid ? item.dueDate : null,
+      }
+    })
+
+    // 1ª parcela de hoje nasce paga
+    expect(rows[0].status).toBe('paid')
+    expect(rows[0].payment_date).toBe('2026-10-06')
+    // 2ª e 3ª parcelas continuam pending
+    expect(rows[1].status).toBe('pending')
+    expect(rows[1].payment_date).toBeNull()
+    expect(rows[2].status).toBe('pending')
+    expect(rows[2].payment_date).toBeNull()
+  })
 })

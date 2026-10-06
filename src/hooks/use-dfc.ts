@@ -198,7 +198,7 @@ export function useDfc() {
           supabase
             .from('expenses')
             .select(
-              'id, amount, description, payment_date, due_date, status, suppliers(company_name), category, supplier_id',
+              'id, amount, description, payment_date, due_date, status, suppliers(company_name), category, supplier_id, recurrence_group_id',
             ),
           supabase
             .from('credit_operations')
@@ -393,6 +393,8 @@ export function useDfc() {
       const expenseIdsInCaixa = new Set<string>()
       ;(expsRes.data || []).forEach((exp: any) => {
         if (exp.status !== 'paid') return
+        // Filtro estrito: se for despesa recorrente sem pagamento realizado, não impacta o fluxo de caixa
+        if (exp.recurrence_group_id && !exp.payment_date) return
         expenseIdsInCaixa.add(exp.id)
         const sup = Array.isArray(exp.suppliers) ? exp.suppliers[0] : exp.suppliers
         const fornecedor = sup?.company_name

@@ -350,6 +350,11 @@ export default function Expenses() {
       return false
     }
 
+    // Garantia estrita: só registra saída no caixa se a despesa estiver efetivamente com status 'paid'
+    if (expense.status !== 'paid') {
+      return false
+    }
+
     const isSupplier = !!expense.supplier_id
     const supplierName =
       suppliers.find((s) => s.id === expense.supplier_id)?.company_name || 'Desconhecido'
@@ -491,23 +496,27 @@ export default function Expenses() {
         amount: rawAmount,
       })
 
+      const todayISOString = new Date().toISOString().split('T')[0]
       const rowsToInsert = schedule.map((item) => {
+        const isFirst = item.installmentNumber === 1
+        // A 1ª parcela só herda 'paid' se foi marcada paga E o vencimento for hoje ou passado.
+        // Se a data programada for futura, a parcela recorrente nasce 'pending' com payment_date = null.
+        const shouldBePaid = isFirst && expForm.status === 'paid' && item.dueDate <= todayISOString
         const row: any = {
           supplier_id: expForm.supplier_id,
           description: item.fullDescription,
           category: expForm.category,
           amount: item.amount,
           due_date: item.dueDate,
-          // A 1ª parcela herda o status escolhido no form; as parcelas subsequentes futuras (2..N) entram como 'pending'
-          status: item.installmentNumber === 1 ? expForm.status : 'pending',
+          status: shouldBePaid ? 'paid' : 'pending',
           bank_account_id: finalBankAccountId,
           recurrence_group_id: recurrenceGroupId,
           installment_number: item.installmentNumber,
           total_installments: item.totalInstallments,
         }
 
-        if (item.installmentNumber === 1 && expForm.status === 'paid') {
-          row.payment_date = expForm.payment_date || new Date().toISOString().split('T')[0]
+        if (shouldBePaid) {
+          row.payment_date = expForm.payment_date || item.dueDate || todayISOString
         } else {
           row.payment_date = null
         }
@@ -527,11 +536,13 @@ export default function Expenses() {
       if (insertError) {
         toast.error('Erro ao lançar grupo recorrente: ' + insertError.message)
       } else {
-        // Se a 1ª parcela foi marcada como paga, registra o outflow de tesouraria
-        if (expForm.status === 'paid' && insertedRows && insertedRows.length > 0) {
+        // Se a 1ª parcela foi efetivamente gravada como paga (vencimento hoje ou passado), registra o outflow no Livro Caixa
+        if (insertedRows && insertedRows.length > 0) {
           const firstRow =
             insertedRows.find((r: any) => r.installment_number === 1) || insertedRows[0]
-          await registerTreasuryOutflow(firstRow, true)
+          if (firstRow && firstRow.status === 'paid') {
+            await registerTreasuryOutflow(firstRow, true)
+          }
         }
 
         // Registrar trilha de auditoria para o lançamento do grupo recorrente

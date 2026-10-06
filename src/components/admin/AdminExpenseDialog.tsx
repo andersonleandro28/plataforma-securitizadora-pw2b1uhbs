@@ -117,15 +117,18 @@ export function AdminExpenseDialog({
         amount,
       })
 
+      const todayStr = todayISO()
       const rowsToInsert = schedule.map((item) => {
         const isFirst = item.installmentNumber === 1
+        // A 1ª parcela só é considerada 'paid' se o seu vencimento já chegou (due_date <= hoje).
+        // Se a data programada for futura (due_date > hoje), nasce como 'pending' com payment_date = null.
+        const shouldBePaid = isFirst && item.dueDate <= todayStr
         return {
           description: item.fullDescription,
           amount: item.amount,
           due_date: item.dueDate,
-          // A 1ª parcela da despesa administrativa já foi incorrida/paga; parcelas subsequentes ficam pendentes
-          status: isFirst ? 'paid' : 'pending',
-          payment_date: isFirst ? data : null,
+          status: shouldBePaid ? 'paid' : 'pending',
+          payment_date: shouldBePaid ? item.dueDate : null,
           category: categoria,
           type: 'despesa_administrativa',
           created_by: user?.id ?? null,

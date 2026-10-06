@@ -348,7 +348,7 @@ export async function fetchDreResultForPeriod(
     supabase
       .from('expenses')
       .select(
-        'id, amount, description, payment_date, due_date, status, category, supplier_id, invoice_file_path, suppliers(company_name)',
+        'id, amount, description, payment_date, due_date, status, category, recurrence_group_id, supplier_id, invoice_file_path, suppliers(company_name)',
       )
       .or(
         `and(payment_date.gte.${inicio},payment_date.lte.${fim}),and(payment_date.is.null,and(due_date.gte.${inicio},due_date.lte.${fim}))`,
@@ -508,6 +508,7 @@ export async function fetchDreResultForPeriod(
   const expenseIdsInDre = new Set<string>()
   ;(expsRes.data || []).forEach((exp) => {
     if (exp.status !== 'paid') return
+    if (exp.recurrence_group_id && !exp.payment_date) return
     expenseIdsInDre.add(exp.id)
     const dataLanc = normalizeDate(exp.payment_date || exp.due_date)
     lancamentos.push({
@@ -717,6 +718,7 @@ export async function fetchDreResultForPeriod(
   // 1. Despesas pagas em `expenses`
   ;(expsRes.data || []).forEach((exp: any) => {
     if (exp.status !== 'paid') return
+    if (exp.recurrence_group_id && !exp.payment_date) return
     const dataLanc = normalizeDate(exp.payment_date || exp.due_date)
     if (dataLanc < inicio || dataLanc > fim) return
 

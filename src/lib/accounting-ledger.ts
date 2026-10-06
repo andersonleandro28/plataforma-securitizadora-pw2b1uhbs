@@ -110,7 +110,7 @@ export async function fetchConsolidatedAccountingLedger(
     supabase
       .from('expenses')
       .select(
-        'id, amount, description, payment_date, due_date, status, bank_account_id, suppliers(company_name), supplier_id, category',
+        'id, amount, description, payment_date, due_date, status, bank_account_id, suppliers(company_name), supplier_id, category, recurrence_group_id',
       ),
     supabase
       .from('credit_operations')
@@ -350,6 +350,8 @@ export async function fetchConsolidatedAccountingLedger(
   // 5. Despesas pagas
   ;(exps || []).forEach((exp: any) => {
     if (exp.status === 'paid') {
+      // Despesa recorrente sem pagamento realizado não entra no livro caixa
+      if (exp.recurrence_group_id && !exp.payment_date) return
       const sup = Array.isArray(exp.suppliers) ? exp.suppliers[0] : exp.suppliers
       const fornecedor = sup?.company_name
       const bInfo = resolveBank(exp.bank_account_id)
