@@ -40,6 +40,7 @@ import {
   CheckCircle2,
   PlusCircle,
   UserCheck,
+  RotateCcw,
 } from 'lucide-react'
 import { AdminNewInvestmentDialog } from '@/components/admin/AdminNewInvestmentDialog'
 import { toast } from 'sonner'
@@ -69,6 +70,7 @@ export default function InvestmentsReview() {
     quotas: 1,
     unit_price: 1000,
     total_value: 1000,
+    is_manual_value: false,
   })
 
   // Novo Aporte Interno pelo Admin Modal State
@@ -432,15 +434,30 @@ export default function InvestmentsReview() {
     setSelectedInv(inv)
     const quotas = Number(inv.quotas) || 1
     const unitPrice = Number(inv.unit_price) || 1000
-    const totalValue = Number(inv.total_value) || quotas * unitPrice
+    const calculated = quotas * unitPrice
+    const existingVal = Number(inv.total_value ?? inv.transfer_value ?? calculated)
+    const isManual = Math.abs(existingVal - calculated) > 0.009
 
     setEditInvForm({
       transfer_date: inv.transfer_date || '',
       quotas,
       unit_price: unitPrice,
-      total_value: totalValue,
+      total_value: existingVal,
+      is_manual_value: isManual,
     })
     setEditOpen(true)
+  }
+
+  const handleRecalculateByDate = () => {
+    const quotas = Math.max(1, parseInt(String(editInvForm.quotas), 10) || 1)
+    const unitPrice = Math.max(0, parseFloat(String(editInvForm.unit_price)) || 0)
+    const autoVal = quotas * unitPrice
+    setEditInvForm((prev) => ({
+      ...prev,
+      total_value: autoVal,
+      is_manual_value: false,
+    }))
+    toast.info('Valor recalculado automaticamente pela fórmula de cotas e preço unitário.')
   }
 
   const handleSaveDates = async () => {
@@ -457,17 +474,25 @@ export default function InvestmentsReview() {
 
     const quotas = Math.max(1, parseInt(String(editInvForm.quotas), 10) || 1)
     const unitPrice = Math.max(0, parseFloat(String(editInvForm.unit_price)) || 0)
-    const totalValue = quotas * unitPrice
+    const calculatedValue = quotas * unitPrice
+    const finalTotalValue = editInvForm.is_manual_value
+      ? Math.max(0, parseFloat(String(editInvForm.total_value)) || 0)
+      : calculatedValue
+
+    if (finalTotalValue <= 0) {
+      return toast.error('O valor final do aporte deve ser maior que zero.')
+    }
 
     try {
-      // 1. Atualiza na tabela investments
+      // 1. Atualiza na tabela investments (total_value e transfer_value)
       const { error } = await supabase
         .from('investments')
         .update({
           transfer_date: editInvForm.transfer_date || null,
           quotas,
           unit_price: unitPrice,
-          total_value: totalValue,
+          total_value: finalTotalValue,
+          transfer_value: finalTotalValue,
         })
         .eq('id', selectedInv.id)
       if (error) throw error
@@ -479,25 +504,58 @@ export default function InvestmentsReview() {
           subscription_date: editInvForm.transfer_date || null,
           quantity: quotas,
           unit_price: unitPrice,
-          total_amount: totalValue,
+          total_amount: finalTotalValue,
         })
         .eq('investment_id', selectedInv.id)
 
-      await supabase.from('audit_logs').insert({
-        entity_type: 'investments',
-        entity_id: selectedInv.id,
-        action: 'admin_updated_dates',
-        details: {
-          admin_id: user?.id,
-          message: `Aporte ID ${selectedInv.id} atualizado por ${user?.email}: data ${selectedInv.transfer_date || 'N/A'} -> ${editInvForm.transfer_date}, valor R$ ${selectedInv.total_value} -> R$ ${totalValue}`,
-          old_transfer_date: selectedInv.transfer_date,
-          new_transfer_date: editInvForm.transfer_date,
-          old_total_value: selectedInv.total_value,
-          new_total_value: totalValue,
-          quotas,
-          unit_price: unitPrice,
-        },
-      })
+      // 3. Auditoria discriminando se houve ajuste manual ou atualização padrão
+      const oldTotalValue = Number(selectedInv.total_value ?? selectedInv.transfer_value ?? 0)
+      const diff = finalTotalValue - oldTotalValue
+
+      if (editInvForm.is_manual_value) {
+        await supabase.from('audit_logs').insert({
+          entity_type: 'investments',
+          entity_id: selectedInv.id,
+          action: 'admin_manual_value_adjusted',
+          details: {
+            admin_id: user?.id,
+            admin_email: user?.email,
+            user_id: user?.id,
+            message: `Ajuste manual de valor no aporte ID ${selectedInv.id} por ${user?.email}: valor anterior R$ ${oldTotalValue.toFixed(2)} -> novo valor R$ ${finalTotalValue.toFixed(2)} (diferença: ${diff >= 0 ? '+' : ''}${diff.toFixed(2)}), data ${selectedInv.transfer_date || 'N/A'} -> ${editInvForm.transfer_date}`,
+            old_value: oldTotalValue,
+            new_value: finalTotalValue,
+            old_total_value: oldTotalValue,
+            new_total_value: finalTotalValue,
+            difference: diff,
+            calculated_value: calculatedValue,
+            is_manual: true,
+            adjusted_by: user?.email,
+            adjusted_at: new Date().toISOString(),
+            old_transfer_date: selectedInv.transfer_date,
+            new_transfer_date: editInvForm.transfer_date,
+            quotas,
+            unit_price: unitPrice,
+          },
+        })
+      } else {
+        await supabase.from('audit_logs').insert({
+          entity_type: 'investments',
+          entity_id: selectedInv.id,
+          action: 'admin_updated_dates',
+          details: {
+            admin_id: user?.id,
+            admin_email: user?.email,
+            message: `Aporte ID ${selectedInv.id} atualizado por ${user?.email}: data ${selectedInv.transfer_date || 'N/A'} -> ${editInvForm.transfer_date}, valor R$ ${oldTotalValue} -> R$ ${finalTotalValue}`,
+            old_transfer_date: selectedInv.transfer_date,
+            new_transfer_date: editInvForm.transfer_date,
+            old_total_value: oldTotalValue,
+            new_total_value: finalTotalValue,
+            quotas,
+            unit_price: unitPrice,
+            is_manual: false,
+          },
+        })
+      }
 
       toast.success(
         'Aporte atualizado com sucesso. Sincronização em cascata concluída com a Carteira de Investidores.',
@@ -1505,12 +1563,13 @@ export default function InvestmentsReview() {
       </Dialog>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle>Editar Dados do Aporte</DialogTitle>
             <DialogDescription>
-              Altere a data de transferência, cotas ou valor. Esta ação atualizará imediatamente a
-              Carteira de Investidores, o Dashboard do Investidor e a Tesouraria.
+              Altere a data de transferência, cotas ou ajuste o valor financeiro movimentado no
+              caixa. Esta ação atualizará imediatamente a Carteira de Investidores, o Dashboard do
+              Investidor e a Tesouraria.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4">
@@ -1533,7 +1592,15 @@ export default function InvestmentsReview() {
                 type="date"
                 max={new Date().toLocaleDateString('en-CA')}
                 value={editInvForm.transfer_date}
-                onChange={(e) => setEditInvForm({ ...editInvForm, transfer_date: e.target.value })}
+                onChange={(e) => {
+                  const newDate = e.target.value
+                  // Se o valor estiver ajustado manualmente, a alteração de data NÃO sobrescreve o valor digitado.
+                  // Se for automático, mantém o valor calculado.
+                  setEditInvForm((prev) => ({
+                    ...prev,
+                    transfer_date: newDate,
+                  }))
+                }}
               />
             </div>
 
@@ -1547,10 +1614,15 @@ export default function InvestmentsReview() {
                   value={editInvForm.quotas}
                   onChange={(e) => {
                     const q = parseInt(e.target.value, 10) || 0
-                    setEditInvForm({
-                      ...editInvForm,
-                      quotas: q,
-                      total_value: q * editInvForm.unit_price,
+                    setEditInvForm((prev) => {
+                      if (prev.is_manual_value) {
+                        return { ...prev, quotas: q }
+                      }
+                      return {
+                        ...prev,
+                        quotas: q,
+                        total_value: q * prev.unit_price,
+                      }
                     })
                   }}
                 />
@@ -1565,20 +1637,93 @@ export default function InvestmentsReview() {
                   value={editInvForm.unit_price}
                   onChange={(e) => {
                     const up = parseFloat(e.target.value) || 0
-                    setEditInvForm({
-                      ...editInvForm,
-                      unit_price: up,
-                      total_value: editInvForm.quotas * up,
+                    setEditInvForm((prev) => {
+                      if (prev.is_manual_value) {
+                        return { ...prev, unit_price: up }
+                      }
+                      return {
+                        ...prev,
+                        unit_price: up,
+                        total_value: prev.quotas * up,
+                      }
                     })
                   }}
                 />
               </div>
             </div>
 
+            {/* Campo de Ajuste Manual de Valor (sem alterar a data) */}
+            <div className="space-y-2 p-3 bg-muted/50 rounded-lg border">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm font-semibold">Valor do Aporte (Caixa)</Label>
+                  {editInvForm.is_manual_value ? (
+                    <Badge className="bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-100 text-[11px] font-medium">
+                      Ajustado manualmente
+                    </Badge>
+                  ) : (
+                    <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-100 text-[11px] font-medium">
+                      Calculado automaticamente
+                    </Badge>
+                  )}
+                </div>
+
+                {editInvForm.is_manual_value && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+                    onClick={handleRecalculateByDate}
+                    title="Desfazer ajuste manual e recalcular pela data / fórmula"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Recalcular pela data
+                  </Button>
+                )}
+              </div>
+
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-sm font-medium text-muted-foreground">
+                  R$
+                </span>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="pl-9 font-mono font-medium text-base"
+                  value={editInvForm.total_value}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value) || 0
+                    setEditInvForm((prev) => ({
+                      ...prev,
+                      total_value: val,
+                      is_manual_value: true,
+                    }))
+                  }}
+                />
+              </div>
+
+              <div className="flex justify-between items-center text-xs text-muted-foreground pt-1">
+                <span>
+                  Fórmula padrão (cotas × preço):{' '}
+                  <strong className="font-mono text-foreground">
+                    {formatC(editInvForm.quotas * editInvForm.unit_price)}
+                  </strong>
+                </span>
+                {editInvForm.is_manual_value && (
+                  <span className="text-amber-700 font-medium">
+                    Diferença:{' '}
+                    {formatC(editInvForm.total_value - editInvForm.quotas * editInvForm.unit_price)}
+                  </span>
+                )}
+              </div>
+            </div>
+
             <div className="p-3 bg-muted rounded-md flex justify-between items-center text-sm">
-              <span className="text-muted-foreground">Valor Total do Aporte</span>
+              <span className="text-muted-foreground">Valor Final a Movimentar no Caixa</span>
               <span className="font-mono font-bold text-base text-primary">
-                {formatC(editInvForm.quotas * editInvForm.unit_price)}
+                {formatC(editInvForm.total_value)}
               </span>
             </div>
 
@@ -1588,8 +1733,14 @@ export default function InvestmentsReview() {
                   <AlertTriangle className="h-4 w-4 text-amber-600" />
                   <AlertTitle className="text-amber-800">Sincronização em Cascata</AlertTitle>
                   <AlertDescription className="text-amber-700 text-xs mt-1">
-                    A nova data corrigida ({editInvForm.transfer_date}) será refletida na Carteira
-                    de Investidores, recalculando o rendimento acumulado pro rata die imediatamente.
+                    A nova data ({editInvForm.transfer_date}) será refletida na Carteira de
+                    Investidores, recalculando o rendimento acumulado pro rata die imediatamente.
+                    {editInvForm.is_manual_value && (
+                      <span className="block mt-1 font-semibold text-amber-900">
+                        O valor ajustado manualmente ({formatC(editInvForm.total_value)}) foi
+                        preservado e não será alterado pela data.
+                      </span>
+                    )}
                   </AlertDescription>
                 </Alert>
               )}
