@@ -201,13 +201,24 @@ export function AppSidebar() {
       collapsible="icon"
       className="border-r-0 [&_[data-sidebar=sidebar]]:bg-[#0f0f11] [&_[data-sidebar=sidebar]]:text-zinc-300 [&_[data-sidebar=menu-button]]:text-zinc-300 [&_[data-sidebar=menu-button][data-active=true]]:bg-zinc-800/50 [&_[data-sidebar=menu-button][data-active=true]]:text-white [&_[data-sidebar=menu-button]:hover]:bg-zinc-800/50 [&_[data-sidebar=menu-button]:hover]:text-white border-zinc-800"
     >
-      <SidebarHeader className="h-16 flex items-center justify-center border-b border-zinc-800/50">
-        <div className="flex items-center gap-2 font-bold text-xl text-white tracking-tight">
-          <div className="w-8 h-8 rounded bg-primary flex items-center justify-center text-primary-foreground shadow-sm">
-            S
+      <SidebarHeader className="h-16 flex items-center justify-center border-b border-zinc-800/50 px-3">
+        <Link
+          to="/"
+          className="flex items-center gap-2.5 min-w-0 max-w-full text-white transition-opacity hover:opacity-90"
+          title="Nexum Security 360°"
+        >
+          <div className="w-8 h-8 rounded-lg bg-primary/20 border border-primary/40 flex items-center justify-center text-primary shadow-sm shrink-0">
+            <ShieldCheck className="h-4 w-4" />
           </div>
-          <span className="group-data-[collapsible=icon]:hidden">Securix</span>
-        </div>
+          <div className="flex flex-col min-w-0 leading-tight group-data-[collapsible=icon]:hidden">
+            <span className="font-bold text-sm tracking-tight text-white truncate">
+              Nexum Security
+            </span>
+            <span className="text-[11px] font-semibold text-primary tracking-wider uppercase">
+              360°
+            </span>
+          </div>
+        </Link>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
