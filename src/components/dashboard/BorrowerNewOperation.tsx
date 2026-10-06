@@ -25,6 +25,7 @@ import { useBorrowerLimit } from '@/hooks/use-borrower-limit'
 import { useSacadoSuggestions, KnownSacado } from '@/hooks/use-sacado-suggestions'
 import { SacadoAutocomplete } from '@/components/operations/SacadoAutocomplete'
 import { onlyDigits, maskCpf, maskCnpj, validateCpf, validateCnpj } from '@/lib/cpf-cnpj'
+import { RECEIVABLE_TYPES } from '@/lib/receivable-types'
 import { toast } from 'sonner'
 import { Loader2, Calculator, Send, CheckCircle2, Sparkles, Building } from 'lucide-react'
 
@@ -292,13 +293,11 @@ export function BorrowerNewOperation({ onSuccess }: { onSuccess?: () => void }) 
                   <SelectValue placeholder="Selecione o Ativo..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="cheque">Cheque</SelectItem>
-                  <SelectItem value="promissoria">Nota Promissória</SelectItem>
-                  <SelectItem value="duplicata">Duplicata</SelectItem>
-                  <SelectItem value="mutuo">Contrato de Mútuo</SelectItem>
-                  <SelectItem value="confissao_divida">Confissão de Dívida</SelectItem>
-                  <SelectItem value="contratual">Recebível Contratual</SelectItem>
-                  <SelectItem value="outro">Outros</SelectItem>
+                  {RECEIVABLE_TYPES.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

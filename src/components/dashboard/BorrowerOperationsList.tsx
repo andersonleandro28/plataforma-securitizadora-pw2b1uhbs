@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { getReceivableTypeLabel } from '@/lib/receivable-types'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -237,8 +238,11 @@ export function BorrowerOperationsList() {
                         <TableCell className="text-xs text-muted-foreground">
                           {format(new Date(op.created_at), 'dd/MM/yyyy HH:mm')}
                         </TableCell>
-                        <TableCell className="capitalize text-sm font-medium">
-                          {op.receivable_type?.replace('_', ' ')}
+                        <TableCell className="text-sm font-medium">
+                          {getReceivableTypeLabel(
+                            op.receivable_type,
+                            (op as any).receivable_type_other,
+                          )}
                         </TableCell>
                         <TableCell className="text-sm truncate max-w-[150px]" title={op.sacado}>
                           {op.sacado}
@@ -415,8 +419,11 @@ export function BorrowerOperationsList() {
                 </div>
                 <div>
                   <span className="text-muted-foreground block text-[11px]">Tipo de Ativo:</span>
-                  <strong className="text-foreground uppercase">
-                    {detailsOp.receivable_type?.replace('_', ' ')}
+                  <strong className="text-foreground">
+                    {getReceivableTypeLabel(
+                      detailsOp.receivable_type,
+                      (detailsOp as any).receivable_type_other,
+                    )}
                   </strong>
                 </div>
                 <div>

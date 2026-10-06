@@ -20,6 +20,10 @@ import {
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Save, Loader2 } from 'lucide-react'
+import {
+  FINANCIAL_PARAMETER_RECEIVABLE_TYPES,
+  getReceivableTypeLabel,
+} from '@/lib/receivable-types'
 
 export function GlobalParametersForm() {
   const [loading, setLoading] = useState(true)
@@ -90,7 +94,8 @@ export function GlobalParametersForm() {
         { onConflict: 'receivable_type' },
       )
       if (error) throw error
-      toast.success(`Parâmetros salvos com sucesso para: ${selectedType}.`)
+      const label = getReceivableTypeLabel(selectedType)
+      toast.success(`Parâmetros salvos com sucesso para: ${label}.`)
     } catch (e: any) {
       toast.error('Erro ao salvar: ' + e.message)
     } finally {
@@ -118,11 +123,11 @@ export function GlobalParametersForm() {
                 <SelectValue placeholder="Tipo de Recebível" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="global">Padrão / Global</SelectItem>
-                <SelectItem value="duplicata">Duplicatas</SelectItem>
-                <SelectItem value="cheque">Cheques</SelectItem>
-                <SelectItem value="contrato">Contratos</SelectItem>
-                <SelectItem value="promissoria">Notas Promissórias</SelectItem>
+                {FINANCIAL_PARAMETER_RECEIVABLE_TYPES.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
