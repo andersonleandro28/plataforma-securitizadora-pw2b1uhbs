@@ -165,7 +165,17 @@ export default function InvestmentsReview() {
   const [editRedemptionOpen, setEditRedemptionOpen] = useState(false)
   const [selectedRedemption, setSelectedRedemption] = useState<any>(null)
   const [rejectionReason, setRejectionReason] = useState('')
-  const [editRedemptionForm, setEditRedemptionForm] = useState({ effective_date: '' })
+  const [editRedemptionForm, setEditRedemptionForm] = useState({
+    effective_date: '',
+    net_value: 0,
+    gross_value: 0,
+    yield_amount: 0,
+    tax_amount: 0,
+    tax_rate: 0,
+    penalty: 0,
+    discount: 0,
+    is_manual_value: false,
+  })
   const [recalcResult, setRecalcResult] = useState<any>(null)
   const [processing, setProcessing] = useState(false)
 
@@ -289,12 +299,61 @@ export default function InvestmentsReview() {
 
   useEffect(() => {
     if (editRedemptionOpen && selectedRedemption && editRedemptionForm.effective_date) {
-      const result = calculateInvestmentMetricsToDate(
-        selectedRedemption.investments,
-        selectedRedemption.requested_quotas,
-        editRedemptionForm.effective_date,
-      )
-      setRecalcResult(result)
+      const isInterestOnly = selectedRedemption.redemption_type === 'interest_only'
+      if (isInterestOnly) {
+        // Para juros mensais, o valor automático padrão é o yield_amount/gross da competência
+        const gross = Number(selectedRedemption.gross_value || selectedRedemption.yield_amount || 0)
+        const tax = Number(selectedRedemption.tax_amount || 0)
+        const taxRate = Number(selectedRedemption.tax_rate || 0)
+        const net = Number(selectedRedemption.net_value || gross - tax)
+        const autoMetrics = {
+          principal: 0,
+          yieldAmount: Number(selectedRedemption.yield_amount || gross),
+          penalty: 0,
+          discount: 0,
+          taxRate,
+          taxAmount: tax,
+          netValue: net,
+          grossValue: gross,
+          daysElapsed: 30,
+        }
+        setRecalcResult(autoMetrics)
+        // Se NÃO estiver ajustado manualmente, atualiza o form com os valores automáticos
+        setEditRedemptionForm((prev) => {
+          if (prev.is_manual_value) return prev
+          return {
+            ...prev,
+            net_value: autoMetrics.netValue,
+            gross_value: autoMetrics.grossValue,
+            yield_amount: autoMetrics.yieldAmount,
+            tax_amount: autoMetrics.taxAmount,
+            tax_rate: autoMetrics.taxRate,
+            penalty: autoMetrics.penalty,
+            discount: autoMetrics.discount,
+          }
+        })
+      } else {
+        const result = calculateInvestmentMetricsToDate(
+          selectedRedemption.investments,
+          selectedRedemption.requested_quotas,
+          editRedemptionForm.effective_date,
+        )
+        setRecalcResult(result)
+        // Se NÃO for ajuste manual, atualiza o form com os valores recalculados pela nova data
+        setEditRedemptionForm((prev) => {
+          if (prev.is_manual_value) return prev
+          return {
+            ...prev,
+            net_value: result.netValue,
+            gross_value: result.grossValue,
+            yield_amount: result.yieldAmount,
+            tax_amount: result.taxAmount,
+            tax_rate: result.taxRate,
+            penalty: result.penalty,
+            discount: result.discount,
+          }
+        })
+      }
     }
   }, [editRedemptionForm.effective_date, editRedemptionOpen, selectedRedemption])
 
@@ -718,30 +777,114 @@ export default function InvestmentsReview() {
   const handleOpenEditRedemption = (red: any) => {
     setSelectedRedemption(red)
     const dateStr = toISODate(red.updated_at || red.created_at)
-    setEditRedemptionForm({ effective_date: dateStr })
+    const isInterestOnly = red.redemption_type === 'interest_only'
+    const existingNet = Number(red.net_value || 0)
+    const existingGross = Number(red.gross_value || 0)
+    const existingYield = Number(red.yield_amount || 0)
+    const existingTax = Number(red.tax_amount || 0)
+    const existingTaxRate = Number(red.tax_rate || 0)
+    const existingPenalty = Number(red.penalty_applied || 0)
+    const existingDiscount = Number(red.discount_applied || 0)
+
+    // Calcula valor automático esperado para a data
+    let autoNet = existingNet
+    if (isInterestOnly) {
+      const gross = Number(red.gross_value || red.yield_amount || 0)
+      const tax = Number(red.tax_amount || 0)
+      autoNet = Number(gross - tax)
+    } else {
+      const autoCalc = calculateInvestmentMetricsToDate(
+        red.investments,
+        red.requested_quotas,
+        dateStr,
+      )
+      autoNet = autoCalc.netValue
+    }
+
+    const isManual = Math.abs(existingNet - autoNet) > 0.009
+
+    setEditRedemptionForm({
+      effective_date: dateStr,
+      net_value: existingNet,
+      gross_value: existingGross,
+      yield_amount: existingYield,
+      tax_amount: existingTax,
+      tax_rate: existingTaxRate,
+      penalty: existingPenalty,
+      discount: existingDiscount,
+      is_manual_value: isManual,
+    })
     setEditRedemptionOpen(true)
+  }
+
+  const handleRecalculateRedemptionByDate = () => {
+    if (!selectedRedemption || !recalcResult) return
+    setEditRedemptionForm((prev) => ({
+      ...prev,
+      net_value: recalcResult.netValue,
+      gross_value: recalcResult.grossValue,
+      yield_amount: recalcResult.yieldAmount,
+      tax_amount: recalcResult.taxAmount,
+      tax_rate: recalcResult.taxRate,
+      penalty: recalcResult.penalty,
+      discount: recalcResult.discount,
+      is_manual_value: false,
+    }))
+    toast.info('Valor de resgate recalculado automaticamente pela fórmula proporcional à data.')
   }
 
   const handleSaveRetroactiveEdit = async () => {
     if (!selectedRedemption || !recalcResult) return
+
+    const isInterestOnly = selectedRedemption.redemption_type === 'interest_only'
+    const finalNet = editRedemptionForm.is_manual_value
+      ? Math.max(0, parseFloat(String(editRedemptionForm.net_value)) || 0)
+      : recalcResult.netValue
+
+    if (finalNet <= 0) {
+      return toast.error('O valor líquido do resgate deve ser maior que zero.')
+    }
+
     setProcessing(true)
     try {
-      const oldNet = selectedRedemption.net_value
-      const newNet = recalcResult.netValue
+      const oldNet = Number(selectedRedemption.net_value || 0)
+      const newNet = finalNet
       const netDifference = newNet - oldNet
 
+      // Determinar valores de gross, yield e impostos de forma consistente
+      let finalGross = recalcResult.grossValue
+      let finalYield = recalcResult.yieldAmount
+      const finalTax = recalcResult.taxAmount
+      const finalTaxRate = recalcResult.taxRate
+      const finalPenalty = recalcResult.penalty
+      const finalDiscount = recalcResult.discount
+
+      if (editRedemptionForm.is_manual_value) {
+        if (isInterestOnly) {
+          // No regime de juros mensais cotas são preservadas e principal não muda;
+          // o rendimento bruto ajustado acompanha o valor líquido + imposto retido
+          finalGross = newNet + finalTax
+          finalYield = newNet + finalTax
+        } else {
+          // Resgate comum: grossValue = netValue + encargos + imposto
+          finalGross = newNet + finalPenalty + finalDiscount + finalTax
+          finalYield = Math.max(0, finalGross - recalcResult.principal)
+        }
+      }
+
       const updatePayload = {
-        gross_value: recalcResult.grossValue,
-        net_value: recalcResult.netValue,
-        penalty_applied: recalcResult.penalty,
-        discount_applied: recalcResult.discount,
-        tax_amount: recalcResult.taxAmount,
-        tax_rate: recalcResult.taxRate,
-        yield_amount: recalcResult.yieldAmount,
+        gross_value: finalGross,
+        net_value: newNet,
+        penalty_applied: finalPenalty,
+        discount_applied: finalDiscount,
+        tax_amount: finalTax,
+        tax_rate: finalTaxRate,
+        yield_amount: finalYield,
         updated_at: new Date(editRedemptionForm.effective_date + 'T12:00:00Z').toISOString(),
         updated_by: user?.id,
       }
 
+      // 1. Atualizar investment_redemptions (aciona trigger sync_redemption_manual_value)
       const { error: updErr } = await supabase
         .from('investment_redemptions')
         .update(updatePayload)
@@ -749,6 +892,7 @@ export default function InvestmentsReview() {
 
       if (updErr) throw updErr
 
+      // 2. Se já foi pago/liquidado, sincronizar carteira/saldo e reforçar tesouraria e livro caixa diretamente
       if (selectedRedemption.status === 'paid') {
         // Se for reinvestimento com troco, ajusta wallet_balance do investidor proporcionalmente
         if (selectedRedemption.is_reinvestment && netDifference !== 0) {
@@ -768,7 +912,7 @@ export default function InvestmentsReview() {
           }
         }
 
-        // Sincronizar tesouraria e livro caixa com o novo valor / data
+        // Sincronização explícita e direta para garantir consistência imediata
         const extRef = `redemption-${selectedRedemption.id}`
         const effDate = editRedemptionForm.effective_date
         const effDateTs = new Date(editRedemptionForm.effective_date + 'T12:00:00Z').toISOString()
@@ -776,7 +920,9 @@ export default function InvestmentsReview() {
           selectedRedemption.profiles?.full_name ||
           selectedRedemption.profiles?.pj_company_name ||
           'Investidor'
-        const desc = `Resgate de investimento — ${invName} — ${selectedRedemption.requested_quotas || 0} cotas`
+        const desc = isInterestOnly
+          ? `Pagamento de Juros Mensais — ${invName} — Competência ${selectedRedemption.period_month || effDate.substring(0, 7)}`
+          : `Resgate de investimento — ${invName} — ${selectedRedemption.requested_quotas || 0} cotas`
 
         await supabase
           .from('treasury_transactions')
@@ -798,19 +944,54 @@ export default function InvestmentsReview() {
           .eq('referencia_tipo', 'resgate_investimento')
       }
 
-      await supabase.from('audit_logs').insert({
-        entity_type: 'investment_redemptions',
-        entity_id: selectedRedemption.id,
-        action: 'admin_retroactive_edit',
-        details: {
-          admin_id: user?.id,
-          old_date: selectedRedemption.updated_at,
-          new_date: updatePayload.updated_at,
-          old_net_value: oldNet,
-          new_net_value: newNet,
-          difference: netDifference,
-        },
-      })
+      // 3. Auditoria discriminando se houve ajuste manual ou atualização padrão por data
+      if (editRedemptionForm.is_manual_value) {
+        await supabase.from('audit_logs').insert({
+          entity_type: 'investment_redemptions',
+          entity_id: selectedRedemption.id,
+          action: 'admin_manual_value_adjusted',
+          details: {
+            admin_id: user?.id,
+            admin_email: user?.email,
+            user_id: user?.id,
+            message: `Ajuste manual de valor no resgate ID ${selectedRedemption.id} por ${user?.email}: valor líquido anterior R$ ${oldNet.toFixed(2)} -> novo valor R$ ${newNet.toFixed(2)} (diferença: ${netDifference >= 0 ? '+' : ''}${netDifference.toFixed(2)}), data ${toISODate(selectedRedemption.updated_at || selectedRedemption.created_at)} -> ${editRedemptionForm.effective_date}`,
+            old_value: oldNet,
+            new_value: newNet,
+            old_net_value: oldNet,
+            new_net_value: newNet,
+            difference: netDifference,
+            calculated_value: recalcResult.netValue,
+            is_manual: true,
+            adjusted_by: user?.email,
+            adjusted_at: new Date().toISOString(),
+            old_date: selectedRedemption.updated_at,
+            new_date: updatePayload.updated_at,
+            redemption_type: selectedRedemption.redemption_type || 'total',
+            requested_quotas: selectedRedemption.requested_quotas,
+            status: selectedRedemption.status,
+          },
+        })
+      } else {
+        await supabase.from('audit_logs').insert({
+          entity_type: 'investment_redemptions',
+          entity_id: selectedRedemption.id,
+          action: 'admin_retroactive_edit',
+          details: {
+            admin_id: user?.id,
+            admin_email: user?.email,
+            old_date: selectedRedemption.updated_at,
+            new_date: updatePayload.updated_at,
+            old_net_value: oldNet,
+            new_net_value: newNet,
+            difference: netDifference,
+            calculated_value: recalcResult.netValue,
+            is_manual: false,
+            redemption_type: selectedRedemption.redemption_type || 'total',
+            requested_quotas: selectedRedemption.requested_quotas,
+            status: selectedRedemption.status,
+          },
+        })
+      }
 
       // Notificar investidor sobre ajuste retroativo se houver diferença
       if (netDifference !== 0) {
@@ -1791,26 +1972,171 @@ export default function InvestmentsReview() {
       </Dialog>
 
       <Dialog open={editRedemptionOpen} onOpenChange={setEditRedemptionOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <ArrowRightLeft className="w-5 h-5" /> Edição Retroativa de Resgate
+              <ArrowRightLeft className="w-5 h-5" /> Edição de Solicitação de Resgate
             </DialogTitle>
             <DialogDescription>
-              Altere a data efetiva para recalcular a rentabilidade proporcional (migração ou ajuste
-              contábil).
+              Ajuste manualmente o valor líquido a ser movimentado no caixa ou altere a data de
+              competência para recálculo proporcional pro rata die.
             </DialogDescription>
           </DialogHeader>
 
           <div className="py-4 space-y-4">
+            {selectedRedemption && (
+              <div className="text-xs bg-muted/40 p-3 rounded-md space-y-1 border">
+                <div className="flex justify-between">
+                  <div>
+                    <span className="text-muted-foreground">Investidor: </span>
+                    <span className="font-semibold">
+                      {selectedRedemption.profiles?.full_name || 'Investidor'}
+                    </span>
+                    {selectedRedemption.profiles?.document_number && (
+                      <span className="text-muted-foreground ml-1">
+                        ({selectedRedemption.profiles.document_number})
+                      </span>
+                    )}
+                  </div>
+                  <div>
+                    {selectedRedemption.status === 'paid' ? (
+                      <Badge className="bg-emerald-500 text-[10px]">Liquidado</Badge>
+                    ) : selectedRedemption.status === 'approved' ? (
+                      <Badge className="bg-primary text-[10px]">Aprovado</Badge>
+                    ) : (
+                      <Badge variant="outline" className="bg-amber-100 text-amber-800 text-[10px]">
+                        Pendente
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Produto: </span>
+                  <span className="font-medium">
+                    {selectedRedemption.investments?.investment_products?.title || 'Debênture'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Tipo de Resgate: </span>
+                  {selectedRedemption.redemption_type === 'interest_only' ? (
+                    <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                      Rendimento Mensal (0 cotas / Cotas Preservadas)
+                    </span>
+                  ) : (
+                    <span>{selectedRedemption.requested_quotas} cota(s) solicitada(s)</span>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label>Data Efetiva (Competência)</Label>
               <Input
                 type="date"
                 value={editRedemptionForm.effective_date}
-                onChange={(e) => setEditRedemptionForm({ effective_date: e.target.value })}
+                onChange={(e) => {
+                  const newDate = e.target.value
+                  setEditRedemptionForm((prev) => ({
+                    ...prev,
+                    effective_date: newDate,
+                  }))
+                }}
               />
             </div>
+
+            {/* Campo de Ajuste Manual de Valor do Resgate */}
+            <div className="space-y-2 p-3 bg-muted/50 rounded-lg border">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm font-semibold">Valor do Resgate (Líquido)</Label>
+                  {editRedemptionForm.is_manual_value ? (
+                    <Badge className="bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-100 text-[11px] font-medium">
+                      Ajustado manualmente
+                    </Badge>
+                  ) : (
+                    <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-100 text-[11px] font-medium">
+                      Calculado automaticamente
+                    </Badge>
+                  )}
+                </div>
+
+                {editRedemptionForm.is_manual_value && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+                    onClick={handleRecalculateRedemptionByDate}
+                    title="Desfazer ajuste manual e recalcular pela data / fórmula"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Recalcular pela data
+                  </Button>
+                )}
+              </div>
+
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-sm font-medium text-muted-foreground">
+                  R$
+                </span>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="pl-9 font-mono font-medium text-base"
+                  value={editRedemptionForm.net_value}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value) || 0
+                    setEditRedemptionForm((prev) => ({
+                      ...prev,
+                      net_value: val,
+                      is_manual_value: true,
+                    }))
+                  }}
+                />
+              </div>
+
+              <div className="flex justify-between items-center text-xs text-muted-foreground pt-1">
+                <span>
+                  Cálculo automático proporcional:{' '}
+                  <strong className="font-mono text-foreground">
+                    {formatC(recalcResult?.netValue || selectedRedemption?.net_value || 0)}
+                  </strong>
+                </span>
+                {editRedemptionForm.is_manual_value && (
+                  <span className="text-amber-700 font-medium">
+                    Diferença:{' '}
+                    {formatC(
+                      editRedemptionForm.net_value -
+                        (recalcResult?.netValue || selectedRedemption?.net_value || 0),
+                    )}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="p-3 bg-muted rounded-md flex justify-between items-center text-sm border">
+              <span className="text-muted-foreground">
+                {selectedRedemption?.status === 'paid'
+                  ? 'Valor Final Sincronizado no Caixa'
+                  : 'Valor Final a Liquidar no Caixa'}
+              </span>
+              <span className="font-mono font-bold text-base text-primary">
+                {formatC(
+                  editRedemptionForm.is_manual_value
+                    ? editRedemptionForm.net_value
+                    : recalcResult?.netValue || selectedRedemption?.net_value || 0,
+                )}
+              </span>
+            </div>
+
+            {selectedRedemption?.redemption_type === 'interest_only' && (
+              <div className="text-[11px] bg-emerald-50 text-emerald-800 p-2.5 rounded border border-emerald-200">
+                <strong>Regime de Juros Mensais:</strong> O ajuste de valor afeta exclusivamente a
+                saída monetária do resgate. Cotas e principal permanecem 100% preservados na
+                carteira.
+              </div>
+            )}
 
             {editRedemptionForm.effective_date &&
               editRedemptionForm.effective_date !==
@@ -1823,37 +2149,18 @@ export default function InvestmentsReview() {
                     Atenção à Competência Retroativa
                   </AlertTitle>
                   <AlertDescription className="text-amber-700 text-xs mt-1">
-                    Alterar a data para o passado modificará o saldo do investidor instantaneamente
-                    e reescreverá a linha do tempo da Tesouraria.
+                    {selectedRedemption?.status === 'paid'
+                      ? 'Alterar a data de um resgate já liquidado sincronizará a data no Livro Caixa e Tesouraria.'
+                      : 'Alterar a data atualizará a base para a data de liquidação futura.'}
+                    {editRedemptionForm.is_manual_value && (
+                      <span className="block mt-1 font-semibold text-amber-900">
+                        O valor ajustado manualmente ({formatC(editRedemptionForm.net_value)}) foi
+                        preservado e não será alterado pela data.
+                      </span>
+                    )}
                   </AlertDescription>
                 </Alert>
               )}
-
-            {recalcResult && selectedRedemption && (
-              <div className="bg-muted p-4 rounded-lg space-y-2 text-sm border mt-4">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Valor Original (Líquido)</span>
-                  <span className="font-mono line-through opacity-70">
-                    {formatC(selectedRedemption.net_value)}
-                  </span>
-                </div>
-                <div className="flex justify-between font-bold">
-                  <span>Novo Valor Recalculado</span>
-                  <span className="font-mono text-emerald-600">
-                    {formatC(recalcResult.netValue)}
-                  </span>
-                </div>
-                <div className="flex justify-between text-xs mt-2 pt-2 border-t">
-                  <span className="text-muted-foreground">Diferença a ser ajustada no caixa</span>
-                  <span
-                    className={`font-mono ${recalcResult.netValue - selectedRedemption.net_value >= 0 ? 'text-primary' : 'text-rose-600'}`}
-                  >
-                    {recalcResult.netValue - selectedRedemption.net_value >= 0 ? '+' : ''}
-                    {formatC(recalcResult.netValue - selectedRedemption.net_value)}
-                  </span>
-                </div>
-              </div>
-            )}
           </div>
 
           <DialogFooter>
@@ -1864,9 +2171,17 @@ export default function InvestmentsReview() {
             >
               Cancelar
             </Button>
-            <Button onClick={handleSaveRetroactiveEdit} disabled={processing || !recalcResult}>
+            <Button
+              onClick={handleSaveRetroactiveEdit}
+              disabled={
+                processing ||
+                (editRedemptionForm.is_manual_value
+                  ? editRedemptionForm.net_value <= 0
+                  : !recalcResult)
+              }
+            >
               {processing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Salvar Recálculo
+              Salvar e Sincronizar
             </Button>
           </DialogFooter>
         </DialogContent>
