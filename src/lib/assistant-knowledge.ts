@@ -1134,7 +1134,7 @@ export const KNOWLEDGE_BASE: KnowledgeTopic[] = [
     steps: [
       'Ao realizar login como Tomador, você é direcionado automaticamente para o "Dashboard do Tomador".',
       'Observe os três indicadores principais no topo:',
-      '  - Saldo Disponível: valor em R$ que sua empresa ainda pode antecipar hoje.',
+      '  - Crédito pré-aprovado: valor em R$ que sua empresa ainda pode antecipar hoje.',
       '  - Recebíveis Pendentes: total de títulos ou operações atualmente ativas e em cobrança.',
       '  - Próximo Vencimento: data e valor da parcela mais próxima a vencer.',
       'Utilize os botões de atalho: "Simular Agora" para abrir uma nova solicitação de antecipação ou "Ver Minhas Solicitações" para acompanhar a esteira.',
@@ -1497,7 +1497,7 @@ export function searchKnowledgeBase(userQuery: string, userRole?: string): Assis
       userRole === 'investor'
         ? 'Valores e saldos em tempo real devem ser conferidos diretamente na sua tela de Dashboard do Investidor (Menu lateral > Dashboard), onde constam seu saldo aplicado, rendimentos acumulados e gráficos atualizados.'
         : userRole === 'borrower'
-          ? 'Seu limite de crédito total e saldo disponível para novas operações em tempo real devem ser conferidos diretamente no Dashboard do Tomador (Menu lateral > Dashboard), no card "Saldo Disponível".'
+          ? 'Seu limite de crédito total e saldo disponível para novas operações em tempo real devem ser conferidos diretamente no Dashboard do Tomador (Menu lateral > Dashboard), no card "Crédito pré-aprovado".'
           : 'Saldos bancários e posições financeiras em tempo real da securitizadora devem ser conferidos nas telas "Contabilidade & Fiscal" (Livro Caixa) e "Contas Bancárias".'
 
     return {
