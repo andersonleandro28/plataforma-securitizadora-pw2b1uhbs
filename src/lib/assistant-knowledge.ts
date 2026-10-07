@@ -130,6 +130,39 @@ export const KNOWLEDGE_BASE: KnowledgeTopic[] = [
   // ADMIN & STAFF
   // ==========================================
   {
+    id: 'tarifa-pix-automatica',
+    title: 'Tarifa PIX Automática: Parametrização por Conta e Lançamento de Despesa',
+    roles: ['admin'],
+    category: 'admin',
+    navigationPath: 'Menu lateral > Contas Bancárias (rota /admin/bank-accounts) > Editar Conta',
+    keywords: [
+      'tarifa pix',
+      'pix fee',
+      'taxa pix',
+      'pix pf',
+      'pix pj',
+      'tarifa bancaria',
+      'custo pix',
+    ],
+    summary:
+      'Configuração de tarifas PIX distintas para pessoas físicas (PF) e jurídicas (PJ) por conta bancária, com lançamento automático como despesa paga sem desconto do beneficiário e estorno automático na reversão.',
+    steps: [
+      'Acesse "Contas Bancárias" no menu lateral (rota /admin/bank-accounts).',
+      'Na aba "Contas Cadastradas", clique em "Editar" na conta bancária desejada (ou em "Nova Conta").',
+      'Nos campos "Tarifa PIX — Destinatário PF (CPF)" e "Tarifa PIX — Destinatário PJ (CNPJ)", informe o custo em R$ cobrado pelo banco para cada tipo de favorecido.',
+      'Deixe como 0,00 caso a conta possua isenção ou não deseje gerar despesas automáticas para aquela modalidade (0,00 = não lança tarifa).',
+      'Clique em "Salvar" para gravar a parametrização da conta bancária.',
+      'Ao processar um resgate de investidor ou liquidar uma operação de crédito/CCB através dessa conta bancária, o sistema detecta automaticamente se o favorecido é PF (CPF) ou PJ (CNPJ).',
+      'O lançamento da tarifa é gerado automaticamente como uma despesa com status "Pago" (categoria Tarifa Bancária), refletindo imediatamente em Despesas, Livro Caixa, Tesouraria e DRE/DFC.',
+    ],
+    tips: [
+      'A tarifa bancária é um custo operacional da Securitizadora e NUNCA é descontada do valor líquido pago ao tomador ou investidor.',
+      'Se o pagamento ou resgate for estornado/revertido pelo administrador, a despesa de tarifa bancária vinculada e sua saída de caixa são estornadas automaticamente.',
+      'Se o valor configurado for 0,00, nenhum lançamento de tarifa será efetuado.',
+    ],
+    relatedTopicIds: ['admin-parametros-securitizadora', 'admin-despesas-nf', 'admin-livro-caixa'],
+  },
+  {
     id: 'admin-tomador-limite',
     title: 'Cadastro de Tomadores e Regra do Limite de Crédito',
     roles: ['admin', 'staff'],

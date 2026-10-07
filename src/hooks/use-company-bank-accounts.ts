@@ -8,6 +8,8 @@ export interface CompanyBankAccount {
   branch: string | null
   account_number: string
   pix_key: string | null
+  pix_fee_pf?: number | null
+  pix_fee_pj?: number | null
   owner_name: string
   owner_document: string
   is_active: boolean

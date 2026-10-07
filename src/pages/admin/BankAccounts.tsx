@@ -72,6 +72,8 @@ export default function BankAccounts() {
     branch: '',
     account_number: '',
     pix_key: '',
+    pix_fee_pf: '0.00',
+    pix_fee_pj: '0.00',
     owner_name: '',
     owner_document: '',
     notes: '',
@@ -138,7 +140,13 @@ export default function BankAccounts() {
     e.preventDefault()
     setSaving(true)
     try {
-      const payload = { ...formData, updated_by: user?.id, updated_at: new Date().toISOString() }
+      const payload = {
+        ...formData,
+        pix_fee_pf: parseFloat(String(formData.pix_fee_pf).replace(',', '.')) || 0,
+        pix_fee_pj: parseFloat(String(formData.pix_fee_pj).replace(',', '.')) || 0,
+        updated_by: user?.id,
+        updated_at: new Date().toISOString(),
+      }
       if (formData.id) {
         await supabase
           .from('company_bank_accounts')
@@ -206,6 +214,8 @@ export default function BankAccounts() {
                   branch: '',
                   account_number: '',
                   pix_key: '',
+                  pix_fee_pf: '0.00',
+                  pix_fee_pj: '0.00',
                   owner_name: '',
                   owner_document: '',
                   notes: '',
@@ -343,6 +353,14 @@ export default function BankAccounts() {
                                   setFormData({
                                     ...acc,
                                     bank_code: acc.bank_code || '',
+                                    branch: acc.branch || '',
+                                    account_number: acc.account_number || '',
+                                    pix_key: acc.pix_key || '',
+                                    pix_fee_pf: (acc.pix_fee_pf ?? 0).toFixed(2),
+                                    pix_fee_pj: (acc.pix_fee_pj ?? 0).toFixed(2),
+                                    owner_name: acc.owner_name || '',
+                                    owner_document: acc.owner_document || '',
+                                    notes: acc.notes || '',
                                   })
                                   setOpen(true)
                                 }}
@@ -409,6 +427,30 @@ export default function BankAccounts() {
                   value={formData.pix_key}
                   onChange={(e) => setFormData({ ...formData, pix_key: e.target.value })}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>Tarifa PIX — Destinatário PF (CPF)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={formData.pix_fee_pf}
+                  onChange={(e) => setFormData({ ...formData, pix_fee_pf: e.target.value })}
+                />
+                <p className="text-[11px] text-muted-foreground">0,00 (não lança tarifa)</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Tarifa PIX — Destinatário PJ (CNPJ)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={formData.pix_fee_pj}
+                  onChange={(e) => setFormData({ ...formData, pix_fee_pj: e.target.value })}
+                />
+                <p className="text-[11px] text-muted-foreground">0,00 (não lança tarifa)</p>
               </div>
               <div className="space-y-2 col-span-2">
                 <Label>Nome do Titular</Label>
