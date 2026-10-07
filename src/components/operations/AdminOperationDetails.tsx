@@ -133,7 +133,7 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
     const { data: operation } = await supabase
       .from('credit_operations')
       .select(
-        '*, profiles(full_name, email, document_number, phone), credit_managers(id, full_name, commission_anticipation_pct, commission_ccb_pct, is_active)',
+        '*, profiles(full_name, pj_company_name, pj_trade_name, email, document_number, phone), credit_managers(id, full_name, commission_anticipation_pct, commission_ccb_pct, is_active)',
       )
       .eq('id', opId)
       .single()
@@ -839,7 +839,12 @@ export function AdminOperationDetails({ opId, open, onOpenChange, onRefresh }: a
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-4 pt-0 space-y-1 text-muted-foreground">
-                    <p className="font-medium text-foreground">{op.profiles?.full_name}</p>
+                    <p className="font-medium text-foreground">
+                      {op.profiles?.pj_company_name ||
+                        op.profiles?.full_name ||
+                        op.cedente ||
+                        'Não informado'}
+                    </p>
                     <p>{op.profiles?.document_number || 'Sem documento'}</p>
                     <p>{op.profiles?.email}</p>
                     <p>{op.profiles?.phone}</p>

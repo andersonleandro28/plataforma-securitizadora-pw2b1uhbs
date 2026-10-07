@@ -52,13 +52,19 @@ Deno.serve(async (req: Request) => {
 
     if (data.user) {
       // Update comprehensive profile
+      const isPj = entity_type === 'pj' || (!entity_type && Boolean(profileData.pj_company_name))
+      const resolvedFullName =
+        isPj && !profileData.full_name?.trim()
+          ? profileData.pj_company_name?.trim() || profileData.pj_trade_name?.trim() || ''
+          : profileData.full_name
+
       const updatePayload = {
         role: role || 'investor',
         entity_type: entity_type || 'pf',
         is_investor: role === 'investor',
         is_borrower: role === 'borrower',
         document_number: profileData.document_number,
-        full_name: profileData.full_name,
+        full_name: resolvedFullName || profileData.full_name,
         phone: profileData.phone,
         pj_company_name: profileData.pj_company_name,
         pj_trade_name: profileData.pj_trade_name,

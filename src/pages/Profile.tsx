@@ -265,8 +265,14 @@ export default function Profile() {
     }
 
     setLoadingDataUpdate(true)
+    const isPj = formData.entity_type === 'pj'
+    const computedFullName =
+      isPj && !formData.full_name?.trim()
+        ? formData.pj_company_name?.trim() || formData.pj_trade_name?.trim() || ''
+        : formData.full_name?.trim() || ''
+
     const payload: Record<string, any> = {
-      full_name: formData.full_name,
+      full_name: computedFullName || formData.full_name,
       phone: formData.phone || null,
       // Armazena apenas os dígitos no banco
       document_number: rawDoc || null,

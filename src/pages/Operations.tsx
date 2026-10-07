@@ -74,7 +74,7 @@ export default function Operations() {
     const { data } = await supabase
       .from('credit_operations')
       .select(
-        '*, profiles(full_name), operation_calculations(*), credit_managers(id, full_name), notificacoes_cessao(id, status_aceite, status_envio, aceito_em)',
+        '*, profiles(full_name, pj_company_name, pj_trade_name), operation_calculations(*), credit_managers(id, full_name), notificacoes_cessao(id, status_aceite, status_envio, aceito_em)',
       )
       .order('issue_date', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })
@@ -112,10 +112,16 @@ export default function Operations() {
 
   const filtered = operations.filter((op) => {
     const sStr = search.toLowerCase()
+    const borrowerName =
+      op.profiles?.pj_company_name ||
+      op.profiles?.pj_trade_name ||
+      op.profiles?.full_name ||
+      op.cedente ||
+      ''
     const matchSearch =
       op.document_number?.toLowerCase().includes(sStr) ||
       op.cedente?.toLowerCase().includes(sStr) ||
-      op.profiles?.full_name?.toLowerCase().includes(sStr) ||
+      borrowerName.toLowerCase().includes(sStr) ||
       op.id?.split('-')[0]?.toLowerCase().includes(sStr) ||
       false // Search by short ID
     const matchStatus =
@@ -323,7 +329,11 @@ export default function Operations() {
                           )}
                         </TableCell>
                         <TableCell className="font-medium text-sm truncate max-w-[150px]">
-                          {op.profiles?.full_name || 'Desconhecido'}
+                          {op.profiles?.pj_company_name ||
+                            op.profiles?.pj_trade_name ||
+                            op.profiles?.full_name ||
+                            op.cedente ||
+                            'Desconhecido'}
                         </TableCell>
                         <TableCell className="text-xs">
                           {op.credit_managers?.full_name ? (

@@ -154,19 +154,33 @@ export function AdminUserFormDialog({ open, onOpenChange, user, onSaved }: any) 
       let targetUserId = user?.id
 
       if (!isEditing) {
+        const computedFullName =
+          isPj && !formData.full_name?.trim()
+            ? formData.pj_company_name?.trim() || formData.pj_trade_name?.trim() || ''
+            : formData.full_name
+
         // Create new user via Edge Function
         const { data, error } = await supabase.functions.invoke('admin-create-user', {
-          body: formData,
+          body: {
+            ...formData,
+            ...(computedFullName ? { full_name: computedFullName } : {}),
+          },
         })
         if (error || data?.error) throw new Error(data?.error || 'Erro ao criar usuário')
         targetUserId = data.user.id
         toast.success(`Usuário criado! Senha temporária: ${data.tempPassword}`)
       } else {
         // Update existing user
+        const computedFullName =
+          isPj && !formData.full_name?.trim()
+            ? formData.pj_company_name?.trim() || formData.pj_trade_name?.trim() || ''
+            : formData.full_name
+
         const { error } = await supabase
           .from('profiles')
           .update({
             ...formData,
+            ...(computedFullName ? { full_name: computedFullName } : {}),
             pj_annual_revenue: formData.pj_annual_revenue
               ? Number(formData.pj_annual_revenue)
               : null,

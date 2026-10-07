@@ -39,6 +39,7 @@ export default function KycOnboarding() {
 
   const [formData, setFormData] = useState({
     entity_type: profile?.entity_type || 'pf',
+    full_name: profile?.full_name || '',
     document_number: profile?.document_number || '',
     phone: profile?.phone || '',
     pf_rg: profile?.pf_rg || '',
@@ -146,10 +147,16 @@ export default function KycOnboarding() {
       if (docs.power_of_attorney) await uploadDoc(docs.power_of_attorney, 'power_of_attorney')
       if (docs.marriage_cert) await uploadDoc(docs.marriage_cert, 'marriage_cert')
 
+      const computedFullName =
+        isPj && !formData.full_name?.trim()
+          ? formData.pj_company_name?.trim() || formData.pj_trade_name?.trim() || ''
+          : formData.full_name
+
       const { error } = await supabase
         .from('profiles')
         .update({
           ...formData,
+          ...(computedFullName ? { full_name: computedFullName } : {}),
           pj_annual_revenue: formData.pj_annual_revenue ? Number(formData.pj_annual_revenue) : null,
           pj_foundation_date: formData.pj_foundation_date ? formData.pj_foundation_date : null,
           lgpd_accepted_at: new Date().toISOString(),

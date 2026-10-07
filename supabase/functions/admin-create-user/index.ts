@@ -73,6 +73,14 @@ Deno.serve(async (req: Request) => {
 
     if (userData.user) {
       // The handle_new_user trigger might have created an empty profile. We update it now.
+      const isPj =
+        profileData.entity_type === 'pj' ||
+        (!profileData.entity_type && Boolean(profileData.pj_company_name))
+      const resolvedFullName =
+        isPj && !profileData.full_name?.trim()
+          ? profileData.pj_company_name?.trim() || profileData.pj_trade_name?.trim() || ''
+          : profileData.full_name
+
       const updateData: any = {
         ...profileData,
         role: role,
@@ -82,6 +90,7 @@ Deno.serve(async (req: Request) => {
         is_investor: role === 'investor',
         is_borrower: role === 'borrower',
         force_password_change: true,
+        ...(resolvedFullName ? { full_name: resolvedFullName } : {}),
       }
 
       const { error: profileError } = await adminClient
