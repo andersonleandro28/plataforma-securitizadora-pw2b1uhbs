@@ -923,6 +923,43 @@ export const KNOWLEDGE_BASE: KnowledgeTopic[] = [
     ],
     relatedTopicIds: ['admin-debentures-escritura', 'admin-tomador-limite'],
   },
+  {
+    id: 'admin-produtos-clonagem',
+    title: 'Gestão de Produtos: Clonar Produto de Investimento (Debêntures)',
+    roles: ['admin', 'staff'],
+    category: 'admin',
+    navigationPath: 'Menu lateral > Gestão de Produtos (rota /admin/products) > Botão "Clonar"',
+    keywords: [
+      'clonar produto',
+      'clone produto',
+      'duplicar produto',
+      'copiar produto',
+      'copia debenture',
+      'novo produto a partir de existente',
+      'produtos de investimento',
+      'facilitar cadastro produto',
+    ],
+    summary:
+      'Como criar rapidamente um novo produto de debênture clonando um produto existente, preservando todas as parametrizações comerciais e técnicas sem afetar produtos legados.',
+    steps: [
+      'Acesse "Gestão de Produtos" no menu lateral (rota /admin/products).',
+      'Na tabela de produtos de investimento, localize o produto que deseja utilizar como modelo.',
+      'Na coluna de ações, clique no botão com ícone de cópia ("Clonar produto").',
+      'O formulário de cadastro abre em modo de criação, já 100% preenchido com todos os dados do produto original: rentabilidade, tipo de juros (simples/composto), regime (mensal com dia ou acumulado), carência, prazos, cotas mínimas/máximas e regras de resgate.',
+      'O nome sugerido recebe automaticamente o sufixo "(Cópia)" (ex.: "Debênture Ouro (Cópia)"). Você pode alterar o título livremente.',
+      'Faça apenas as alterações desejadas (por exemplo, atualizar a taxa de juros ou a série vinculada).',
+      'Clique em "Salvar". O sistema cria um NOVO registro no banco de dados (operação de INSERT), garantindo que o produto original permaneça totalmente inalterado e sem afetar investimentos ou regras preexistentes.',
+    ],
+    tips: [
+      'O produto clonado nasce com 0 cotas vendidas e sem histórico atrelado, pronto para receber novas subscrições.',
+      'Nenhuma regra de cálculo, carência ou liquidação de produtos existentes é alterada ao clonar.',
+    ],
+    relatedTopicIds: [
+      'admin-investimentos-aportes',
+      'debentures-regime-mensal',
+      'admin-debentures-escritura',
+    ],
+  },
 
   // ==========================================
   // INVESTIDOR

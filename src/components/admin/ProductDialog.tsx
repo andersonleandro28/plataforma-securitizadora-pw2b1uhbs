@@ -42,9 +42,16 @@ interface ProductDialogProps {
   onOpenChange: (open: boolean) => void
   product: any
   onSuccess: () => void
+  isClone?: boolean
 }
 
-export function ProductDialog({ open, onOpenChange, product, onSuccess }: ProductDialogProps) {
+export function ProductDialog({
+  open,
+  onOpenChange,
+  product,
+  onSuccess,
+  isClone = false,
+}: ProductDialogProps) {
   const { profile, loading: authLoading, isLoadingProfile } = useAuth()
   const isAdminOrStaff =
     !!profile && (profile.role === 'admin' || profile.role === 'staff' || !!profile.is_admin)
@@ -69,7 +76,19 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
   useEffect(() => {
     if (open) {
       if (product) {
-        setFormData({ ...product })
+        const initial = { ...product }
+        if (isClone) {
+          // No modo clone, garantimos que o ID nunca persista no formData
+          delete initial.id
+          delete initial.debenture_series
+          delete initial.created_at
+          delete initial.updated_at
+          delete initial.created_by
+          delete initial.updated_by
+          initial.sold_quotas = 0
+          initial.progress = 0
+        }
+        setFormData(initial)
       } else {
         setFormData({
           title: '',
@@ -167,17 +186,19 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
         payload.series_id = null
       }
 
-      if (product?.id) {
+      // Se for clone ou não tiver product?.id, é sempre um novo INSERT
+      if (isClone || !product?.id) {
+        delete payload.id
+        const { error } = await supabase.from('investment_products').insert([payload])
+        if (error) throw error
+        toast.success(isClone ? 'Produto clonado com sucesso' : 'Produto criado com sucesso')
+      } else {
         const { error } = await supabase
           .from('investment_products')
           .update(payload)
           .eq('id', product.id)
         if (error) throw error
         toast.success('Produto atualizado com sucesso')
-      } else {
-        const { error } = await supabase.from('investment_products').insert([payload])
-        if (error) throw error
-        toast.success('Produto criado com sucesso')
       }
       onSuccess()
       onOpenChange(false)
@@ -278,7 +299,13 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{product ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
+          <DialogTitle>
+            {isClone
+              ? 'Novo Produto a partir de Clone'
+              : product
+                ? 'Editar Produto'
+                : 'Novo Produto'}
+          </DialogTitle>
         </DialogHeader>
 
         <Tabs defaultValue="geral" className="mt-4">
@@ -785,14 +812,14 @@ export function ProductDialog({ open, onOpenChange, product, onSuccess }: Produc
               </div>
             </div>
 
-            {(authLoading || isLoadingProfile) && product?.id ? (
+            {(authLoading || isLoadingProfile) && !isClone && product?.id ? (
               <div className="space-y-4 border-t pt-6 mt-4">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Verificando permissões...
                 </div>
               </div>
-            ) : isAdminOrStaff && product?.id ? (
+            ) : isAdminOrStaff && !isClone && product?.id ? (
               <div className="space-y-4 border-t pt-6 mt-4">
                 <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                   Ações do Produto

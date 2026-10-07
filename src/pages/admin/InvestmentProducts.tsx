@@ -3,15 +3,17 @@ import { supabase } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
-import { Plus, Loader2, Pencil, TrendingUp } from 'lucide-react'
+import { Plus, Loader2, Pencil, TrendingUp, Copy } from 'lucide-react'
 import { ProductDialog } from '@/components/admin/ProductDialog'
 import { cn } from '@/lib/utils'
 import { Link } from 'react-router-dom'
+import { cloneProductData } from '@/lib/product-clone'
 
 export default function InvestmentProducts() {
   const [products, setProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [editProduct, setEditProduct] = useState<any>(null)
+  const [isCloneMode, setIsCloneMode] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
 
   useEffect(() => {
@@ -39,13 +41,25 @@ export default function InvestmentProducts() {
   }
 
   const handleOpenCreate = () => {
+    setIsCloneMode(false)
     setEditProduct(null)
     setEditDialogOpen(true)
   }
 
   const handleOpenEdit = (product: any) => {
+    setIsCloneMode(false)
     setEditProduct(product)
     setEditDialogOpen(true)
+  }
+
+  const handleOpenClone = (product: any) => {
+    const clonedData = cloneProductData(product)
+    setIsCloneMode(true)
+    setEditProduct(clonedData)
+    setEditDialogOpen(true)
+    toast.info(
+      `Clonando produto "${product.title}". Ajuste os campos e clique em Salvar para criar a nova versão.`,
+    )
   }
 
   return (
@@ -152,8 +166,22 @@ export default function InvestmentProducts() {
                     </td>
                     <td className="p-4 align-middle">
                       <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => handleOpenEdit(p)}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleOpenEdit(p)}
+                          title="Editar produto"
+                        >
                           <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleOpenClone(p)}
+                          title="Clonar produto (criar novo a partir deste)"
+                          className="text-primary hover:text-primary hover:bg-primary/10"
+                        >
+                          <Copy className="h-4 w-4" />
                         </Button>
                         {p.type === 'Rendimento Variável (Forex Manual)' && (
                           <Button variant="ghost" size="sm" asChild title="Rendimentos Manuais">
@@ -174,8 +202,14 @@ export default function InvestmentProducts() {
 
       <ProductDialog
         open={editDialogOpen}
-        onOpenChange={setEditDialogOpen}
+        onOpenChange={(open) => {
+          setEditDialogOpen(open)
+          if (!open) {
+            setIsCloneMode(false)
+          }
+        }}
         product={editProduct}
+        isClone={isCloneMode}
         onSuccess={fetchProducts}
       />
     </div>
