@@ -19,7 +19,6 @@ import {
   Wallet,
   BarChart3,
   UserCheck,
-  Rocket,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -171,12 +170,6 @@ const allNavItems = [
     title: 'Migração de Dados',
     path: '/admin/migracao-dados',
     icon: Database,
-    roles: ['admin'],
-  },
-  {
-    title: 'Guia de Implantação',
-    path: '/deployment-guide',
-    icon: Rocket,
     roles: ['admin'],
   },
   {
