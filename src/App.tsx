@@ -29,6 +29,7 @@ import Expenses from './pages/admin/Expenses'
 import Accounting from './pages/admin/Accounting'
 import CreditManagers from './pages/admin/CreditManagers'
 import DataMigration from './pages/admin/DataMigration'
+import DeploymentGuide from './pages/admin/DeploymentGuide'
 import RiskExposure from './pages/admin/RiskExposure'
 import Reports from './pages/admin/Reports'
 import Dre from './pages/admin/Dre'
@@ -438,6 +439,22 @@ const App = () => (
               element={
                 <RoleGuard allowedRoles={['admin']}>
                   <DataMigration />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/deployment-guide"
+              element={
+                <RoleGuard allowedRoles={['admin']}>
+                  <DeploymentGuide />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/admin/deployment-guide"
+              element={
+                <RoleGuard allowedRoles={['admin']}>
+                  <DeploymentGuide />
                 </RoleGuard>
               }
             />

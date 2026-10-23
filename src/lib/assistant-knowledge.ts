@@ -130,6 +130,54 @@ export const KNOWLEDGE_BASE: KnowledgeTopic[] = [
   // ADMIN & STAFF
   // ==========================================
   {
+    id: 'admin-guia-implantacao',
+    title: 'Guia de Implantação da Plataforma em Nova Operação (Setup Completo)',
+    roles: ['admin'],
+    category: 'admin',
+    navigationPath: 'Menu lateral > Guia de Implantação (rota /deployment-guide)',
+    keywords: [
+      'implantacao',
+      'implantar nova operacao',
+      'nova operacao',
+      'setup nova securitizadora',
+      'subir nova plataforma',
+      'migrations aplicar pular',
+      'edge functions implantacao',
+      'segredos nova operacao',
+      'checklist implantacao',
+      'guia de implantacao',
+      'deployment guide',
+      'passo a passo implantacao',
+      'nova instancia',
+      'novo supabase',
+      'novo projeto skip',
+    ],
+    summary:
+      'Guia institucional mestre para implantar uma nova instância limpa e independente da Nexum Security 360° em um novo projeto Skip conectado a um novo Supabase, com 75 migrations para aplicar e 17 para pular, 26 edge functions, 6 segredos e checklist em 6 fases.',
+    steps: [
+      'Acesse "Guia de Implantação" no menu lateral (rota /deployment-guide), acessível exclusivamente para administradores.',
+      'No cabeçalho da página, utilize o botão "Copiar Guia Completo" para copiar todo o texto mestre de especificação e cole na primeira mensagem ao agente no chat do novo projeto da Skip.',
+      'Fase 1 (Skip): Crie o projeto novo na Skip com o nome da securitizadora e envie o texto copiado.',
+      'Fase 2 (Supabase): Crie o projeto Supabase novo em South America (São Paulo) e anote Project URL, anon key, service_role key e Connection string.',
+      'Fase 3 (Migrations): Aplique estritamente as 75 migrations marcadas como APLICAR na ordem cronológica e pule as 17 migrations marcadas como PULAR (que continham seeds de usuários e dados de testes da operação antiga).',
+      'Fase 4 (Segredos & Edge Functions): Configure no Supabase os 6 segredos externos (RESEND_API_KEY, SERASA_API_KEY, DOCUSIGN_INTEGRATION_KEY, DOCUSIGN_ACCOUNT_ID, DOCUSIGN_USER_ID, DOCUSIGN_PRIVATE_KEY) e publique as 26 Edge Functions de backend.',
+      "Fase 5 (Admin & Parâmetros): Crie o primeiro usuário no Auth, promova a admin no SQL Editor (UPDATE profiles SET role = 'admin', is_admin = true, is_staff = true WHERE email = ...), acesse a plataforma e cadastre Dados da Empresa, Contas Bancárias (com tarifas PIX), Parâmetros Financeiros, Escrituras/Produtos e Gestores de Crédito.",
+      'Fase 6 (Testes de Aceitação): Conecte o repositório GitHub e execute o checklist ponta a ponta dos 6 testes (KYC, Aporte, Operação com consumo de limite, Liquidação com liberação de limite, Resgate e DRE/DFC).',
+    ],
+    tips: [
+      'REGRAS INEGOCIÁVEIS: Nova operação deve iniciar com saldo zero e zero contaminação de dados da base antiga.',
+      'REGRA PÉTREA DO LIMITE: O status "pago" (recurso desembolsado) continua consumindo o limite do tomador. SOMENTE o status "liquidado" (devedor pagou o título) libera o limite.',
+      'TRIBUTAÇÃO: Securitizadoras operam no Lucro Real obrigatório (PIS 0,65%, COFINS 4%, IRPJ 15%+10%, CSLL 9%, IOF isento, ISS não incide).',
+      'Na página /deployment-guide você pode filtrar as migrations, consultar a finalidade de cada edge function e marcar os checkboxes interativos.',
+    ],
+    relatedTopicIds: [
+      'admin-tomador-limite',
+      'admin-parametros-securitizadora',
+      'tarifa-pix-automatica',
+      'admin-debentures-escritura',
+    ],
+  },
+  {
     id: 'tarifa-pix-automatica',
     title: 'Tarifa PIX Automática: Parametrização por Conta e Lançamento de Despesa',
     roles: ['admin'],
@@ -1418,6 +1466,10 @@ export const KNOWLEDGE_BASE: KnowledgeTopic[] = [
 export const FREQUENT_QUESTIONS_BY_ROLE: Record<string, { label: string; query: string }[]> = {
   admin: [
     {
+      label: 'Guia Implantação Nova Operação',
+      query: 'como implantar a plataforma em uma nova operacao?',
+    },
+    {
       label: 'Debêntures com Juros Mensais',
       query:
         'como funciona o regime de debentures com juros mensais e resgate com cotas preservadas?',
@@ -1659,6 +1711,16 @@ export function searchKnowledgeBase(userQuery: string, userRole?: string): Assis
     }
 
     // Casos especiais específicos citados na tarefa
+    if (
+      (normalizedQuery.includes('implant') ||
+        normalizedQuery.includes('nova operacao') ||
+        normalizedQuery.includes('deployment guide') ||
+        normalizedQuery.includes('guia de implantacao') ||
+        normalizedQuery.includes('subir nova')) &&
+      topic.id === 'admin-guia-implantacao'
+    ) {
+      score += 60
+    }
     if (
       (normalizedQuery.includes('autoriz') ||
         normalizedQuery.includes('aceite') ||
