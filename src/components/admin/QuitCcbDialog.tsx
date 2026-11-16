@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -11,9 +11,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Loader2, Calculator, Info, Landmark, ShieldCheck } from 'lucide-react'
+import { Loader2, Calculator, Info, Landmark, ShieldCheck, FileWarning } from 'lucide-react'
 import { toast } from 'sonner'
 import { CompanyBankAccountSelect } from '@/components/admin/CompanyBankAccountSelect'
+import { supabase } from '@/lib/supabase/client'
 import {
   calcularQuitacaoCcb,
   confirmarQuitacaoCcb,
@@ -34,8 +35,11 @@ interface QuitCcbDialogProps {
 }
 
 /**
- * Diálogo "Quitar CCB": decomposição item a item (principal, juros do período pela
- * taxa do contrato, desconto proporcional, taxas integrais) e confirmação dos efeitos.
+ * Diálogo "Quitar CCB": decomposição item a item sobre o SALDO EM ABERTO
+ * (parcelas com status diferente de "Pago"/"Liquidado" no array `boletos` de
+ * recebiveis_ccb). Parcelas pagas — no vencimento ou antecipadas — NÃO entram no
+ * total a pagar. Resumo "N parcelas — X já pagas (R$ …) — Y em aberto (R$ …)" para
+ * conferência. Se TODAS estiverem pagas, avisa e bloqueia a quitação.
  */
 export function QuitCcbDialog({ ccb, open, onOpenChange, onSuccess }: QuitCcbDialogProps) {
   const today = new Date().toISOString().slice(0, 10)
@@ -45,23 +49,57 @@ export function QuitCcbDialog({ ccb, open, onOpenChange, onSuccess }: QuitCcbDia
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [confirmed, setConfirmed] = useState(false)
+  const [recebivel, setRecebivel] = useState<any | null>(null)
+  const [loadingParcelas, setLoadingParcelas] = useState(false)
+
+  // Busca o recebível vinculado (fonte da verdade dos boletos/parcelas)
+  useEffect(() => {
+    let cancel = false
+    setRecebivel(null)
+    if (!open || !ccb?.id) return
+    setLoadingParcelas(true)
+    supabase
+      .from('recebiveis_ccb')
+      .select('id, boletos')
+      .eq('ccb_id', ccb.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancel) {
+          setRecebivel(data || null)
+          setLoadingParcelas(false)
+        }
+      })
+    return () => {
+      cancel = true
+    }
+  }, [open, ccb?.id])
 
   const taxaMensal = ccb ? extrairTaxaMensalContrato(ccb) : null
   const taxas = ccb ? extrairTaxasIntegrais(ccb) : null
   const semTaxaContrato = !!ccb && (taxaMensal == null || taxaMensal <= 0)
 
+  const ccbComBoletos = useMemo(
+    () => (ccb ? { ...ccb, _recebivel: recebivel } : null),
+    [ccb, recebivel],
+  )
+
   const calc = useMemo(() => {
-    if (!ccb || semTaxaContrato) return null
+    if (!ccbComBoletos || semTaxaContrato || loadingParcelas) return null
     const custom = discountInput.trim() === '' ? undefined : Number(discountInput.replace(',', '.'))
     return calcularQuitacaoCcb(
-      ccb,
+      ccbComBoletos,
       paymentDate || today,
       custom != null && !isNaN(custom) ? custom : undefined,
     )
-  }, [ccb, paymentDate, discountInput, today, semTaxaContrato])
+  }, [ccbComBoletos, paymentDate, discountInput, today, semTaxaContrato, loadingParcelas])
+
+  // Caso limite: todas as parcelas pagas → nada a quitar (bloqueia)
+  const todasPagas = !!calc && calc.parcelas.total > 0 && calc.parcelas.abertas === 0
 
   const handleConfirm = async () => {
-    if (!ccb || !calc) return
+    if (!ccb || !calc || todasPagas) return
     setSaving(true)
     try {
       const custom =
@@ -84,15 +122,17 @@ export function QuitCcbDialog({ ccb, open, onOpenChange, onSuccess }: QuitCcbDia
     }
   }
 
+  const resetForm = () => {
+    setDiscountInput('')
+    setNotes('')
+    setConfirmed(false)
+  }
+
   return (
     <Dialog
       open={open}
       onOpenChange={(v) => {
-        if (!v) {
-          setDiscountInput('')
-          setNotes('')
-          setConfirmed(false)
-        }
+        if (!v) resetForm()
         onOpenChange(v)
       }}
     >
@@ -119,6 +159,45 @@ export function QuitCcbDialog({ ccb, open, onOpenChange, onSuccess }: QuitCcbDia
             </Alert>
           )}
 
+          {loadingParcelas && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" /> Carregando parcelas da CCB…
+            </div>
+          )}
+
+          {/* Resumo de parcelas: pagas × em aberto */}
+          {calc && calc.parcelas.total > 0 && (
+            <div
+              className={`rounded-lg border p-3 text-xs space-y-1 ${
+                todasPagas ? 'border-rose-200 bg-rose-50' : 'border-blue-200 bg-blue-50/60'
+              }`}
+            >
+              <div className="font-semibold text-muted-foreground uppercase tracking-wide">
+                Situação das parcelas
+              </div>
+              <div className={todasPagas ? 'text-rose-800' : 'text-blue-900'}>
+                {calc.parcelas.total} parcela{calc.parcelas.total > 1 ? 's' : ''} —{' '}
+                {calc.parcelas.pagas} já paga{calc.parcelas.pagas === 1 ? '' : 's'} (
+                {brl(calc.parcelas.valor_pago)}) — {calc.parcelas.abertas} em aberto (
+                {brl(calc.parcelas.valor_aberto)})
+              </div>
+              <div className="text-muted-foreground">
+                A quitação considera apenas as parcelas em aberto; as pagas (inclusive antecipadas)
+                não entram no total a pagar.
+              </div>
+            </div>
+          )}
+
+          {todasPagas && (
+            <Alert className="border-rose-200 bg-rose-50">
+              <FileWarning className="h-4 w-4 text-rose-600" />
+              <AlertDescription className="text-rose-800 text-xs font-medium">
+                Todas as {calc?.parcelas.total} parcelas desta CCB já estão pagas — não há nada a
+                quitar. Use "Gerir" para baixar a operação, se necessário.
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label className="text-xs">Data do pagamento</Label>
@@ -127,11 +206,13 @@ export function QuitCcbDialog({ ccb, open, onOpenChange, onSuccess }: QuitCcbDia
                 value={paymentDate}
                 max={today}
                 onChange={(e) => setPaymentDate(e.target.value)}
-                disabled={saving}
+                disabled={saving || todasPagas}
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Desconto (%) sobre principal + juros — opcional</Label>
+              <Label className="text-xs">
+                Desconto (%) sobre saldo em aberto + juros — opcional
+              </Label>
               <Input
                 type="number"
                 step="0.0001"
@@ -140,7 +221,7 @@ export function QuitCcbDialog({ ccb, open, onOpenChange, onSuccess }: QuitCcbDia
                 placeholder="Automático pela taxa do contrato"
                 value={discountInput}
                 onChange={(e) => setDiscountInput(e.target.value)}
-                disabled={saving}
+                disabled={saving || todasPagas}
               />
             </div>
           </div>
@@ -157,14 +238,17 @@ export function QuitCcbDialog({ ccb, open, onOpenChange, onSuccess }: QuitCcbDia
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Ex.: acordo de quitação antecipada"
-              disabled={saving}
+              disabled={saving || todasPagas}
             />
           </div>
 
-          {calc && (
+          {calc && !todasPagas && (
             <div className="rounded-lg border bg-muted/30 p-4 space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Principal (valor da CCB)</span>
+                <span className="text-muted-foreground">
+                  Saldo em aberto ({calc.parcelas.abertas} parcela
+                  {calc.parcelas.abertas === 1 ? '' : 's'} de {calc.parcelas.total})
+                </span>
                 <span className="font-medium">{brl(calc.principal)}</span>
               </div>
               <div className="flex justify-between">
@@ -175,7 +259,7 @@ export function QuitCcbDialog({ ccb, open, onOpenChange, onSuccess }: QuitCcbDia
                 <span className="font-medium text-emerald-700">+ {brl(calc.juros_periodo)}</span>
               </div>
               <div className="flex justify-between border-t pt-2">
-                <span className="text-muted-foreground">Base (principal + juros)</span>
+                <span className="text-muted-foreground">Base (saldo + juros)</span>
                 <span className="font-medium">{brl(calc.principal + calc.juros_periodo)}</span>
               </div>
               <div className="flex justify-between">
@@ -231,7 +315,7 @@ export function QuitCcbDialog({ ccb, open, onOpenChange, onSuccess }: QuitCcbDia
           </Button>
           <Button
             onClick={handleConfirm}
-            disabled={saving || !calc}
+            disabled={saving || !calc || todasPagas || confirmed}
             className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
           >
             {saving ? (
