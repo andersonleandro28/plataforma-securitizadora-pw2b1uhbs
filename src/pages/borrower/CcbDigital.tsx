@@ -58,7 +58,16 @@ export default function CcbDigital() {
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false }),
-      supabase.from('recebiveis_ccb').select('*'),
+      // Filtrado pelas CCBs do próprio tomador. Antes trazia a tabela inteira:
+      // com RLS aberta, um tomador lia os boletos de todos os outros clientes
+      // (nome não, mas valor, vencimento e status de pagamento de cada um).
+      supabase
+        .from('recebiveis_ccb')
+        .select('*')
+        .in(
+          'ccb_id',
+          (reqs || []).map((r: any) => r.id),
+        ),
     ])
     if (reqs) setRequests(reqs)
     if (ops) {
@@ -207,10 +216,11 @@ export default function CcbDigital() {
 
   const handleAcceptProposal = async (id: string) => {
     try {
-      const { error } = await supabase
-        .from('ccb_solicitacoes')
-        .update({ status: 'aceite_tomador', updated_at: new Date().toISOString() })
-        .eq('id', id)
+      // RPC em vez de UPDATE direto: a função valida que a CCB é do próprio
+      // tomador e que está no status que permite aceite, e muda SÓ o status.
+      // Com update direto, a política de RLS deixava a linha inteira aberta
+      // (requested_value, term_months, operation_data…).
+      const { error } = await supabase.rpc('aceitar_proposta_ccb', { p_ccb_id: id })
       if (error) throw error
       toast.success('Proposta aceita! O comitê dará prosseguimento à sua solicitação.')
       setReviewModal(null)

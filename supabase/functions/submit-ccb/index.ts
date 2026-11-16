@@ -158,6 +158,15 @@ Deno.serve(async (req: Request) => {
       const secHeaderName = compSettings?.razao_social || 'NEXUM SECURITIZADORA S.A.'
       const secHeaderCnpj = compSettings?.cnpj ? `CNPJ: ${compSettings.cnpj}` : ''
 
+      // CORREÇÃO: este bloco usava `nowIso`, `secCidade`, `secUf` e `companyData`
+      // sem que nenhuma existisse. O `ReferenceError` caía no catch do PDF e o
+      // dossiê simplesmente NÃO era gerado nem enviado ao Storage — falha
+      // silenciosa, porque o catch só registra log e a função devolve sucesso.
+      const nowIso = new Date().toISOString()
+      const companyData = compSettings || {}
+      const secCidade = compSettings?.cidade || compSettings?.city || 'São Paulo'
+      const secUf = compSettings?.uf || compSettings?.state || 'SP'
+
       const pdfDoc = await PDFDocument.create()
       const page = pdfDoc.addPage([841.89, 595.28])
       const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
@@ -408,7 +417,23 @@ Deno.serve(async (req: Request) => {
         console.error('Erro ao salvar PDF no Storage:', uploadError)
       }
     } catch (pdfErr) {
-      console.error('Falha na geração do PDF (Ignorado para não interromper fluxo):', pdfErr)
+      // Antes o erro era engolido: a solicitação ficava "pendente" sem dossiê
+      // e ninguém sabia. Agora fica registrado de forma identificável para
+      // aparecer na consulta de pendências (ver GET /functions/v1/submit-ccb).
+      console.error('Falha na geração do PDF da CCB ' + ccbId + ':', pdfErr)
+      try {
+        await supabaseAdmin
+          .from('ccb_solicitacoes')
+          .update({
+            operation_data: {
+              ...(operationData || {}),
+              pdf_error: String((pdfErr as any)?.message || pdfErr).slice(0, 500),
+            },
+          })
+          .eq('id', ccbId)
+      } catch (_) {
+        /* se nem isso gravar, resta o log */
+      }
     }
 
     return new Response(JSON.stringify({ success: true, data: ccbRecord }), {
