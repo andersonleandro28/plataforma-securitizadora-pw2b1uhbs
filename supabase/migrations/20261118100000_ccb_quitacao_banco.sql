@@ -506,10 +506,8 @@ BEGIN
 END;
 $$;
 
--- A assinatura antiga (5 parâmetros) continua válida e passa a cair nesta.
--- O PostgREST escolhe a sobrecarga pelo conjunto de argumentos enviados; manter
--- as duas evitaria ambiguidade, então a de 5 args é removida para que exista
--- uma única implementação do cálculo.
-DROP FUNCTION IF EXISTS public.quit_ccb_solicitacao(UUID, DATE, UUID, TEXT, NUMERIC);
-
+-- A versão de 5 parâmetros (usada pelo front já publicado) é recriada como
+-- wrapper na migration 20261118100100, apontando para esta implementação.
+-- Sem esse wrapper, a quitação quebraria em produção no intervalo entre o
+-- deploy do banco e o deploy do app.
 GRANT EXECUTE ON FUNCTION public.quit_ccb_solicitacao(UUID, DATE, UUID, TEXT, NUMERIC, TEXT) TO authenticated;
