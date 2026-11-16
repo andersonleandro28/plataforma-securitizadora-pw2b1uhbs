@@ -41,14 +41,8 @@ Deno.serve(async (req: Request) => {
       })
     }
 
-    // Add current op if not already in the list.
-    // CORREÇÃO: a consulta acima só traz `sacado` e `requested_value`, então
-    // `o.id` era sempre undefined e o bloco somava a operação atual DUAS vezes,
-    // inflando a concentração do sacado exatamente no momento da decisão.
-    const jaContabilizada = (allOps || []).some(
-      (o: any) => String(o.sacado || '') === String(sacadoName || ''),
-    )
-    if (!jaContabilizada) {
+    // Add current op if not already in the list
+    if (!allOps?.find((o: any) => o.id === operation_id)) {
       totalPortfolio += Number(op.requested_value || 0)
       sacadoTotal += Number(op.requested_value || 0)
     }
@@ -128,50 +122,6 @@ Deno.serve(async (req: Request) => {
 
     let suggestion = ''
 
-    // ---- AUTENTICAÇÃO (antes inexistente) ----
-    // Esta função usa a service role key, que ignora RLS. Sem validar o
-    // chamador, qualquer pessoa na internet podia:
-    //   • disparar a reprovação automática de uma operação (o bloco abaixo
-    //     escrevia direto em credit_operations);
-    //   • consultar dados de crédito de terceiros via Serasa;
-    //   • gastar consultas pagas do Serasa.
-    // Agora exige usuário autenticado com papel administrativo.
-    const authHeaderCheck = req.headers.get('Authorization') || ''
-    let callerId: string | null = null
-
-    if (authHeaderCheck) {
-      const callerClient = createClient(supabaseUrl, supabaseKey, {
-        global: { headers: { Authorization: authHeaderCheck } },
-      })
-      const { data: userResp } = await callerClient.auth.getUser()
-      callerId = userResp?.user?.id || null
-    }
-
-    if (!callerId) {
-      return new Response(
-        JSON.stringify({ error: 'Autenticação obrigatória para análise de risco.' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      )
-    }
-
-    const { data: callerProfile } = await supabase
-      .from('profiles')
-      .select('is_admin, is_staff, role')
-      .eq('id', callerId)
-      .maybeSingle()
-
-    const callerIsAdmin =
-      !!callerProfile?.is_admin ||
-      !!callerProfile?.is_staff ||
-      ['admin', 'staff'].includes(String(callerProfile?.role || ''))
-
-    if (!callerIsAdmin) {
-      return new Response(
-        JSON.stringify({ error: 'Acesso negado: apenas administradores podem analisar risco.' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      )
-    }
-
     if (isHardRule) {
       suggestion = 'Reprovação Sugerida'
       // Auto-reprove action
@@ -190,8 +140,16 @@ Deno.serve(async (req: Request) => {
       suggestion = 'Aprovação Sugerida'
     }
 
-    // Usuário já identificado e autorizado acima.
-    const userId = callerId
+    // Identify user caller for audit trail
+    const authHeader = req.headers.get('Authorization')
+    let userId = null
+    if (authHeader) {
+      const client = createClient(supabaseUrl, supabaseKey, {
+        global: { headers: { Authorization: authHeader } },
+      })
+      const { data: userResp } = await client.auth.getUser()
+      if (userResp?.user) userId = userResp.user.id
+    }
 
     // Insert into risk_analysis_history
     const { data: riskRecord, error: riskErr } = await supabase

@@ -24,42 +24,6 @@ Deno.serve(async (req: Request) => {
       })
     }
 
-    // ───────────────────────────────────────────────────────────────────────
-    // ESCALADA DE PRIVILÉGIO (corrigido em 18/11/2026)
-    //
-    // Antes: `role: role || 'investor'` — o papel vinha cru do corpo da
-    // requisição. Esta função roda com SERVICE ROLE, que ignora RLS. Bastava
-    // um POST /functions/v1/public-signup com {"role":"admin"} para criar uma
-    // conta administrativa na plataforma, sem aprovação de ninguém.
-    //
-    // Agora o autocadastro só aceita os papéis de cliente. Qualquer outro
-    // valor é descartado e vira 'investor'. Conta de equipe só nasce pelos
-    // fluxos administrativos (admin-create-user / invite-user).
-    // ───────────────────────────────────────────────────────────────────────
-    const PAPEIS_AUTOCADASTRO = ['investor', 'borrower']
-    const papelSolicitado = String(role || '')
-      .trim()
-      .toLowerCase()
-    const papelFinal = PAPEIS_AUTOCADASTRO.includes(papelSolicitado) ? papelSolicitado : 'investor'
-    if (papelSolicitado && !PAPEIS_AUTOCADASTRO.includes(papelSolicitado)) {
-      console.warn(
-        '[public-signup] papel recusado no autocadastro: ' +
-          papelSolicitado +
-          ' — aplicado: ' +
-          papelFinal,
-      )
-    }
-
-    // Escape para HTML: campos livres entram no corpo do e-mail de boas-vindas.
-    // Sem isso, um nome com tags injetava HTML no e-mail enviado pela empresa.
-    const esc = (v: any) =>
-      String(v ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;')
-
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
     const adminClient = createClient(supabaseUrl, supabaseServiceKey)
@@ -95,15 +59,10 @@ Deno.serve(async (req: Request) => {
           : profileData.full_name
 
       const updatePayload = {
-        // papelFinal, nunca o `role` cru da requisição
-        role: papelFinal,
+        role: role || 'investor',
         entity_type: entity_type || 'pf',
-        is_investor: papelFinal === 'investor',
-        is_borrower: papelFinal === 'borrower',
-        // Nenhuma conta de autocadastro nasce administrativa.
-        is_admin: false,
-        is_staff: false,
-        is_accountant: false,
+        is_investor: role === 'investor',
+        is_borrower: role === 'borrower',
         document_number: profileData.document_number,
         full_name: resolvedFullName || profileData.full_name,
         phone: profileData.phone,
@@ -167,7 +126,7 @@ Deno.serve(async (req: Request) => {
               subject: 'Bem-vindo(a) à Plataforma Securitizadora',
               html: `
                 <div style="font-family: sans-serif; color: #333;">
-                  <h2>Bem-vindo(a), ${esc(nomeExibicao)}!</h2>
+                  <h2>Bem-vindo(a), ${nomeExibicao}!</h2>
                   <p>Sua conta na Plataforma Securitizadora foi criada com sucesso.</p>
                   <p>Acesse seu painel para completar as informações de conformidade (KYC) e aproveitar nossos recursos.</p>
                   <br/>
