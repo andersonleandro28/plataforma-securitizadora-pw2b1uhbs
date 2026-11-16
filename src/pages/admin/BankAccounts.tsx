@@ -50,6 +50,7 @@ export default function BankAccounts() {
   const {
     data: accountingTransactions,
     loading: loadingAccounting,
+    error: accountingError,
     refetch: refetchAccounting,
   } = useAccounting()
 
@@ -270,6 +271,11 @@ export default function BankAccounts() {
               </CardDescription>
             </CardHeader>
             <CardContent>
+              {accountingError && (
+                <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                  <strong>Saldo indisponível.</strong> {accountingError}
+                </div>
+              )}
               <Table>
                 <TableHeader>
                   <TableRow>
