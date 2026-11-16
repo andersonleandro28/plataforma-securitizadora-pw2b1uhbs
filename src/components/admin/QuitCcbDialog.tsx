@@ -22,6 +22,20 @@ import {
   extrairTaxasIntegrais,
 } from '@/services/ccb-quitacao'
 
+/**
+ * Modo de cobrança das taxas na quitação.
+ *
+ * 'cobrar' (padrão, mantém o que já acontece hoje): soma emissão, análise e
+ * abertura ao total da quitação.
+ *
+ * 'nao_cobrar': não soma. O simulador (calculate-operation) já desconta essas
+ * mesmas taxas na liberação do crédito — cobrá-las de novo na quitação é
+ * duplicidade. A decisão é do gestor, por isso é explícita na tela.
+ *
+ * Ver o comentário completo na migration 20261118100000_ccb_quitacao_banco.sql.
+ */
+type TaxasModo = 'cobrar' | 'nao_cobrar'
+
 const brl = (v: number) =>
   `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const pct = (v: number) =>
@@ -51,6 +65,7 @@ export function QuitCcbDialog({ ccb, open, onOpenChange, onSuccess }: QuitCcbDia
   const [confirmed, setConfirmed] = useState(false)
   const [recebivel, setRecebivel] = useState<any | null>(null)
   const [loadingParcelas, setLoadingParcelas] = useState(false)
+  const [taxasModo, setTaxasModo] = useState<TaxasModo>('cobrar')
 
   // Busca o recebível vinculado (fonte da verdade dos boletos/parcelas)
   useEffect(() => {
@@ -92,8 +107,17 @@ export function QuitCcbDialog({ ccb, open, onOpenChange, onSuccess }: QuitCcbDia
       ccbComBoletos,
       paymentDate || today,
       custom != null && !isNaN(custom) ? custom : undefined,
+      taxasModo,
     )
-  }, [ccbComBoletos, paymentDate, discountInput, today, semTaxaContrato, loadingParcelas])
+  }, [
+    ccbComBoletos,
+    paymentDate,
+    discountInput,
+    today,
+    semTaxaContrato,
+    loadingParcelas,
+    taxasModo,
+  ])
 
   // Caso limite: todas as parcelas pagas → nada a quitar (bloqueia)
   const todasPagas = !!calc && calc.parcelas.total > 0 && calc.parcelas.abertas === 0
@@ -110,6 +134,7 @@ export function QuitCcbDialog({ ccb, open, onOpenChange, onSuccess }: QuitCcbDia
         bankAccountId: bankAccountId || undefined,
         notes: notes.trim() || undefined,
         discountPct: custom != null && !isNaN(custom) ? custom : undefined,
+        taxasModo,
       })
       toast.success(`CCB quitada com sucesso! Total recebido: ${brl(res.total_quitacao)}`)
       setConfirmed(true)
@@ -233,6 +258,23 @@ export function QuitCcbDialog({ ccb, open, onOpenChange, onSuccess }: QuitCcbDia
           />
 
           <div className="space-y-1.5">
+            <Label className="text-xs">Taxas de emissão, análise e abertura na quitação</Label>
+            <select
+              className="h-9 w-full rounded-md border border-input bg-background px-2 text-xs"
+              value={taxasModo}
+              onChange={(e) => setTaxasModo(e.target.value as TaxasModo)}
+              disabled={saving || todasPagas}
+            >
+              <option value="cobrar">Cobrar no total da quitação (padrão)</option>
+              <option value="nao_cobrar">Não cobrar — já foram descontadas na liberação</option>
+            </select>
+            <p className="text-[10px] leading-tight text-muted-foreground">
+              O simulador desconta essas taxas na liberação do crédito. Cobrá-las de novo aqui é
+              duplicidade — confira o contrato antes de mudar.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
             <Label className="text-xs">Observações (auditoria) — opcional</Label>
             <Input
               value={notes}
@@ -244,30 +286,69 @@ export function QuitCcbDialog({ ccb, open, onOpenChange, onSuccess }: QuitCcbDia
 
           {calc && !todasPagas && (
             <div className="rounded-lg border bg-muted/30 p-4 space-y-2 text-sm">
-              <div className="flex justify-between">
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Demonstrativo parcela a parcela
+              </div>
+              <div className="max-h-40 overflow-y-auto rounded border bg-background/60">
+                <table className="w-full text-[11px]">
+                  <thead className="bg-muted/50 text-muted-foreground">
+                    <tr>
+                      <th className="px-2 py-1 text-left font-medium">Vencimento</th>
+                      <th className="px-2 py-1 text-right font-medium">Face</th>
+                      <th className="px-2 py-1 text-right font-medium">Dias</th>
+                      <th className="px-2 py-1 text-right font-medium">Valor presente</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {calc.linhas.map((l, i) => (
+                      <tr key={i} className={l.vencida ? 'text-rose-700' : ''}>
+                        <td className="px-2 py-0.5">
+                          {l.vencimento}
+                          {l.vencida && <span className="ml-1 font-semibold">(vencida)</span>}
+                        </td>
+                        <td className="px-2 py-0.5 text-right">{brl(l.valor_face)}</td>
+                        <td className="px-2 py-0.5 text-right">{l.dias_ate_vencimento}</td>
+                        <td className="px-2 py-0.5 text-right font-medium">
+                          {brl(l.valor_presente)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-[10px] leading-tight text-muted-foreground">
+                Cada parcela é trazida a valor presente pela taxa do contrato (
+                {pct(calc.taxa_mensal_aplicada * 100)} a.m.) até a data do pagamento — critério da
+                Resolução BCB 3.919/2010, art. 8º.
+              </p>
+
+              <div className="flex justify-between border-t pt-2">
                 <span className="text-muted-foreground">
-                  Saldo em aberto ({calc.parcelas.abertas} parcela
+                  Saldo de face em aberto ({calc.parcelas.abertas} parcela
                   {calc.parcelas.abertas === 1 ? '' : 's'} de {calc.parcelas.total})
                 </span>
                 <span className="font-medium">{brl(calc.principal)}</span>
               </div>
+
+              {calc.mora > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">
+                    Mora de parcelas vencidas ({calc.parcelas.vencidas})
+                  </span>
+                  <span className="font-medium text-amber-700">+ {brl(calc.mora)}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Valor presente total</span>
+                <span className="font-medium">{brl(calc.valor_presente)}</span>
+              </div>
+
               <div className="flex justify-between">
                 <span className="text-muted-foreground">
-                  Juros do período ({pct(calc.taxa_mensal_aplicada * 100)} a.m. ×{' '}
-                  {calc.dias_decorridos} dias)
-                </span>
-                <span className="font-medium text-emerald-700">+ {brl(calc.juros_periodo)}</span>
-              </div>
-              <div className="flex justify-between border-t pt-2">
-                <span className="text-muted-foreground">Base (saldo + juros)</span>
-                <span className="font-medium">{brl(calc.principal + calc.juros_periodo)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">
-                  Desconto{' '}
                   {discountInput.trim() === ''
-                    ? '(automático, proporcional à taxa do contrato)'
-                    : `(manual: ${pct(calc.desconto_pct)})`}
+                    ? 'Deságio (juros futuros não devidos)'
+                    : `Desconto comercial (${pct(calc.desconto_pct)})`}
                 </span>
                 <span className="font-medium text-rose-600">− {brl(calc.desconto)}</span>
               </div>
