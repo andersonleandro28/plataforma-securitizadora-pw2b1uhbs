@@ -22,6 +22,14 @@
 -- estoura "infinite recursion detected", problema que este projeto já teve —
 -- ver 20260320070000_fix_profiles_rls_recursion.sql).
 
+-- Garante a coluna antes de referenciá-la: o frontend já usa
+-- `profile.is_accountant` (use-auth.tsx), mas nenhuma migration deste
+-- repositório a criava. Se ela não existir no banco, a função abaixo falharia
+-- em execução e derrubaria TODA leitura de recebíveis e tesouraria — inclusive
+-- o painel do cliente.
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS is_accountant BOOLEAN DEFAULT false;
+
 CREATE OR REPLACE FUNCTION public.is_internal_staff()
 RETURNS boolean
 LANGUAGE sql
@@ -33,8 +41,8 @@ AS $function$
     FROM public.profiles p
     WHERE p.id = auth.uid()
       AND (
-        p.is_admin = true
-        OR p.is_staff = true
+        COALESCE(p.is_admin, false) = true
+        OR COALESCE(p.is_staff, false) = true
         OR COALESCE(p.is_accountant, false) = true
         OR p.role::text IN ('admin', 'staff')
       )
