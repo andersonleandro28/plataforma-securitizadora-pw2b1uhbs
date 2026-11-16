@@ -3,7 +3,7 @@
     "serasa-integration": 259,
     "send-login-notification": 18,
     "invite-user": 261,
-    "public-signup": 20,
+    "public-signup": 21,
     "delete-user": 259,
     "extract-debenture-data": 24,
     "batch-import-users": 258,
