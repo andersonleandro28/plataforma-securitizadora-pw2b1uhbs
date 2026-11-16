@@ -282,19 +282,26 @@ BEGIN
   v_vp := ROUND(v_vp, 2);
 
   -- ==========================================================================
-  -- DESCONTO: o deságio já está embutido no valor presente. Um percentual
-  -- manual (p_discount_pct) é um desconto COMERCIAL adicional sobre o VP.
+  -- DESCONTO
+  --
+  -- ATENÇÃO — erro que já existiu aqui e não pode voltar:
+  -- o deságio (juros futuros) JÁ ESTÁ embutido no valor presente. Subtraí-lo
+  -- uma segunda vez do VP desconta duas vezes e cobra menos do que o contrato
+  -- permite. Por isso:
+  --
+  --   total = valor_presente − desconto_comercial + taxas
+  --
+  -- e v_desconto só carrega um desconto COMERCIAL adicional (p_discount_pct).
+  -- O deságio continua exposto no retorno e na auditoria como informação, mas
+  -- NÃO entra na aritmética.
   -- ==========================================================================
   v_base := v_vp;
   IF p_discount_pct IS NOT NULL THEN
     v_desconto_pct := GREATEST(0, LEAST(p_discount_pct, 100));
     v_desconto := ROUND(v_base * v_desconto_pct / 100.0, 2);
   ELSE
-    -- Sem desconto comercial: o único "desconto" é o deságio dos juros futuros.
-    v_desconto := v_desagio;
-    v_desconto_pct := CASE WHEN (v_principal + v_desagio) > 0
-      THEN ROUND(v_desagio / (v_principal + v_mora) * 100.0, 6)
-      ELSE 0 END;
+    v_desconto := 0;
+    v_desconto_pct := 0;
   END IF;
 
   -- Taxas integrais (emissão, análise, abertura)

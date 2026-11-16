@@ -344,14 +344,22 @@ export function QuitCcbDialog({ ccb, open, onOpenChange, onSuccess }: QuitCcbDia
                 <span className="font-medium">{brl(calc.valor_presente)}</span>
               </div>
 
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">
-                  {discountInput.trim() === ''
-                    ? 'Deságio (juros futuros não devidos)'
-                    : `Desconto comercial (${pct(calc.desconto_pct)})`}
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>
+                  Deságio embutido no valor presente (juros futuros não devidos, já descontados
+                  acima)
                 </span>
-                <span className="font-medium text-rose-600">− {brl(calc.desconto)}</span>
+                <span>{brl(calc.desagio)}</span>
               </div>
+
+              {calc.desconto > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">
+                    Desconto comercial ({pct(calc.desconto_pct)})
+                  </span>
+                  <span className="font-medium text-rose-600">− {brl(calc.desconto)}</span>
+                </div>
+              )}
               <div className="border-t pt-2 space-y-2">
                 <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                   Taxas integrais (sem desconto)

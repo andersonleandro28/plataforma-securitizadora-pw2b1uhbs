@@ -274,15 +274,17 @@ export function calcularQuitacaoCcb(
     valor_total: principalTotal,
   }
 
-  // Desconto comercial opcional sobre o valor presente
+  // Desconto COMERCIAL opcional sobre o valor presente.
+  //
+  // O deságio (juros futuros) JÁ ESTÁ embutido no VP. Somá-lo de novo aqui
+  // descontaria duas vezes e cobraria menos do que o contrato permite — foi um
+  // erro real numa versão anterior deste arquivo. `desagio` é informativo e
+  // NÃO entra na aritmética.
   let desconto = 0
   let descontoPct = 0
   if (discountPct != null && !isNaN(discountPct)) {
     descontoPct = Math.min(Math.max(discountPct, 0), 100)
     desconto = round2(vp * (descontoPct / 100))
-  } else {
-    desconto = desagio
-    descontoPct = principal + mora > 0 ? round2((desagio / (principal + mora)) * 100) : 0
   }
 
   const taxas = extrairTaxasIntegrais(ccb)
