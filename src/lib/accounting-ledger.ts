@@ -90,7 +90,6 @@ export async function fetchConsolidatedAccountingLedger(
     { data: tt },
     { data: companyBanks },
     { data: mapMovs },
-    ...restoConferencia
   ] = await Promise.all([
     supabase
       .from('debenture_subscriptions')
@@ -148,43 +147,6 @@ export async function fetchConsolidatedAccountingLedger(
       .select('movimentacao_caixa_id, origem_tabela, origem_id')
       .in('origem_tabela', ['fornecedores', 'despesas', 'investment_redemptions']),
   ])
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // CONFERÊNCIA DE INTEGRIDADE DO CÁLCULO (18/11/2026)
-  //
-  // O saldo é somado AQUI, no navegador, a partir de 10 consultas. Nenhuma
-  // verificava erro: o padrão `(recs || [])` transformava permissão negada em
-  // lista vazia e o saldo saía MENOR EM SAÍDAS, portanto inflado — sem que a
-  // tela tivesse como perceber. Foi exatamente o que aconteceu quando o RLS de
-  // recebiveis_ccb e treasury_transactions ficou restritivo: o painel exibiu
-  // valor muito acima do real.
-  //
-  // Agora o erro sobe: se qualquer fonte falhar, o cálculo é ABORTADO com
-  // mensagem, em vez de entregar um número silenciosamente errado.
-  // ───────────────────────────────────────────────────────────────────────────
-  const FONTES = [
-    'debenture_subscriptions',
-    'investments',
-    'recebiveis_ccb',
-    'expenses',
-    'credit_operations',
-    'investment_redemptions',
-    'movimentacoes_caixa',
-    'treasury_transactions',
-    'company_bank_accounts',
-    'mapeamento_movimentacoes',
-  ]
-  const falhas = restoConferencia
-    .map((r: any, i: number) => (r?.error ? `${FONTES[i]}: ${r.error.message}` : null))
-    .filter(Boolean)
-
-  if (falhas.length > 0) {
-    throw new Error(
-      'Não foi possível calcular o saldo: ' +
-        falhas.join(' | ') +
-        '. O valor exibido seria incorreto, por isso o cálculo foi interrompido.',
-    )
-  }
 
   const expenseMap = new Map<
     string,
