@@ -292,7 +292,7 @@ export async function fetchConsolidatedAccountingLedger(
   // uma movimentação de caixa que referencia o mesmo evento (mesma parcela,
   // liquidação ou resgate) com o mesmo sentido não pode somar duas vezes no
   // saldo da conta.
-  const treasuryRefTypes = new Map<string, { type: 'in' | 'out'; value: number }>()
+  const treasuryRefTypes = new Map<string, { type: 'in' | 'out'; value: number; date: string }>()
   ;(tt || []).forEach((tx: any) => {
     if (isTaxProvisionTransaction(tx)) return
 
@@ -302,12 +302,28 @@ export async function fetchConsolidatedAccountingLedger(
       const movFlow = movsExternalRefs.get(ref)
       // Espelho já lançado como movimentação de caixa, no MESMO sentido: suprime
       // a transação para não duplicar o evento no saldo. Sentido oposto não
-      // suprime — é lançamento legítimo e complementar.
-      if (movFlow && movFlow === txType) return
+      // suprime — é lançamento legítimo e complementar. IMPORTANTE: mesmo
+      // suprimida, a referência fica registrada em treasuryRefTypes — é o passo 8
+      // que a consulta para NÃO lançar também a movimentação espelho. Registrar
+      // depois do return (como antes) fazia a dedup do passo 8 nunca casar.
+      if (movFlow && movFlow === txType) {
+        if (!treasuryRefTypes.has(ref)) {
+          treasuryRefTypes.set(ref, {
+            type: txType,
+            value: Number(tx.amount || 0),
+            date: normalizeAccountingDate(tx.date),
+          })
+        }
+        return
+      }
       if (treasuryExternalRefs.has(ref)) return
       treasuryExternalRefs.add(ref)
       if (!treasuryRefTypes.has(ref)) {
-        treasuryRefTypes.set(ref, { type: txType, value: Number(tx.amount || 0) })
+        treasuryRefTypes.set(ref, {
+          type: txType,
+          value: Number(tx.amount || 0),
+          date: normalizeAccountingDate(tx.date),
+        })
       }
     }
 
@@ -342,6 +358,21 @@ export async function fetchConsolidatedAccountingLedger(
       refs.add(`op-bol-${rec.id}-${i + 1}`)
     })
     if (refs.size > 0) recebivelParcelaRefs.set(rec.id, refs)
+  })
+
+  // Ponte operação ↔ recebível: movimentações de caixa de parcelas apontam para a
+  // OPERAÇÃO de crédito (referencia_id = credit_operations.id), enquanto as refs
+  // de tesouraria das parcelas usam o id do RECEBÍVEL (ccb-bol-{recId}-{n}).
+  // recebiveis_ccb.ccb_id liga os dois mundos; sem essa ponte o casamento do
+  // passo 8 nunca casa (causa do saldo ~R$ 172 mil acima na conta ativa).
+  const opIdToRecIds = new Map<string, string[]>()
+  ;(recs || []).forEach((rec: any) => {
+    if (rec.ccb_id) {
+      const key = String(rec.ccb_id)
+      const list = opIdToRecIds.get(key) || []
+      list.push(String(rec.id))
+      opIdToRecIds.set(key, list)
+    }
   })
 
   // 4. Boletos de CCB quitados (dedup com treasuryExternalRefs)
@@ -379,8 +410,9 @@ export async function fetchConsolidatedAccountingLedger(
       if (!val) return
       treasuryExternalRefs.add(extRef)
       treasuryExternalRefs.add(altRef)
-      treasuryRefTypes.set(extRef, { type: 'in', value: val })
-      treasuryRefTypes.set(altRef, { type: 'in', value: val })
+      const dataPagBoleto = normalizeAccountingDate(pDate)
+      treasuryRefTypes.set(extRef, { type: 'in', value: val, date: dataPagBoleto })
+      treasuryRefTypes.set(altRef, { type: 'in', value: val, date: dataPagBoleto })
 
       const bInfo = resolveBank(bol.bank_account_id)
       transactions.push({
@@ -517,22 +549,34 @@ export async function fetchConsolidatedAccountingLedger(
     // oposto (ex.: tarifa complementar) nunca são suprimidos.
     if (mov.referencia_id) {
       const rid = String(mov.referencia_id)
+      // A movimentação pode apontar para a OPERAÇÃO de crédito (parcela_operacao)
+      // em vez do recebível — resolve via ponte ccb_id (opIdToRecIds).
+      const recIdsDaOperacao = opIdToRecIds.get(rid) || []
       const refsCandidatas = [`op-liq-${rid}`, `redemption-${rid}`]
+      recIdsDaOperacao.forEach((recId) => {
+        refsCandidatas.push(`op-liq-${recId}`, `redemption-${recId}`)
+      })
       if (mov.referencia_numero) {
         refsCandidatas.push(`op-bol-${rid}-${mov.referencia_numero}`)
         refsCandidatas.push(`ccb-bol-${rid}-${mov.referencia_numero}`)
+        recIdsDaOperacao.forEach((recId) => {
+          refsCandidatas.push(`op-bol-${recId}-${mov.referencia_numero}`)
+          refsCandidatas.push(`ccb-bol-${recId}-${mov.referencia_numero}`)
+        })
       }
       const mesmoSentidoExato = refsCandidatas.some(
         (ref) => treasuryRefTypes.get(ref)?.type === type,
       )
 
       // Casamento complementar por índice de boleto: a movimentação referencia o
-      // recebível de CCB e as transações de tesouraria das parcelas usam
-      // ccb-bol-{recId}-{indice}. Exige mesmo sentido de fluxo e valor
-      // compatível para só suprimir o espelho real.
+      // recebível de CCB (diretamente ou via operação) e as transações de
+      // tesouraria das parcelas usam ccb-bol-{recId}-{indice}. Exige mesmo
+      // sentido de fluxo e valor compatível para só suprimir o espelho real.
       let casouPorIndice = false
       if (!mesmoSentidoExato) {
-        const refsParcelas = recebivelParcelaRefs.get(rid)
+        const conjuntos = [recebivelParcelaRefs.get(rid)]
+        recIdsDaOperacao.forEach((recId) => conjuntos.push(recebivelParcelaRefs.get(recId)))
+        const refsParcelas = conjuntos.find((s) => s && s.size > 0)
         if (refsParcelas) {
           const valoresMesmoSentido: number[] = []
           treasuryRefTypes.forEach((info, ref) => {
@@ -550,7 +594,40 @@ export async function fetchConsolidatedAccountingLedger(
         }
       }
 
-      if (mesmoSentidoExato || casouPorIndice) return
+      // Última rede de segurança: movimentações que espelham um evento (parcela
+      // da operação, recebível, liquidação) casadas por valor + data + sentido
+      // contra as refs de evento da tesouraria — cobre ccb_id nulo/desalinhado.
+      let casouPorValorData = false
+      if (!mesmoSentidoExato && !casouPorIndice) {
+        const refTipoNorm = refTipo
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .trim()
+        const ehEspelhoDeEvento = [
+          'parcela_operacao',
+          'recebivel',
+          'liquidacao_recebivel',
+          'parcela',
+          'boleto',
+        ].includes(refTipoNorm)
+        if (ehEspelhoDeEvento) {
+          const movVal = Number(mov.valor || 0)
+          const movMs = new Date(mov.created_at).getTime()
+          casouPorValorData = [...treasuryRefTypes.entries()].some(([ref, info]) => {
+            if (info.type !== type || Math.abs(info.value - movVal) >= 0.015) return false
+            if (
+              !ref.startsWith('ccb-bol-') &&
+              !ref.startsWith('op-bol-') &&
+              !ref.startsWith('op-liq-')
+            )
+              return false
+            const ms = new Date(info.date).getTime()
+            return !isNaN(ms) && !isNaN(movMs) && Math.abs(ms - movMs) <= 7 * 86400000
+          })
+        }
+      }
+
+      if (mesmoSentidoExato || casouPorIndice || casouPorValorData) return
     }
 
     const category =
