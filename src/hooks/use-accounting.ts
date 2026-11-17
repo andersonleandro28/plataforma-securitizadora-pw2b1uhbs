@@ -8,6 +8,9 @@ export type { Transaction }
 
 export function useAccounting() {
   const [data, setData] = useState<Transaction[]>([])
+  // Caixa real consolidado (soma dos saldos por conta do motor contábil único —
+  // accountSummaries), não o acumulado bruto do livro.
+  const [totalCashBalance, setTotalCashBalance] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -18,6 +21,7 @@ export function useAccounting() {
 
       const result = await fetchConsolidatedAccountingLedger({ inicio, fim })
       setData(result.transactions)
+      setTotalCashBalance(result.totalCashBalance)
     } catch (err: any) {
       console.error(err)
       setError(err.message || 'Erro ao consolidar dados da contabilidade.')
@@ -26,5 +30,5 @@ export function useAccounting() {
     }
   }, [])
 
-  return { data, loading, error, refetch: fetchData }
+  return { data, loading, error, totalCashBalance, refetch: fetchData }
 }

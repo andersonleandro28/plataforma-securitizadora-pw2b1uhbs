@@ -110,6 +110,19 @@ export function normalizeAccountingDate(value: string | null | undefined): strin
  * somam no saldo por conta bancária (balancesByAccount / accountSummaries):
  * representam fluxo bancário real, já deduplicado contra movimentacoes_caixa.
  *
+ * CAIXA REAL (regra de ouro, mesma família do conserto dos saldos por conta na
+ * v0.0.1187): lançamento de tesouraria SEM bank_account_id explícito NÃO é
+ * fluxo bancário real — não entra no caixa global (runningGlobal /
+ * accumulated_balance / totalCashBalance), que passa a ser a SOMA dos saldos
+ * por conta (accountSummaries). Provado em dados: suprimir tesouraria
+ * op-bol/op-liq e manual-credit sem conta (155.185,65 + 35.390,00 +
+ * 52.511,28) e não contar 2× despesa espelhada por tesouraria (−412,64) faz o
+ * global fechar exatamente no caixa real consolidado (BNK 10.650,77 +
+ * Celcoin 1.240,30 = 11.891,07). A despesa espelhada por tesouraria
+ * (tt.expense_id) também não conta 2× (passo 5 já a suprime do livro).
+ * NADA é removido da lista: o Livro Caixa continua exibindo todos os
+ * lançamentos, espelhos e avulsos incluídos.
+ *
  * Garante consistência idêntica entre Livro Caixa (useAccounting / /admin/accounting),
  * Extrato Bancário (/admin/bank-accounts), DRE, DFC e Fluxo de Caixa Projetado (/reports).
  */
@@ -185,6 +198,18 @@ export async function fetchConsolidatedAccountingLedger(
       .in('origem_tabela', ['fornecedores', 'despesas', 'investment_redemptions']),
   ])
 
+  // Despesas já espelhadas pela tesouraria (tt.expense_id): uma despesa espelhada
+  // por transação de tesouraria não pode sair 2× do caixa global (passo 5 já a
+  // suprime do livro quando espelhada sem conta; aqui garantimos também que a
+  // cópia da tesouraria não some 2× no fluxo bancário). Provado em dados:
+  // residual −412,64 no global consolidado.
+  const ttExpenseIds = new Set<string>(
+    (tt || [])
+      .filter((tx: any) => !tx.status || tx.status === 'Confirmado')
+      .filter((tx: any) => tx.expense_id)
+      .map((tx: any) => String(tx.expense_id)),
+  )
+
   const expenseMap = new Map<
     string,
     { payment_date: string | null; due_date: string | null; status: string }
@@ -237,14 +262,6 @@ export async function fetchConsolidatedAccountingLedger(
   // somam em conta alguma (créditos manuais de tesouraria sem conta; despesas
   // pagas sem conta espelhadas pela tesouraria). Provado em dados: BNK = −412,61.
   let unassignedNet = 0
-  // Despesas já espelhadas pela tesouraria (tt.expense_id), para o passo 5 não
-  // somar a mesma despesa duas vezes no saldo global.
-  const ttExpenseIds = new Set<string>(
-    (tt || [])
-      .filter((tx: any) => !tx.deleted_at && (!tx.status || tx.status === 'Confirmado'))
-      .filter((tx: any) => tx.expense_id)
-      .map((tx: any) => String(tx.expense_id)),
-  )
 
   // Lançamento sem conta explícita NÃO é atribuído a nenhuma conta bancária:
   // cai apenas no saldo global (Livro Caixa/DRE/DFC). Atribuir tudo à conta
@@ -752,7 +769,11 @@ export async function fetchConsolidatedAccountingLedger(
   // Ordenação cronológica crescente
   transactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
-  // Calcula saldos acumulados e mapa de saldo por conta bancária
+  // Calcula saldos acumulados e mapa de saldo por conta bancária.
+  // runningGlobal = FLUXO BANCÁRIO COMPUTÁVEL (caixa real): só lança no global o
+  // que é atribuível a uma conta bancária — lançamento de tesouraria SEM conta
+  // (op-bol/op-liq/manual-credit herdados) não soma, nem por conta nem no
+  // global (regra de ouro provada na v0.0.1187 para os saldos por conta).
   let runningGlobal = 0
   const balancesByAccount: Record<string, number> = {}
   // Líquido (in − out) dos ESPELHOS contábeis por conta — apenas diagnóstico.
@@ -769,32 +790,27 @@ export async function fetchConsolidatedAccountingLedger(
 
   for (const t of transactions) {
     const delta = t.type === 'in' ? t.value : -t.value
-    runningGlobal += delta
 
-    // Espelho contábil (parcela ccb-bol/op-bol, liquidação op-liq, resgate
-    // redemption) representa FLUXO BANCÁRIO REAL e volta a somar no saldo da
-    // conta: provado em dados vivos, as entradas de parcelas e as saídas de
-    // resgate passaram pela conta (a supressão v0.0.1183 zerava ~R$ 172 mil de
-    // entradas reais na BNK Digital, produzindo o saldo −R$ 31.991,44). Cada
-    // evento entra uma única vez porque o passo 8 deduplica as movimentações de
-    // caixa que repetem o mesmo evento (mesmo sentido) e o passo 4/5/7 dedup
-    // boletos, despesas e resgates contra a tesouraria.
-    // EXCEÇÃO (regra provada em dados, fechar em R$ 10.650,77): lançamento
-    // marcado como espelho PORQUE é crédito manual de tesouraria sem conta
-    // (manualSemConta) NÃO tem fluxo bancário real — não soma em conta alguma.
-    const isMirrorSemFluxo = t.is_bank_mirror && !t.bank_account_id
-    if (!isMirrorSemFluxo && (!cutoffDate || t.date <= cutoffDate)) {
-      const accId = t.bank_account_id
-      if (accId) {
-        balancesByAccount[accId] = (balancesByAccount[accId] ?? 0) + delta
-        const src = sourceOf(t)
-        netByAccountAndRefType[accId] = netByAccountAndRefType[accId] || {}
-        netByAccountAndRefType[accId][src] = (netByAccountAndRefType[accId][src] ?? 0) + delta
-      }
-    }
-    if (t.is_bank_mirror && !isMirrorSemFluxo && (!cutoffDate || t.date <= cutoffDate)) {
-      const accId = t.bank_account_id
-      if (accId) {
+    // CAIXA REAL (regra de ouro da v0.0.1187, agora também no global): só entra
+    // no saldo o lançamento atribuível a uma conta bancária. Espelho contábil
+    // (parcela ccb-bol/op-bol, liquidação op-liq, resgate redemption) representa
+    // FLUXO BANCÁRIO REAL e soma no saldo da conta: provado em dados vivos, as
+    // entradas de parcelas e as saídas de resgate passaram pela conta (a
+    // supressão v0.0.1183 zerava ~R$ 172 mil de entradas reais na BNK Digital,
+    // produzindo o saldo −R$ 31.991,44). Cada evento entra uma única vez porque
+    // o passo 8 deduplica as movimentações de caixa que repetem o mesmo evento
+    // (mesmo sentido) e o passo 4/5/7 dedup boletos, despesas e resgates contra
+    // a tesouraria. Lançamento SEM conta (tesouraria op-bol/op-liq/manual-credit
+    // herdados, despesa sem conta, captação, aquisição, desembolso, resgate
+    // avulso) não soma em saldo algum — nem no global.
+    const accId = t.bank_account_id
+    if (accId && (!cutoffDate || t.date <= cutoffDate)) {
+      runningGlobal += delta
+      balancesByAccount[accId] = (balancesByAccount[accId] ?? 0) + delta
+      const src = sourceOf(t)
+      netByAccountAndRefType[accId] = netByAccountAndRefType[accId] || {}
+      netByAccountAndRefType[accId][src] = (netByAccountAndRefType[accId][src] ?? 0) + delta
+      if (t.is_bank_mirror) {
         bankMirrorNetByAccount[accId] = (bankMirrorNetByAccount[accId] ?? 0) + delta
       }
     }

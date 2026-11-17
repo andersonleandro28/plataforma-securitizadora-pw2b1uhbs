@@ -52,7 +52,7 @@ function formatDisplayDate(dateStr: string): string {
 }
 
 export default function Accounting() {
-  const { data, loading, error, refetch } = useAccounting()
+  const { data, loading, error, totalCashBalance, refetch } = useAccounting()
 
   const now = new Date()
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
@@ -114,7 +114,7 @@ export default function Accounting() {
     refetch(periodoInicio, periodoFim)
   }
 
-  const { filteredData, totalEntradas, totalSaidas, globalBalance } = useMemo(() => {
+  const { filteredData, totalEntradas, totalSaidas } = useMemo(() => {
     let entradas = 0
     let saidas = 0
 
@@ -142,16 +142,16 @@ export default function Accounting() {
       }
       return match
     })
-
-    const gBal = data.length > 0 ? data[0].accumulated_balance : 0
-
     return {
       filteredData: filtered,
       totalEntradas: entradas,
       totalSaidas: saidas,
-      globalBalance: gBal,
     }
   }, [data, activeFiltros])
+
+  // Caixa real consolidado: soma dos saldos por conta do motor contábil único
+  // (accountSummaries) — BNK 10.650,77 + Celcoin 1.240,30 = 11.891,07.
+  const globalBalance = totalCashBalance
 
   const paginatedData = useMemo(() => {
     const start = (page - 1) * itemsPerPage
@@ -310,7 +310,7 @@ export default function Accounting() {
         <Card className="bg-primary/5 border-primary border-l-4">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-primary flex justify-between">
-              Saldo Acumulado (Global) <DollarSign className="w-4 h-4" />
+              Caixa Consolidado <DollarSign className="w-4 h-4" />
             </CardTitle>
           </CardHeader>
           <CardContent>
