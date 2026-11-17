@@ -119,9 +119,11 @@ export function normalizeAccountingDate(value: string | null | undefined): strin
  * 52.511,28) e não contar 2× despesa espelhada por tesouraria (−412,64) faz o
  * global fechar exatamente no caixa real consolidado (BNK 10.650,77 +
  * Celcoin 1.240,30 = 11.891,07). A despesa espelhada por tesouraria
- * (tt.expense_id) também não conta 2× (passo 5 já a suprime do livro).
- * NADA é removido da lista: o Livro Caixa continua exibindo todos os
- * lançamentos, espelhos e avulsos incluídos.
+ * (tt.expense_id) também não conta 2× — o passo 5 a suprime do saldo SEMPRE
+ * (com ou sem conta bancária; a saída já foi lançada pela transação tt-).
+ * NADA é removido da lista nem escondido: o Livro Caixa exibe todos os
+ * lançamentos — espelhos e suprimidos pela dedup incluídos (estes com
+ * dedup_suppressed: true, que os exclui apenas do SALDO).
  *
  * Garante consistência idêntica entre Livro Caixa (useAccounting / /admin/accounting),
  * Extrato Bancário (/admin/bank-accounts), DRE, DFC e Fluxo de Caixa Projetado (/reports).
@@ -506,10 +508,13 @@ export async function fetchConsolidatedAccountingLedger(
       const sup = Array.isArray(exp.suppliers) ? exp.suppliers[0] : exp.suppliers
       const fornecedor = sup?.company_name
       const bInfo = resolveBank(exp.bank_account_id)
-      // Despesa paga SEM conta espelhada por transação de tesouraria (tt com
-      // expense_id e sem conta): o passo 3 já deixou de somá-la — não somar de
-      // novo aqui, senão a despesa sai duas vezes do saldo global.
-      if (!bInfo.id && exp.id && ttExpenseIds.has(String(exp.id))) return
+      // Despesa espelhada por transação de tesouraria (tt com expense_id): a
+      // tesouraria já lança essa saída — não somar de novo aqui, senão a despesa
+      // sai DUAS vezes do saldo global. A dedup cobre despesas COM conta e SEM
+      // conta: a guarda antiga (!bInfo.id) deixava as despesas espelhadas COM
+      // conta (R$ 106.363,62) entrarem 2× no global — causa do 111.219,45.
+      // A despesa continua visível no livro pelo lançamento tt- correspondente.
+      if (exp.id && ttExpenseIds.has(String(exp.id))) return
       transactions.push({
         id: `exp-${exp.id}`,
         date: normalizeAccountingDate(exp.payment_date || exp.due_date),
@@ -581,22 +586,28 @@ export async function fetchConsolidatedAccountingLedger(
     const catLower = (mov.categoria || '').toLowerCase()
     const refTipo = (mov.referencia_tipo || '').toLowerCase()
 
+    // REGRA DE OURO: a deduplicação afeta SOMENTE o cálculo de saldo — a
+    // LISTAGEM do Livro Caixa exibe TODOS os lançamentos. Um lançamento que
+    // seria suprimido (espelho de despesa/resgate já lançado por outra fonte)
+    // entra na lista com dedup_suppressed: true e é apenas ignorado no loop
+    // de saldo — nunca escondido da exibição.
+    let dedupSuppressed = false
     const linkedExpenseId =
       movIdToExpenseId.get(mov.id) || (refTipo === 'despesa' ? mov.referencia_id : null)
     if (linkedExpenseId && expenseMap.has(linkedExpenseId)) {
-      return
+      dedupSuppressed = true
     }
     if (catLower === 'fornecedor' || catLower === 'despesa') {
       if (linkedExpenseId || (mov.referencia_id && expenseMap.has(mov.referencia_id))) {
-        return
+        dedupSuppressed = true
       }
     }
 
-    if (refTipo === 'resgate_investimento' && mov.referencia_id) {
+    if (!dedupSuppressed && refTipo === 'resgate_investimento' && mov.referencia_id) {
       const redId = String(mov.referencia_id)
       const redMatch = redemptionMap.get(redId)
       if (redMatch && redMatch.status === 'paid') {
-        return
+        dedupSuppressed = true
       }
     }
 
@@ -702,7 +713,10 @@ export async function fetchConsolidatedAccountingLedger(
         }
       }
 
-      if (mesmoSentidoExato || casouPorIndice || casouPorValorData) return
+      if (mesmoSentidoExato || casouPorIndice || casouPorValorData) {
+        // Suprimido do SALDO apenas: permanece na listagem (dedup_suppressed).
+        dedupSuppressed = true
+      }
     }
 
     // Movimentação de caixa que referencia um evento automático (parcela,
@@ -737,6 +751,7 @@ export async function fetchConsolidatedAccountingLedger(
       description: mov.descricao || category,
       value: Number(mov.valor || 0),
       is_bank_mirror: ehMovEspelho,
+      dedup_suppressed: dedupSuppressed,
       bank_account_id: bInfo.id,
       bank_account_info: bInfo.info,
     })
@@ -804,7 +819,9 @@ export async function fetchConsolidatedAccountingLedger(
     // herdados, despesa sem conta, captação, aquisição, desembolso, resgate
     // avulso) não soma em saldo algum — nem no global.
     const accId = t.bank_account_id
-    if (accId && (!cutoffDate || t.date <= cutoffDate)) {
+    // Lançamento suprimido pela deduplicação (dedup_suppressed) permanece na
+    // listagem, mas NÃO soma em saldo algum — dedup afeta somente o saldo.
+    if (accId && !t.dedup_suppressed && (!cutoffDate || t.date <= cutoffDate)) {
       runningGlobal += delta
       balancesByAccount[accId] = (balancesByAccount[accId] ?? 0) + delta
       const src = sourceOf(t)
