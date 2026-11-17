@@ -113,9 +113,14 @@ export default function BankAccounts() {
       balMap[acc.id] = 0
     })
 
-    // Percorre as transações contábeis oficiais deduplicadas
-    // Lançamentos sem conta vinculada caem na conta principal/ativa
+    // Percorre as transações contábeis oficiais deduplicadas.
+    // Lançamentos sem conta vinculada caem na conta principal/ativa.
+    // ESPELHOS CONTÁBIEIS (is_bank_mirror: parcela de CCB/Operação, liquidação,
+    // resgate, imposto de resgate criados por trigger) NÃO entram no saldo:
+    // dinheiro que não passou efetivamente pela conta bancária. Eles continuam
+    // na lista (aba Extrato, DRE, DFC, Livro Caixa) — a mudança é só no saldo.
     ;(accountingTransactions || []).forEach((t) => {
+      if (t.is_bank_mirror) return
       const accId = t.bank_account_id || activeAccId
       if (accId) {
         const delta = t.type === 'in' ? t.value : -t.value

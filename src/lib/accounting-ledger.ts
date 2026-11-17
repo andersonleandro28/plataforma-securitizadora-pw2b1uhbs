@@ -17,6 +17,13 @@ export interface AccountingTransaction {
   description: string
   value: number
   accumulated_balance: number
+  /**
+   * true quando o lançamento é ESPELHO CONTÁBIL automático (parcela de CCB/
+   * Operação, liquidação, resgate ou imposto de resgate — criado por trigger de
+   * banco, sem fluxo bancário real). Alimenta DRE/DFC/Livro Caixa, mas é
+   * excluído do saldo exibido por conta na tela Contas Bancárias.
+   */
+  is_bank_mirror?: boolean
   bank_account_id?: string | null
   bank_account_info?: {
     bank_name: string
@@ -79,6 +86,12 @@ export function normalizeAccountingDate(value: string | null | undefined): strin
  * - Operações de crédito pagas (credit_operations)
  * - Resgates pagos (investment_redemptions)
  * - Movimentações de Caixa avulsas deduplicadas (movimentacoes_caixa)
+ *
+ * Cada transação carrega is_bank_mirror: true quando é espelho contábil
+ * automático (parcela/liquidação/resgate criado por trigger). Os espelhos
+ * permanecem na lista (DRE/DFC/Livro Caixa continuam vendo tudo), mas o saldo
+ * por conta bancária (balancesByAccount / accountSummaries) soma apenas o
+ * fluxo bancário real, deduplicado contra movimentacoes_caixa.
  *
  * Garante consistência idêntica entre Livro Caixa (useAccounting / /admin/accounting),
  * Extrato Bancário (/admin/bank-accounts), DRE, DFC e Fluxo de Caixa Projetado (/reports).
@@ -257,6 +270,13 @@ export async function fetchConsolidatedAccountingLedger(
     })
   })
 
+  // Padrões de external_ref criados por TRIGGER de banco (espelhos contábeis
+  // automáticos, sem fluxo bancário real): parcelas de CCB (ccb-bol-…), parcelas
+  // de operação (op-bol-…), liquidação integral (op-liq-…), resgates
+  // (redemption-…) e imposto retido no resgate (tax-redemption-…). Lançamentos
+  // manuais de tesouraria (ex.: manual-credit-…) NÃO são espelhos.
+  const MIRROR_REF = /^(ccb-bol|op-bol|op-liq|redemption|tax-redemption)-/
+
   // 2. Aquisições CCB
   ;(recs || []).forEach((rec: any) => {
     const prof = Array.isArray(rec.profiles) ? rec.profiles[0] : rec.profiles
@@ -348,6 +368,7 @@ export async function fetchConsolidatedAccountingLedger(
       description: tx.description,
       value: Number(tx.amount || 0),
       date: normalizeAccountingDate(tx.date),
+      is_bank_mirror: Boolean(ref && MIRROR_REF.test(ref)),
       bank_account_id: bInfo.id,
       bank_account_info: bInfo.info,
     })
@@ -433,6 +454,7 @@ export async function fetchConsolidatedAccountingLedger(
         category: 'Recebimento de Parcelas - CCB',
         description: `Recebimento Parcela ${bol.numero || bol.number || parcela} - CCB nº ${rec.ccb_id ? String(rec.ccb_id).substring(0, 8) : String(rec.id).substring(0, 8)} - Tomador: ${tomador}`,
         value: val,
+        is_bank_mirror: true,
         bank_account_id: bInfo.id,
         bank_account_info: bInfo.info,
       })
@@ -497,6 +519,7 @@ export async function fetchConsolidatedAccountingLedger(
         category: 'Resgate de Investimento',
         description: `Resgate — Investidor: ${investor}`,
         value: Number(red.net_value || 0),
+        is_bank_mirror: true,
         bank_account_id: bInfo.id,
         bank_account_info: bInfo.info,
       })
@@ -641,6 +664,25 @@ export async function fetchConsolidatedAccountingLedger(
       if (mesmoSentidoExato || casouPorIndice || casouPorValorData) return
     }
 
+    // Movimentação de caixa que referencia um evento automático (parcela,
+    // recebível, liquidação, resgate) é espelho contábil: entrou no livro por
+    // trigger, não por fluxo bancário manual. Não soma no saldo da conta.
+    const refTipoNormMirror = refTipo
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+    const ehMovEspelho =
+      Boolean(mov.referencia_id) &&
+      [
+        'parcela_operacao',
+        'recebivel',
+        'liquidacao_recebivel',
+        'parcela',
+        'boleto',
+        'resgate_investimento',
+        'credit_operation',
+      ].includes(refTipoNormMirror)
+
     const category =
       categoriaLabel[(mov.categoria || '').toLowerCase()] ||
       mov.categoria ||
@@ -653,6 +695,7 @@ export async function fetchConsolidatedAccountingLedger(
       category,
       description: mov.descricao || category,
       value: Number(mov.valor || 0),
+      is_bank_mirror: ehMovEspelho,
       bank_account_id: bInfo.id,
       bank_account_info: bInfo.info,
     })
@@ -664,6 +707,8 @@ export async function fetchConsolidatedAccountingLedger(
   // Calcula saldos acumulados e mapa de saldo por conta bancária
   let runningGlobal = 0
   const balancesByAccount: Record<string, number> = {}
+  // Líquido (in − out) dos ESPELHOS contábeis por conta — apenas diagnóstico.
+  const bankMirrorNetByAccount: Record<string, number> = {}
 
   // Inicializa mapa de contas conhecidas
   ;(companyBanks || []).forEach((b: any) => {
@@ -677,11 +722,19 @@ export async function fetchConsolidatedAccountingLedger(
   for (const t of transactions) {
     const delta = t.type === 'in' ? t.value : -t.value
     runningGlobal += delta
-    const accId = t.bank_account_id || activeBankId || 'default'
 
-    // Se houver asOfDate, só acumula nos saldos de conta se t.date <= cutoffDate
-    if (!cutoffDate || t.date <= cutoffDate) {
-      balancesByAccount[accId] = (balancesByAccount[accId] ?? 0) + delta
+    // Espelho contábil NÃO soma no saldo da conta bancária: é lançamento
+    // contábil sem fluxo bancário real (parcela, liquidação, resgate, imposto
+    // de resgate criados por trigger). Permanece na lista para DRE/DFC/Livro
+    // Caixa; o saldo exibido por conta passa a refletir só o caixa real.
+    const effectiveDelta = t.is_bank_mirror ? 0 : delta
+    if (effectiveDelta !== 0 && (!cutoffDate || t.date <= cutoffDate)) {
+      const accId = t.bank_account_id || activeBankId || 'default'
+      balancesByAccount[accId] = (balancesByAccount[accId] ?? 0) + effectiveDelta
+    }
+    if (t.is_bank_mirror && (!cutoffDate || t.date <= cutoffDate)) {
+      const accId = t.bank_account_id || activeBankId || 'default'
+      bankMirrorNetByAccount[accId] = (bankMirrorNetByAccount[accId] ?? 0) + delta
     }
 
     calculatedTransactions.push({
@@ -691,7 +744,9 @@ export async function fetchConsolidatedAccountingLedger(
   }
 
   // Se options.asOfDate foi passado, o saldo total de caixa é a soma de todas as contas da securitizadora até essa data
-  const totalCashBalance = Object.values(balancesByAccount).reduce((sum, v) => sum + (v || 0), 0)
+  const totalCashBalance = Object.entries(balancesByAccount)
+    .filter(([accId]) => accId !== 'default')
+    .reduce((sum, [, v]) => sum + (v || 0), 0)
 
   // Monta resumo das contas
   const accountSummaries: BankAccountBalanceSummary[] = (companyBanks || []).map((b: any) => ({
@@ -718,5 +773,6 @@ export async function fetchConsolidatedAccountingLedger(
     balancesByAccount,
     totalCashBalance,
     accountSummaries,
+    bankMirrorNetByAccount,
   }
 }
