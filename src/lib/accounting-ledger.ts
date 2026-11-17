@@ -713,13 +713,28 @@ export async function fetchConsolidatedAccountingLedger(
     })
   })
 
-  // Diagnóstico: líquido (in − out) por conta × tipo de referência. NÃO altera
-  // saldo algum — só reproduz em números a decomposição da tesouraria.
+  // Diagnóstico: líquido (in − out) por conta × FONTE completa do livro caixa —
+  // tesouraria por tipo de referência (tt-ccb-bol, tt-manual-credit, tt-sem-ref…),
+  // movimentações de caixa, boletos CCB, despesas, operações de crédito, resgates,
+  // aquisições de CCB e captações. NÃO altera saldo algum: reproduz em números
+  // TODA a composição do saldo de cada conta, incluindo o que a tela atribui à
+  // conta ativa — a base para provar a regra que fecha o caixa real da BNK
+  // Digital (R$ 10.650,77).
   const netByAccountAndRefType: Record<string, Record<string, number>> = {}
   const refTypeOf = (externalRef?: string | null) => {
     const ref = externalRef ? String(externalRef) : ''
     const m = ref.match(/^(ccb-bol|op-bol|op-liq|redemption|tax-redemption|manual-credit)-/)
     return m ? m[1] : 'sem-ref'
+  }
+  const sourceOf = (tx: Omit<AccountingTransaction, 'accumulated_balance'>) => {
+    if (tx.id.startsWith('tt-')) return `tt-${refTypeOf(txExternalRefById.get(tx.id) || null)}`
+    if (tx.id.startsWith('mov-')) return 'mov-caixa'
+    if (tx.id.startsWith('ccb-bol-')) return 'boletos-ccb'
+    if (tx.id.startsWith('exp-')) return 'despesas'
+    if (tx.id.startsWith('op-out-')) return 'operacoes-credito'
+    if (tx.id.startsWith('red-')) return 'resgates'
+    if (tx.id.startsWith('acq-')) return 'aquisicoes-ccb'
+    return 'captacoes'
   }
 
   // Ordenação cronológica crescente
@@ -756,12 +771,10 @@ export async function fetchConsolidatedAccountingLedger(
     if (effectiveDelta !== 0 && (!cutoffDate || t.date <= cutoffDate)) {
       const accId = t.bank_account_id || activeBankId || 'default'
       balancesByAccount[accId] = (balancesByAccount[accId] ?? 0) + effectiveDelta
-      if (t.id.startsWith('tt-')) {
-        const rt = refTypeOf(txExternalRefById.get(t.id) || null)
-        netByAccountAndRefType[accId] = netByAccountAndRefType[accId] || {}
-        netByAccountAndRefType[accId][rt] =
-          (netByAccountAndRefType[accId][rt] ?? 0) + effectiveDelta
-      }
+      const src = sourceOf(t)
+      netByAccountAndRefType[accId] = netByAccountAndRefType[accId] || {}
+      netByAccountAndRefType[accId][src] =
+        (netByAccountAndRefType[accId][src] ?? 0) + effectiveDelta
     }
     if (t.is_bank_mirror && (!cutoffDate || t.date <= cutoffDate)) {
       const accId = t.bank_account_id || activeBankId || 'default'

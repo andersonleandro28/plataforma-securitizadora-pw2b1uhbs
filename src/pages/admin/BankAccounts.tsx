@@ -132,16 +132,17 @@ export default function BankAccounts() {
     setBalances(balMap)
   }, [accounts, accountingTransactions])
 
-  // Diagnóstico do saldo (console do navegador): decomposição da tesouraria por
-  // conta × tipo de referência (ccb-bol, op-bol, op-liq, redemption, manual-credit,
-  // sem-ref). NÃO altera saldo algum — serve para fechar em números a regra que
-  // reproduz o caixa real de cada conta (BNK Digital: R$ 10.650,77).
+  // Diagnóstico do saldo (console do navegador): decomposição COMPLETA do saldo
+  // por conta × FONTE (tesouraria por tipo de referência, movimentações de caixa,
+  // boletos CCB, despesas, operações, resgates, aquisições, captações). NÃO altera
+  // saldo algum — serve para fechar em números a regra que reproduz o caixa real
+  // de cada conta (BNK Digital: R$ 10.650,77).
   useEffect(() => {
     if (!accounts.length || loadingAccounting) return
     fetchConsolidatedAccountingLedger()
       .then((result) => {
         console.log(
-          '[bank-accounts][diagnóstico] líquido tesouraria por conta × tipo de referência:',
+          '[bank-accounts][diagnóstico] líquido por conta × fonte completa:',
           JSON.stringify(result.netByAccountAndRefType, null, 2),
         )
         console.log(
@@ -151,6 +152,10 @@ export default function BankAccounts() {
             null,
             2,
           ),
+        )
+        console.log(
+          '[bank-accounts][diagnóstico] espelhos automáticos por conta:',
+          JSON.stringify(result.bankMirrorNetByAccount, null, 2),
         )
       })
       .catch(() => {
