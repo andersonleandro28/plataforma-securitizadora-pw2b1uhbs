@@ -8,8 +8,11 @@
  *
  *   saldo da conta = Σ (entradas − saídas) das transações NÃO-espelho
  *   (is_bank_mirror: parcela ccb-bol/op-bol, liquidação op-liq, resgate
- *   redemption/tax-redemption criados por trigger) atribuídas à conta —
- *   lançamentos sem conta caem na conta ativa.
+ *   redemption/tax-redemption criados por trigger) atribuídas à conta.
+ *
+ *   REGRA NOVA (v0.0.1187): crédito manual de tesouraria SEM conta bancária
+ *   (treasury_transactions com external_ref manual-credit-… e bank_account_id
+ *   nulo) NÃO pertence a nenhuma conta real — deixa de cair na conta ativa.
  *
  * O teste NÃO altera nenhum registro: apenas SELECT.
  * Alvo: BNK Digital = R$ 10.650,77 (exibido antes: R$ 62.749,44).
@@ -39,7 +42,9 @@ describe('Prova: saldo da BNK Digital fecha em R$ 10.650,77', () => {
     // Fonte 1: transações de tesouraria confirmadas
     const { data: tt, error: ttErr } = await supabase
       .from('treasury_transactions')
-      .select('id, type, category, amount, external_ref, bank_account_id, status, deleted_at')
+      .select(
+        'id, type, category, amount, external_ref, expense_id, bank_account_id, status, deleted_at',
+      )
     expect(ttErr).toBeNull()
     const ttValidos = ((tt || []) as any[]).filter(
       (t) => !t.deleted_at && (!t.status || t.status === 'Confirmado'),
@@ -65,30 +70,36 @@ describe('Prova: saldo da BNK Digital fecha em R$ 10.650,77', () => {
     const add = (map: Record<string, number>, accId: string, d: number) => {
       map[accId] = (map[accId] ?? 0) + d
     }
-    const contaDe = (rawId: string | null | undefined) => rawId || active.id
+    // Lançamento com conta explícita pertence a essa conta; sem conta, NÃO
+    // pertence a nenhuma conta real (não cai mais na conta ativa).
+    const contaDe = (rawId: string | null | undefined) => rawId || null
 
     console.log('--- TESOURARIA (tt-) fonte por fonte ---')
     const porGrupo: Record<string, { qtde: number; liquido: number; espelho: number }> = {}
     ttValidos.forEach((t) => {
       const ref = t.external_ref ? String(t.external_ref) : null
       const isMirror = Boolean(ref && MIRROR_REF.test(ref))
+      // Lançamento de despesa espelhado em expenses (despesas pagas somam à
+      // parte no passo "exp-"): não entra duas vezes no saldo.
+      const isDespesaEspelhada = !ref && Boolean(t.expense_id)
       const d = (t.type === 'in' ? 1 : -1) * Number(t.amount || 0)
       const accId = contaDe(t.bank_account_id)
-      add(isMirror ? espelho : novoSaldo, accId, d)
+      if (!accId) return
+      add(isMirror || isDespesaEspelhada ? espelho : novoSaldo, accId, d)
       const grupo = !ref
-        ? 'sem ref (manual)'
+        ? isDespesaEspelhada
+          ? 'sem ref (despesa espelhada)'
+          : 'sem ref (manual)'
         : isMirror
           ? ref.split('-').slice(0, 2).join('-')
-          : 'manual-credit/outra'
+          : ref.split('-')[0]
       porGrupo[grupo] = porGrupo[grupo] || { qtde: 0, liquido: 0, espelho: 0 }
       porGrupo[grupo].qtde++
-      if (isMirror) porGrupo[grupo].espelho += d
+      if (isMirror || isDespesaEspelhada) porGrupo[grupo].espelho += d
       else porGrupo[grupo].liquido += d
     })
     Object.entries(porGrupo).forEach(([g, s]) => {
-      console.log(
-        `  ${g}: ${s.qtde} lanç. | real ${fmt(s.liquido)} | espelho ${fmt(s.espelho)} | (na BNK: real ${fmt(novoSaldo[bnkId] ?? 0)})`,
-      )
+      console.log(`  ${g}: ${s.qtde} lanç. | real ${fmt(s.liquido)} | espelho ${fmt(s.espelho)}`)
     })
 
     console.log('--- MOVIMENTAÇÕES DE CAIXA (mov-) — só espelho se referencia evento ---')
@@ -110,12 +121,14 @@ describe('Prova: saldo da BNK Digital fecha em R$ 10.650,77', () => {
       const isIn = tipo.includes('receit') || tipo.includes('entrada') || tipo.includes('credito')
       const d = (isIn ? 1 : -1) * Number(m.valor || 0)
       const accId = contaDe(m.bank_account_id)
+      if (!accId) return
       add(isMirror ? espelho : novoSaldo, accId, d)
     })
 
     console.log('--- DESPESAS PAGAS (exp-) — sempre fluxo real ---')
     expsPagas.forEach((e) => {
       const accId = contaDe(e.bank_account_id)
+      if (!accId) return
       add(novoSaldo, accId, -Number(e.amount || 0))
     })
 

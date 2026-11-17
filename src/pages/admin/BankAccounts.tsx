@@ -54,6 +54,27 @@ export default function BankAccounts() {
     refetch: refetchAccounting,
   } = useAccounting()
 
+  // Saldos oficiais por conta + consolidado, vindos do motor contábil único
+  // (fetchConsolidatedAccountingLedger) — mesma fonte do Livro Caixa, DRE, DFC
+  // e do Fluxo de Caixa Projetado.
+  const [ledgerBalances, setLedgerBalances] = useState<Record<string, number>>({})
+  const [ledgerUnassignedNet, setLedgerUnassignedNet] = useState<number | null>(null)
+  useEffect(() => {
+    let alive = true
+    fetchConsolidatedAccountingLedger()
+      .then((result) => {
+        if (!alive) return
+        setLedgerBalances(result.balancesByAccount || {})
+        setLedgerUnassignedNet(result.unassignedNet ?? null)
+      })
+      .catch(() => {
+        /* diagnostico/saldos são best-effort — fallback para o cálculo local */
+      })
+    return () => {
+      alive = false
+    }
+  }, [accounts, accountingTransactions])
+
   // Permissão de escrita (apenas admins e equipe autorizada; não accountant somente-leitura)
   const canWrite = useMemo(() => {
     const isSuperAdmin = profile?.email === 'andersonleandro28@gmail.com'
@@ -99,44 +120,25 @@ export default function BankAccounts() {
     }
   }, [])
 
-  // Calcula saldos de cada conta bancária e o consolidado a partir do Livro Caixa oficial (useAccounting)
+  // Saldos de cada conta bancária: usam o cálculo do motor contábil único
+  // (ledgerBalances) quando disponível. Sem fallback para a conta ativa: os
+  // saldos oficiais já cobrem todas as contas cadastradas.
   useEffect(() => {
     if (!accounts.length) {
       setBalances({})
       return
     }
-
-    const activeAcc = accounts.find((a) => a.is_active) || accounts[0]
-    const activeAccId = activeAcc?.id
-
-    const balMap: Record<string, number> = {}
-    accounts.forEach((acc) => {
-      balMap[acc.id] = 0
-    })
-
-    // Percorre as transações contábeis oficiais deduplicadas.
-    // Lançamentos sem conta vinculada caem na conta principal/ativa.
-    // ESPELHOS CONTÁBIEIS (is_bank_mirror: parcela de CCB/Operação, liquidação,
-    // resgate, imposto de resgate criados por trigger) NÃO entram no saldo:
-    // dinheiro que não passou efetivamente pela conta bancária. Eles continuam
-    // na lista (aba Extrato, DRE, DFC, Livro Caixa) — a mudança é só no saldo.
-    ;(accountingTransactions || []).forEach((t) => {
-      if (t.is_bank_mirror) return
-      const accId = t.bank_account_id || activeAccId
-      if (accId) {
-        const delta = t.type === 'in' ? t.value : -t.value
-        balMap[accId] = (balMap[accId] ?? 0) + delta
-      }
-    })
-
-    setBalances(balMap)
-  }, [accounts, accountingTransactions])
+    if (Object.keys(ledgerBalances).length > 0) {
+      setBalances({ ...ledgerBalances })
+    }
+  }, [accounts, ledgerBalances])
 
   // Diagnóstico do saldo (console do navegador): decomposição COMPLETA do saldo
   // por conta × FONTE (tesouraria por tipo de referência, movimentações de caixa,
-  // boletos CCB, despesas, operações, resgates, aquisições, captações). NÃO altera
-  // saldo algum — serve para fechar em números a regra que reproduz o caixa real
-  // de cada conta (BNK Digital: R$ 10.650,77).
+  // boletos CCB, despesas, operações, resgates, aquisições, captações) + líquido
+  // NÃO atribuído a conta alguma (créditos manuais de tesouraria sem conta).
+  // NÃO altera saldo algum — serve para conferir em números a regra que reproduz
+  // o caixa real de cada conta (BNK Digital: R$ 10.650,77).
   useEffect(() => {
     if (!accounts.length || loadingAccounting) return
     fetchConsolidatedAccountingLedger()
@@ -147,15 +149,15 @@ export default function BankAccounts() {
         )
         console.log(
           '[bank-accounts][diagnóstico] saldos por conta:',
-          JSON.stringify(
-            result.accountSummaries.map((s) => ({ ...s })),
-            null,
-            2,
-          ),
+          JSON.stringify(result.accountSummaries, null, 2),
         )
         console.log(
           '[bank-accounts][diagnóstico] espelhos automáticos por conta:',
           JSON.stringify(result.bankMirrorNetByAccount, null, 2),
+        )
+        console.log(
+          '[bank-accounts][diagnóstico] líquido sem conta atribuída (não soma em conta alguma):',
+          result.unassignedNet,
         )
       })
       .catch(() => {

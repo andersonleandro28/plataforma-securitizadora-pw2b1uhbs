@@ -62,6 +62,14 @@ export interface AccountingLedgerResult {
    * em números a decomposição que fecha no caixa real da conta.
    */
   netByAccountAndRefType?: Record<string, Record<string, number>>
+  /**
+   * Diagnóstico (console): líquido de lançamentos SEM conta bancária que NÃO
+   * somam em conta alguma (créditos manuais de tesouraria sem conta —
+   * lançamentos contábeis avulsos sem fluxo bancário — e despesas pagas sem
+   * conta espelhadas por transação de tesouraria). Provado em dados:
+   * BNK = −412,61 e Celcoin = 0.
+   */
+  unassignedNet?: number
 }
 
 export interface FetchAccountingOptions {
@@ -214,13 +222,6 @@ export async function fetchConsolidatedAccountingLedger(
     string,
     { bank_name: string; branch: string | null; account_number: string; is_active: boolean }
   >()
-  let activeBankId: string | null = null
-  let activeBankInfo: {
-    bank_name: string
-    branch: string | null
-    account_number: string
-    is_active: boolean
-  } | null = null
 
   ;(companyBanks || []).forEach((b: any) => {
     const info = {
@@ -230,22 +231,20 @@ export async function fetchConsolidatedAccountingLedger(
       is_active: Boolean(b.is_active),
     }
     bankMap.set(b.id, info)
-    if (b.is_active && !activeBankId) {
-      activeBankId = b.id
-      activeBankInfo = info
-    }
   })
 
-  if (!activeBankInfo && companyBanks && companyBanks.length > 0) {
-    const first = companyBanks[0]
-    activeBankId = first.id
-    activeBankInfo = {
-      bank_name: first.bank_name,
-      branch: first.branch,
-      account_number: first.account_number,
-      is_active: Boolean(first.is_active),
-    }
-  }
+  // Diagnóstico: líquido (in − out) de lançamentos SEM conta bancária que não
+  // somam em conta alguma (créditos manuais de tesouraria sem conta; despesas
+  // pagas sem conta espelhadas pela tesouraria). Provado em dados: BNK = −412,61.
+  let unassignedNet = 0
+  // Despesas já espelhadas pela tesouraria (tt.expense_id), para o passo 5 não
+  // somar a mesma despesa duas vezes no saldo global.
+  const ttExpenseIds = new Set<string>(
+    (tt || [])
+      .filter((tx: any) => !tx.deleted_at && (!tx.status || tx.status === 'Confirmado'))
+      .filter((tx: any) => tx.expense_id)
+      .map((tx: any) => String(tx.expense_id)),
+  )
 
   // Lançamento sem conta explícita NÃO é atribuído a nenhuma conta bancária:
   // cai apenas no saldo global (Livro Caixa/DRE/DFC). Atribuir tudo à conta
@@ -371,6 +370,15 @@ export async function fetchConsolidatedAccountingLedger(
     }
 
     const bInfo = resolveBank(tx.bank_account_id)
+    // Crédito manual de tesouraria SEM conta bancária (external_ref manual-credit-…,
+    // bank_account_id nulo): lançamento contábil avulso que nunca passou por conta
+    // real alguma. Provado em dados (BNK): R$ 52.511,28 — "Crédito Thecpay" 49.500,
+    // "Marcos Antônio" 3.000, juros 11,28 — herdados pela conta ativa e inflando
+    // artificialmente o caixa dela. Fica no livro (Extrato/DRE/DFC), mas NÃO soma
+    // no saldo de conta bancária alguma (unassignedNet, apenas diagnóstico).
+    const manualSemConta = Boolean(ref && ref.startsWith('manual-credit-')) && !bInfo.id
+    if (manualSemConta)
+      unassignedNet += txType === 'in' ? Number(tx.amount || 0) : -Number(tx.amount || 0)
     transactions.push({
       id: `tt-${tx.id}`,
       type: txType,
@@ -380,7 +388,7 @@ export async function fetchConsolidatedAccountingLedger(
       description: tx.description,
       value: Number(tx.amount || 0),
       date: normalizeAccountingDate(tx.date),
-      is_bank_mirror: Boolean(ref && MIRROR_REF.test(ref)),
+      is_bank_mirror: Boolean(ref && MIRROR_REF.test(ref)) || manualSemConta,
       bank_account_id: bInfo.id,
       bank_account_info: bInfo.info,
     })
@@ -481,6 +489,10 @@ export async function fetchConsolidatedAccountingLedger(
       const sup = Array.isArray(exp.suppliers) ? exp.suppliers[0] : exp.suppliers
       const fornecedor = sup?.company_name
       const bInfo = resolveBank(exp.bank_account_id)
+      // Despesa paga SEM conta espelhada por transação de tesouraria (tt com
+      // expense_id e sem conta): o passo 3 já deixou de somá-la — não somar de
+      // novo aqui, senão a despesa sai duas vezes do saldo global.
+      if (!bInfo.id && exp.id && ttExpenseIds.has(String(exp.id))) return
       transactions.push({
         id: `exp-${exp.id}`,
         date: normalizeAccountingDate(exp.payment_date || exp.due_date),
@@ -767,18 +779,24 @@ export async function fetchConsolidatedAccountingLedger(
     // evento entra uma única vez porque o passo 8 deduplica as movimentações de
     // caixa que repetem o mesmo evento (mesmo sentido) e o passo 4/5/7 dedup
     // boletos, despesas e resgates contra a tesouraria.
-    const effectiveDelta = delta
-    if (effectiveDelta !== 0 && (!cutoffDate || t.date <= cutoffDate)) {
-      const accId = t.bank_account_id || activeBankId || 'default'
-      balancesByAccount[accId] = (balancesByAccount[accId] ?? 0) + effectiveDelta
-      const src = sourceOf(t)
-      netByAccountAndRefType[accId] = netByAccountAndRefType[accId] || {}
-      netByAccountAndRefType[accId][src] =
-        (netByAccountAndRefType[accId][src] ?? 0) + effectiveDelta
+    // EXCEÇÃO (regra provada em dados, fechar em R$ 10.650,77): lançamento
+    // marcado como espelho PORQUE é crédito manual de tesouraria sem conta
+    // (manualSemConta) NÃO tem fluxo bancário real — não soma em conta alguma.
+    const isMirrorSemFluxo = t.is_bank_mirror && !t.bank_account_id
+    if (!isMirrorSemFluxo && (!cutoffDate || t.date <= cutoffDate)) {
+      const accId = t.bank_account_id
+      if (accId) {
+        balancesByAccount[accId] = (balancesByAccount[accId] ?? 0) + delta
+        const src = sourceOf(t)
+        netByAccountAndRefType[accId] = netByAccountAndRefType[accId] || {}
+        netByAccountAndRefType[accId][src] = (netByAccountAndRefType[accId][src] ?? 0) + delta
+      }
     }
-    if (t.is_bank_mirror && (!cutoffDate || t.date <= cutoffDate)) {
-      const accId = t.bank_account_id || activeBankId || 'default'
-      bankMirrorNetByAccount[accId] = (bankMirrorNetByAccount[accId] ?? 0) + delta
+    if (t.is_bank_mirror && !isMirrorSemFluxo && (!cutoffDate || t.date <= cutoffDate)) {
+      const accId = t.bank_account_id
+      if (accId) {
+        bankMirrorNetByAccount[accId] = (bankMirrorNetByAccount[accId] ?? 0) + delta
+      }
     }
 
     calculatedTransactions.push({
@@ -819,5 +837,6 @@ export async function fetchConsolidatedAccountingLedger(
     accountSummaries,
     bankMirrorNetByAccount,
     netByAccountAndRefType,
+    unassignedNet,
   }
 }
