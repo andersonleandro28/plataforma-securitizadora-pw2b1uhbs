@@ -34,6 +34,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { useAccounting } from '@/hooks/use-accounting'
 import { BankTransferModal } from '@/components/admin/BankTransferModal'
 import { BankAccountStatement } from '@/components/admin/BankAccountStatement'
+import { fetchConsolidatedAccountingLedger } from '@/lib/accounting-ledger'
 import type { CompanyBankAccount } from '@/hooks/use-company-bank-accounts'
 
 export default function BankAccounts() {
@@ -130,6 +131,32 @@ export default function BankAccounts() {
 
     setBalances(balMap)
   }, [accounts, accountingTransactions])
+
+  // Diagnóstico do saldo (console do navegador): decomposição da tesouraria por
+  // conta × tipo de referência (ccb-bol, op-bol, op-liq, redemption, manual-credit,
+  // sem-ref). NÃO altera saldo algum — serve para fechar em números a regra que
+  // reproduz o caixa real de cada conta (BNK Digital: R$ 10.650,77).
+  useEffect(() => {
+    if (!accounts.length || loadingAccounting) return
+    fetchConsolidatedAccountingLedger()
+      .then((result) => {
+        console.log(
+          '[bank-accounts][diagnóstico] líquido tesouraria por conta × tipo de referência:',
+          JSON.stringify(result.netByAccountAndRefType, null, 2),
+        )
+        console.log(
+          '[bank-accounts][diagnóstico] saldos por conta:',
+          JSON.stringify(
+            result.accountSummaries.map((s) => ({ ...s })),
+            null,
+            2,
+          ),
+        )
+      })
+      .catch(() => {
+        /* diagnóstico é best-effort */
+      })
+  }, [accounts, loadingAccounting])
 
   useEffect(() => {
     fetchAccounts()

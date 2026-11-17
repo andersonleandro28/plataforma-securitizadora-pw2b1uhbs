@@ -55,6 +55,13 @@ export interface AccountingLedgerResult {
    * diagnóstico: quanto do saldo vem de espelhos automáticos.
    */
   bankMirrorNetByAccount: Record<string, number>
+  /**
+   * Diagnóstico (console): líquido (in − out) por conta × tipo de referência
+   * da tesouraria (ccb-bol, op-bol, op-liq, redemption, tax-redemption,
+   * manual-credit, sem ref). NÃO altera saldo algum — existe para reproduzir
+   * em números a decomposição que fecha no caixa real da conta.
+   */
+  netByAccountAndRefType?: Record<string, Record<string, number>>
 }
 
 export interface FetchAccountingOptions {
@@ -320,6 +327,8 @@ export async function fetchConsolidatedAccountingLedger(
 
   // 3. Transações do Tesoureiro
   const treasuryExternalRefs = new Set<string>()
+  // Diagnóstico: external_ref de cada transação de tesouraria lançada (id tt-*).
+  const txExternalRefById = new Map<string, string | null>()
   // Mapa external_ref -> { sentido, valor } das transações de tesouraria MANTIDAS
   // no livro. Usado na deduplicação simétrica com movimentacoes_caixa (passo 8):
   // uma movimentação de caixa que referencia o mesmo evento (mesma parcela,
@@ -331,6 +340,7 @@ export async function fetchConsolidatedAccountingLedger(
 
     const txType: 'in' | 'out' = tx.type === 'out' ? 'out' : 'in'
     const ref = tx.external_ref ? String(tx.external_ref) : null
+    txExternalRefById.set(`tt-${tx.id}`, ref)
     if (ref) {
       const movFlow = movsExternalRefs.get(ref)
       // Espelho já lançado como movimentação de caixa, no MESMO sentido: suprime
@@ -703,6 +713,15 @@ export async function fetchConsolidatedAccountingLedger(
     })
   })
 
+  // Diagnóstico: líquido (in − out) por conta × tipo de referência. NÃO altera
+  // saldo algum — só reproduz em números a decomposição da tesouraria.
+  const netByAccountAndRefType: Record<string, Record<string, number>> = {}
+  const refTypeOf = (externalRef?: string | null) => {
+    const ref = externalRef ? String(externalRef) : ''
+    const m = ref.match(/^(ccb-bol|op-bol|op-liq|redemption|tax-redemption|manual-credit)-/)
+    return m ? m[1] : 'sem-ref'
+  }
+
   // Ordenação cronológica crescente
   transactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
@@ -737,6 +756,12 @@ export async function fetchConsolidatedAccountingLedger(
     if (effectiveDelta !== 0 && (!cutoffDate || t.date <= cutoffDate)) {
       const accId = t.bank_account_id || activeBankId || 'default'
       balancesByAccount[accId] = (balancesByAccount[accId] ?? 0) + effectiveDelta
+      if (t.id.startsWith('tt-')) {
+        const rt = refTypeOf(txExternalRefById.get(t.id) || null)
+        netByAccountAndRefType[accId] = netByAccountAndRefType[accId] || {}
+        netByAccountAndRefType[accId][rt] =
+          (netByAccountAndRefType[accId][rt] ?? 0) + effectiveDelta
+      }
     }
     if (t.is_bank_mirror && (!cutoffDate || t.date <= cutoffDate)) {
       const accId = t.bank_account_id || activeBankId || 'default'
@@ -780,5 +805,6 @@ export async function fetchConsolidatedAccountingLedger(
     totalCashBalance,
     accountSummaries,
     bankMirrorNetByAccount,
+    netByAccountAndRefType,
   }
 }
