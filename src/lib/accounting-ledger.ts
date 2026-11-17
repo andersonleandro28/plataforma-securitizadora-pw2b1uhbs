@@ -17,6 +17,16 @@ export interface AccountingTransaction {
   description: string
   value: number
   accumulated_balance: number
+  /**
+   * true quando o lançamento é ESPELHO CONTÁBIL automático (parcela de CCB/
+   * Operação, liquidação, resgate ou imposto de resgate — criado por trigger de
+   * banco). Alimenta DRE/DFC/Livro Caixa e TAMBÉM o saldo bancário: provado em
+   * dados, os espelhos representam fluxo real da conta (entradas de parcelas e
+   * saídas de resgate passaram pelo banco). A deduplicação contra
+   * movimentacoes_caixa (passo 8) e contra boletos/expenses garante que cada
+   * evento entre uma única vez no saldo.
+   */
+  is_bank_mirror?: boolean
   bank_account_id?: string | null
   bank_account_info?: {
     bank_name: string
@@ -39,6 +49,27 @@ export interface AccountingLedgerResult {
   balancesByAccount: Record<string, number>
   totalCashBalance: number
   accountSummaries: BankAccountBalanceSummary[]
+  /**
+   * Líquido (entradas − saídas) das transações de tesouraria que são ESPELHOS
+   * contábeis automáticos (criadas por trigger) por conta bancária — apenas
+   * diagnóstico: quanto do saldo vem de espelhos automáticos.
+   */
+  bankMirrorNetByAccount: Record<string, number>
+  /**
+   * Diagnóstico (console): líquido (in − out) por conta × tipo de referência
+   * da tesouraria (ccb-bol, op-bol, op-liq, redemption, tax-redemption,
+   * manual-credit, sem ref). NÃO altera saldo algum — existe para reproduzir
+   * em números a decomposição que fecha no caixa real da conta.
+   */
+  netByAccountAndRefType?: Record<string, Record<string, number>>
+  /**
+   * Diagnóstico (console): líquido de lançamentos SEM conta bancária que NÃO
+   * somam em conta alguma (créditos manuais de tesouraria sem conta —
+   * lançamentos contábeis avulsos sem fluxo bancário — e despesas pagas sem
+   * conta espelhadas por transação de tesouraria). Provado em dados:
+   * BNK = −412,61 e Celcoin = 0.
+   */
+  unassignedNet?: number
 }
 
 export interface FetchAccountingOptions {
@@ -72,6 +103,12 @@ export function normalizeAccountingDate(value: string | null | undefined): strin
  * - Operações de crédito pagas (credit_operations)
  * - Resgates pagos (investment_redemptions)
  * - Movimentações de Caixa avulsas deduplicadas (movimentacoes_caixa)
+ *
+ * Cada transação carrega is_bank_mirror: true quando é espelho contábil
+ * automático (parcela/liquidação/resgate criado por trigger). Os espelhos
+ * permanecem na lista (DRE/DFC/Livro Caixa continuam vendo tudo) e TAMBÉM
+ * somam no saldo por conta bancária (balancesByAccount / accountSummaries):
+ * representam fluxo bancário real, já deduplicado contra movimentacoes_caixa.
  *
  * Garante consistência idêntica entre Livro Caixa (useAccounting / /admin/accounting),
  * Extrato Bancário (/admin/bank-accounts), DRE, DFC e Fluxo de Caixa Projetado (/reports).
@@ -131,7 +168,7 @@ export async function fetchConsolidatedAccountingLedger(
     supabase
       .from('treasury_transactions')
       .select(
-        'id, type, category, amount, description, date, external_ref, expense_id, bank_account_id',
+        'id, type, category, amount, description, date, external_ref, expense_id, bank_account_id, created_by, referencia_tipo, reference_id',
       )
       .is('deleted_at', null)
       .or('status.eq.Confirmado,status.is.null')
@@ -185,13 +222,6 @@ export async function fetchConsolidatedAccountingLedger(
     string,
     { bank_name: string; branch: string | null; account_number: string; is_active: boolean }
   >()
-  let activeBankId: string | null = null
-  let activeBankInfo: {
-    bank_name: string
-    branch: string | null
-    account_number: string
-    is_active: boolean
-  } | null = null
 
   ;(companyBanks || []).forEach((b: any) => {
     const info = {
@@ -201,28 +231,30 @@ export async function fetchConsolidatedAccountingLedger(
       is_active: Boolean(b.is_active),
     }
     bankMap.set(b.id, info)
-    if (b.is_active && !activeBankId) {
-      activeBankId = b.id
-      activeBankInfo = info
-    }
   })
 
-  if (!activeBankInfo && companyBanks && companyBanks.length > 0) {
-    const first = companyBanks[0]
-    activeBankId = first.id
-    activeBankInfo = {
-      bank_name: first.bank_name,
-      branch: first.branch,
-      account_number: first.account_number,
-      is_active: Boolean(first.is_active),
-    }
-  }
+  // Diagnóstico: líquido (in − out) de lançamentos SEM conta bancária que não
+  // somam em conta alguma (créditos manuais de tesouraria sem conta; despesas
+  // pagas sem conta espelhadas pela tesouraria). Provado em dados: BNK = −412,61.
+  let unassignedNet = 0
+  // Despesas já espelhadas pela tesouraria (tt.expense_id), para o passo 5 não
+  // somar a mesma despesa duas vezes no saldo global.
+  const ttExpenseIds = new Set<string>(
+    (tt || [])
+      .filter((tx: any) => !tx.deleted_at && (!tx.status || tx.status === 'Confirmado'))
+      .filter((tx: any) => tx.expense_id)
+      .map((tx: any) => String(tx.expense_id)),
+  )
 
+  // Lançamento sem conta explícita NÃO é atribuído a nenhuma conta bancária:
+  // cai apenas no saldo global (Livro Caixa/DRE/DFC). Atribuir tudo à conta
+  // ativa inflava artificialmente o caixa da conta principal (BNK Digital),
+  // absorvendo lançamentos operacionais que não passaram por ela.
   const resolveBank = (id?: string | null) => {
     if (id && bankMap.has(id)) {
       return { id, info: bankMap.get(id)! }
     }
-    return { id: activeBankId, info: activeBankInfo }
+    return { id: null, info: null }
   }
 
   const transactions: Omit<AccountingTransaction, 'accumulated_balance'>[] = []
@@ -246,6 +278,13 @@ export async function fetchConsolidatedAccountingLedger(
     })
   })
 
+  // Padrões de external_ref criados por TRIGGER de banco (espelhos contábeis
+  // automáticos, sem fluxo bancário real): parcelas de CCB (ccb-bol-…), parcelas
+  // de operação (op-bol-…), liquidação integral (op-liq-…), resgates
+  // (redemption-…) e imposto retido no resgate (tax-redemption-…). Lançamentos
+  // manuais de tesouraria (ex.: manual-credit-…) NÃO são espelhos.
+  const MIRROR_REF = /^(ccb-bol|op-bol|op-liq|redemption|tax-redemption)-/
+
   // 2. Aquisições CCB
   ;(recs || []).forEach((rec: any) => {
     const prof = Array.isArray(rec.profiles) ? rec.profiles[0] : rec.profiles
@@ -264,31 +303,82 @@ export async function fetchConsolidatedAccountingLedger(
     })
   })
 
-  // Coleta referências já presentes em movimentações de caixa
-  const movsExternalRefs = new Set<string>()
+  // Coleta referências já presentes em movimentações de caixa, guardando também o
+  // SENTIDO do fluxo (in/out) de cada movimentação. Usada no passo 3 para suprimir
+  // a transação de tesouraria espelho — de forma SIMÉTRICA: um espelho real de
+  // parcela/liquidação/resgate sempre tem o mesmo sentido do evento; colisão de
+  // referência com sentido oposto indica um lançamento legítimo e distinto, que
+  // deve ser mantido (corrige a supressão assimétrica do passo 3).
+  const movsExternalRefs = new Map<string, 'in' | 'out'>()
   ;(movs || []).forEach((m: any) => {
-    if (m.referencia_id) {
-      movsExternalRefs.add(`op-liq-${m.referencia_id}`)
-      movsExternalRefs.add(`redemption-${m.referencia_id}`)
-      if (m.referencia_numero) {
-        movsExternalRefs.add(`op-bol-${m.referencia_id}-${m.referencia_numero}`)
-        movsExternalRefs.add(String(m.referencia_numero))
-      }
+    if (!m.referencia_id) return
+    const flow: 'in' | 'out' = classifyMovimentacaoCaixaAccounting(m.tipo)
+    const refs = [`op-liq-${m.referencia_id}`, `redemption-${m.referencia_id}`]
+    if (m.referencia_numero) {
+      refs.push(`op-bol-${m.referencia_id}-${m.referencia_numero}`)
+      refs.push(`ccb-bol-${m.referencia_id}-${m.referencia_numero}`)
+      refs.push(String(m.referencia_numero))
     }
+    refs.forEach((ref) => {
+      if (!movsExternalRefs.has(ref)) movsExternalRefs.set(ref, flow)
+    })
   })
 
   // 3. Transações do Tesoureiro
   const treasuryExternalRefs = new Set<string>()
+  // Diagnóstico: external_ref de cada transação de tesouraria lançada (id tt-*).
+  const txExternalRefById = new Map<string, string | null>()
+  // Mapa external_ref -> { sentido, valor } das transações de tesouraria MANTIDAS
+  // no livro. Usado na deduplicação simétrica com movimentacoes_caixa (passo 8):
+  // uma movimentação de caixa que referencia o mesmo evento (mesma parcela,
+  // liquidação ou resgate) com o mesmo sentido não pode somar duas vezes no
+  // saldo da conta.
+  const treasuryRefTypes = new Map<string, { type: 'in' | 'out'; value: number; date: string }>()
   ;(tt || []).forEach((tx: any) => {
     if (isTaxProvisionTransaction(tx)) return
 
-    const ref = tx.external_ref ? String(tx.external_ref) : null
-    if (ref && movsExternalRefs.has(ref)) return
-    if (ref && treasuryExternalRefs.has(ref)) return
-    if (ref) treasuryExternalRefs.add(ref)
-
     const txType: 'in' | 'out' = tx.type === 'out' ? 'out' : 'in'
+    const ref = tx.external_ref ? String(tx.external_ref) : null
+    txExternalRefById.set(`tt-${tx.id}`, ref)
+    if (ref) {
+      const movFlow = movsExternalRefs.get(ref)
+      // Espelho já lançado como movimentação de caixa, no MESMO sentido: suprime
+      // a transação para não duplicar o evento no saldo. Sentido oposto não
+      // suprime — é lançamento legítimo e complementar. IMPORTANTE: mesmo
+      // suprimida, a referência fica registrada em treasuryRefTypes — é o passo 8
+      // que a consulta para NÃO lançar também a movimentação espelho. Registrar
+      // depois do return (como antes) fazia a dedup do passo 8 nunca casar.
+      if (movFlow && movFlow === txType) {
+        if (!treasuryRefTypes.has(ref)) {
+          treasuryRefTypes.set(ref, {
+            type: txType,
+            value: Number(tx.amount || 0),
+            date: normalizeAccountingDate(tx.date),
+          })
+        }
+        return
+      }
+      if (treasuryExternalRefs.has(ref)) return
+      treasuryExternalRefs.add(ref)
+      if (!treasuryRefTypes.has(ref)) {
+        treasuryRefTypes.set(ref, {
+          type: txType,
+          value: Number(tx.amount || 0),
+          date: normalizeAccountingDate(tx.date),
+        })
+      }
+    }
+
     const bInfo = resolveBank(tx.bank_account_id)
+    // Crédito manual de tesouraria SEM conta bancária (external_ref manual-credit-…,
+    // bank_account_id nulo): lançamento contábil avulso que nunca passou por conta
+    // real alguma. Provado em dados (BNK): R$ 52.511,28 — "Crédito Thecpay" 49.500,
+    // "Marcos Antônio" 3.000, juros 11,28 — herdados pela conta ativa e inflando
+    // artificialmente o caixa dela. Fica no livro (Extrato/DRE/DFC), mas NÃO soma
+    // no saldo de conta bancária alguma (unassignedNet, apenas diagnóstico).
+    const manualSemConta = Boolean(ref && ref.startsWith('manual-credit-')) && !bInfo.id
+    if (manualSemConta)
+      unassignedNet += txType === 'in' ? Number(tx.amount || 0) : -Number(tx.amount || 0)
     transactions.push({
       id: `tt-${tx.id}`,
       type: txType,
@@ -298,9 +388,43 @@ export async function fetchConsolidatedAccountingLedger(
       description: tx.description,
       value: Number(tx.amount || 0),
       date: normalizeAccountingDate(tx.date),
+      is_bank_mirror: Boolean(ref && MIRROR_REF.test(ref)) || manualSemConta,
       bank_account_id: bInfo.id,
       bank_account_info: bInfo.info,
     })
+  })
+
+  // Mapa recebível -> external_refs das parcelas (boletos) pagas, nas formas
+  // usadas pela tesouraria: ccb-bol-{recId}-{indice} e op-bol-{recId}-{indice},
+  // onde o índice é a posição 1-based no array boletos — que pode diferir do
+  // campo numero do boleto. Usado no passo 8 para casar movimentações de caixa
+  // que apontam para o recebível (ou para a parcela) com as transações espelho.
+  const recebivelParcelaRefs = new Map<string, Set<string>>()
+  ;(recs || []).forEach((rec: any) => {
+    const boletos = Array.isArray(rec.boletos) ? rec.boletos : []
+    const refs = new Set<string>()
+    boletos.forEach((bol: any, i: number) => {
+      const bolStatus = (bol.status || '').toLowerCase()
+      if (bolStatus !== 'pago' && bolStatus !== 'liquidado') return
+      refs.add(`ccb-bol-${rec.id}-${i + 1}`)
+      refs.add(`op-bol-${rec.id}-${i + 1}`)
+    })
+    if (refs.size > 0) recebivelParcelaRefs.set(rec.id, refs)
+  })
+
+  // Ponte operação ↔ recebível: movimentações de caixa de parcelas apontam para a
+  // OPERAÇÃO de crédito (referencia_id = credit_operations.id), enquanto as refs
+  // de tesouraria das parcelas usam o id do RECEBÍVEL (ccb-bol-{recId}-{n}).
+  // recebiveis_ccb.ccb_id liga os dois mundos; sem essa ponte o casamento do
+  // passo 8 nunca casa (causa do saldo ~R$ 172 mil acima na conta ativa).
+  const opIdToRecIds = new Map<string, string[]>()
+  ;(recs || []).forEach((rec: any) => {
+    if (rec.ccb_id) {
+      const key = String(rec.ccb_id)
+      const list = opIdToRecIds.get(key) || []
+      list.push(String(rec.id))
+      opIdToRecIds.set(key, list)
+    }
   })
 
   // 4. Boletos de CCB quitados (dedup com treasuryExternalRefs)
@@ -323,15 +447,24 @@ export async function fetchConsolidatedAccountingLedger(
 
       const parcela = i + 1
       const extRef = bol.external_ref ? String(bol.external_ref) : `ccb-bol-${rec.id}-${parcela}`
+      // A tesouraria pode ter registrado a mesma parcela com a forma op-bol-...
+      // (Operação) — ambas apontam para o índice 1-based do array boletos.
+      const altRef = `op-bol-${rec.id}-${parcela}`
 
-      if (treasuryExternalRefs.has(extRef)) return
-      treasuryExternalRefs.add(extRef)
+      // Já lançada pela tesouraria em QUALQUER uma das formas — a parcela entra
+      // uma única vez no livro.
+      if (treasuryExternalRefs.has(extRef) || treasuryExternalRefs.has(altRef)) return
 
       const val =
         Number(bol.valor || bol.unit_value || 0) +
         Number(bol.interest_applied || 0) +
         Number(bol.penalty_applied || 0)
       if (!val) return
+      treasuryExternalRefs.add(extRef)
+      treasuryExternalRefs.add(altRef)
+      const dataPagBoleto = normalizeAccountingDate(pDate)
+      treasuryRefTypes.set(extRef, { type: 'in', value: val, date: dataPagBoleto })
+      treasuryRefTypes.set(altRef, { type: 'in', value: val, date: dataPagBoleto })
 
       const bInfo = resolveBank(bol.bank_account_id)
       transactions.push({
@@ -341,6 +474,7 @@ export async function fetchConsolidatedAccountingLedger(
         category: 'Recebimento de Parcelas - CCB',
         description: `Recebimento Parcela ${bol.numero || bol.number || parcela} - CCB nº ${rec.ccb_id ? String(rec.ccb_id).substring(0, 8) : String(rec.id).substring(0, 8)} - Tomador: ${tomador}`,
         value: val,
+        is_bank_mirror: true,
         bank_account_id: bInfo.id,
         bank_account_info: bInfo.info,
       })
@@ -355,6 +489,10 @@ export async function fetchConsolidatedAccountingLedger(
       const sup = Array.isArray(exp.suppliers) ? exp.suppliers[0] : exp.suppliers
       const fornecedor = sup?.company_name
       const bInfo = resolveBank(exp.bank_account_id)
+      // Despesa paga SEM conta espelhada por transação de tesouraria (tt com
+      // expense_id e sem conta): o passo 3 já deixou de somá-la — não somar de
+      // novo aqui, senão a despesa sai duas vezes do saldo global.
+      if (!bInfo.id && exp.id && ttExpenseIds.has(String(exp.id))) return
       transactions.push({
         id: `exp-${exp.id}`,
         date: normalizeAccountingDate(exp.payment_date || exp.due_date),
@@ -405,6 +543,7 @@ export async function fetchConsolidatedAccountingLedger(
         category: 'Resgate de Investimento',
         description: `Resgate — Investidor: ${investor}`,
         value: Number(red.net_value || 0),
+        is_bank_mirror: true,
         bank_account_id: bInfo.id,
         bank_account_info: bInfo.info,
       })
@@ -455,6 +594,119 @@ export async function fetchConsolidatedAccountingLedger(
     }
 
     const type: 'in' | 'out' = classifyMovimentacaoCaixaAccounting(mov.tipo)
+
+    // Deduplicação simétrica Tesouraria ↔ Movimentações de Caixa (o espelho do
+    // passo 3): se esta movimentação referencia o MESMO evento financeiro que
+    // uma transação de tesouraria já lançada (mesma parcela de CCB/Operação,
+    // liquidação de recebível ou resgate), com o MESMO sentido de fluxo, ela
+    // NÃO pode somar de novo no saldo da conta. Formas de referência cobertas:
+    // op-liq-{id}, redemption-{id}, op-bol-{id}-{n} e ccb-bol-{id}-{n} — além do
+    // casamento complementar por índice de boleto + valor (parcela individual ou
+    // soma das já recebidas), que cobre o desalinhamento entre o campo numero da
+    // parcela e o índice 1-based usado pela tesouraria. Lançamentos de sentido
+    // oposto (ex.: tarifa complementar) nunca são suprimidos.
+    if (mov.referencia_id) {
+      const rid = String(mov.referencia_id)
+      // A movimentação pode apontar para a OPERAÇÃO de crédito (parcela_operacao)
+      // em vez do recebível — resolve via ponte ccb_id (opIdToRecIds).
+      const recIdsDaOperacao = opIdToRecIds.get(rid) || []
+      const refsCandidatas = [`op-liq-${rid}`, `redemption-${rid}`]
+      recIdsDaOperacao.forEach((recId) => {
+        refsCandidatas.push(`op-liq-${recId}`, `redemption-${recId}`)
+      })
+      if (mov.referencia_numero) {
+        refsCandidatas.push(`op-bol-${rid}-${mov.referencia_numero}`)
+        refsCandidatas.push(`ccb-bol-${rid}-${mov.referencia_numero}`)
+        recIdsDaOperacao.forEach((recId) => {
+          refsCandidatas.push(`op-bol-${recId}-${mov.referencia_numero}`)
+          refsCandidatas.push(`ccb-bol-${recId}-${mov.referencia_numero}`)
+        })
+      }
+      const mesmoSentidoExato = refsCandidatas.some(
+        (ref) => treasuryRefTypes.get(ref)?.type === type,
+      )
+
+      // Casamento complementar por índice de boleto: a movimentação referencia o
+      // recebível de CCB (diretamente ou via operação) e as transações de
+      // tesouraria das parcelas usam ccb-bol-{recId}-{indice}. Exige mesmo
+      // sentido de fluxo e valor compatível para só suprimir o espelho real.
+      let casouPorIndice = false
+      if (!mesmoSentidoExato) {
+        const conjuntos = [recebivelParcelaRefs.get(rid)]
+        recIdsDaOperacao.forEach((recId) => conjuntos.push(recebivelParcelaRefs.get(recId)))
+        const refsParcelas = conjuntos.find((s) => s && s.size > 0)
+        if (refsParcelas) {
+          const valoresMesmoSentido: number[] = []
+          treasuryRefTypes.forEach((info, ref) => {
+            if (refsParcelas.has(ref) && info.type === type) {
+              valoresMesmoSentido.push(info.value)
+            }
+          })
+          if (valoresMesmoSentido.length > 0) {
+            const movVal = Number(mov.valor || 0)
+            const soma = valoresMesmoSentido.reduce((a, b) => a + b, 0)
+            casouPorIndice =
+              valoresMesmoSentido.some((v) => Math.abs(v - movVal) < 0.015) ||
+              Math.abs(soma - movVal) < 0.015
+          }
+        }
+      }
+
+      // Última rede de segurança: movimentações que espelham um evento (parcela
+      // da operação, recebível, liquidação) casadas por valor + data + sentido
+      // contra as refs de evento da tesouraria — cobre ccb_id nulo/desalinhado.
+      let casouPorValorData = false
+      if (!mesmoSentidoExato && !casouPorIndice) {
+        const refTipoNorm = refTipo
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .trim()
+        const ehEspelhoDeEvento = [
+          'parcela_operacao',
+          'recebivel',
+          'liquidacao_recebivel',
+          'parcela',
+          'boleto',
+        ].includes(refTipoNorm)
+        if (ehEspelhoDeEvento) {
+          const movVal = Number(mov.valor || 0)
+          const movMs = new Date(mov.created_at).getTime()
+          casouPorValorData = [...treasuryRefTypes.entries()].some(([ref, info]) => {
+            if (info.type !== type || Math.abs(info.value - movVal) >= 0.015) return false
+            if (
+              !ref.startsWith('ccb-bol-') &&
+              !ref.startsWith('op-bol-') &&
+              !ref.startsWith('op-liq-')
+            )
+              return false
+            const ms = new Date(info.date).getTime()
+            return !isNaN(ms) && !isNaN(movMs) && Math.abs(ms - movMs) <= 7 * 86400000
+          })
+        }
+      }
+
+      if (mesmoSentidoExato || casouPorIndice || casouPorValorData) return
+    }
+
+    // Movimentação de caixa que referencia um evento automático (parcela,
+    // recebível, liquidação, resgate) é espelho contábil: entrou no livro por
+    // trigger, não por fluxo bancário manual. Não soma no saldo da conta.
+    const refTipoNormMirror = refTipo
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+    const ehMovEspelho =
+      Boolean(mov.referencia_id) &&
+      [
+        'parcela_operacao',
+        'recebivel',
+        'liquidacao_recebivel',
+        'parcela',
+        'boleto',
+        'resgate_investimento',
+        'credit_operation',
+      ].includes(refTipoNormMirror)
+
     const category =
       categoriaLabel[(mov.categoria || '').toLowerCase()] ||
       mov.categoria ||
@@ -467,10 +719,35 @@ export async function fetchConsolidatedAccountingLedger(
       category,
       description: mov.descricao || category,
       value: Number(mov.valor || 0),
+      is_bank_mirror: ehMovEspelho,
       bank_account_id: bInfo.id,
       bank_account_info: bInfo.info,
     })
   })
+
+  // Diagnóstico: líquido (in − out) por conta × FONTE completa do livro caixa —
+  // tesouraria por tipo de referência (tt-ccb-bol, tt-manual-credit, tt-sem-ref…),
+  // movimentações de caixa, boletos CCB, despesas, operações de crédito, resgates,
+  // aquisições de CCB e captações. NÃO altera saldo algum: reproduz em números
+  // TODA a composição do saldo de cada conta, incluindo o que a tela atribui à
+  // conta ativa — a base para provar a regra que fecha o caixa real da BNK
+  // Digital (R$ 10.650,77).
+  const netByAccountAndRefType: Record<string, Record<string, number>> = {}
+  const refTypeOf = (externalRef?: string | null) => {
+    const ref = externalRef ? String(externalRef) : ''
+    const m = ref.match(/^(ccb-bol|op-bol|op-liq|redemption|tax-redemption|manual-credit)-/)
+    return m ? m[1] : 'sem-ref'
+  }
+  const sourceOf = (tx: Omit<AccountingTransaction, 'accumulated_balance'>) => {
+    if (tx.id.startsWith('tt-')) return `tt-${refTypeOf(txExternalRefById.get(tx.id) || null)}`
+    if (tx.id.startsWith('mov-')) return 'mov-caixa'
+    if (tx.id.startsWith('ccb-bol-')) return 'boletos-ccb'
+    if (tx.id.startsWith('exp-')) return 'despesas'
+    if (tx.id.startsWith('op-out-')) return 'operacoes-credito'
+    if (tx.id.startsWith('red-')) return 'resgates'
+    if (tx.id.startsWith('acq-')) return 'aquisicoes-ccb'
+    return 'captacoes'
+  }
 
   // Ordenação cronológica crescente
   transactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
@@ -478,6 +755,8 @@ export async function fetchConsolidatedAccountingLedger(
   // Calcula saldos acumulados e mapa de saldo por conta bancária
   let runningGlobal = 0
   const balancesByAccount: Record<string, number> = {}
+  // Líquido (in − out) dos ESPELHOS contábeis por conta — apenas diagnóstico.
+  const bankMirrorNetByAccount: Record<string, number> = {}
 
   // Inicializa mapa de contas conhecidas
   ;(companyBanks || []).forEach((b: any) => {
@@ -491,11 +770,33 @@ export async function fetchConsolidatedAccountingLedger(
   for (const t of transactions) {
     const delta = t.type === 'in' ? t.value : -t.value
     runningGlobal += delta
-    const accId = t.bank_account_id || activeBankId || 'default'
 
-    // Se houver asOfDate, só acumula nos saldos de conta se t.date <= cutoffDate
-    if (!cutoffDate || t.date <= cutoffDate) {
-      balancesByAccount[accId] = (balancesByAccount[accId] ?? 0) + delta
+    // Espelho contábil (parcela ccb-bol/op-bol, liquidação op-liq, resgate
+    // redemption) representa FLUXO BANCÁRIO REAL e volta a somar no saldo da
+    // conta: provado em dados vivos, as entradas de parcelas e as saídas de
+    // resgate passaram pela conta (a supressão v0.0.1183 zerava ~R$ 172 mil de
+    // entradas reais na BNK Digital, produzindo o saldo −R$ 31.991,44). Cada
+    // evento entra uma única vez porque o passo 8 deduplica as movimentações de
+    // caixa que repetem o mesmo evento (mesmo sentido) e o passo 4/5/7 dedup
+    // boletos, despesas e resgates contra a tesouraria.
+    // EXCEÇÃO (regra provada em dados, fechar em R$ 10.650,77): lançamento
+    // marcado como espelho PORQUE é crédito manual de tesouraria sem conta
+    // (manualSemConta) NÃO tem fluxo bancário real — não soma em conta alguma.
+    const isMirrorSemFluxo = t.is_bank_mirror && !t.bank_account_id
+    if (!isMirrorSemFluxo && (!cutoffDate || t.date <= cutoffDate)) {
+      const accId = t.bank_account_id
+      if (accId) {
+        balancesByAccount[accId] = (balancesByAccount[accId] ?? 0) + delta
+        const src = sourceOf(t)
+        netByAccountAndRefType[accId] = netByAccountAndRefType[accId] || {}
+        netByAccountAndRefType[accId][src] = (netByAccountAndRefType[accId][src] ?? 0) + delta
+      }
+    }
+    if (t.is_bank_mirror && !isMirrorSemFluxo && (!cutoffDate || t.date <= cutoffDate)) {
+      const accId = t.bank_account_id
+      if (accId) {
+        bankMirrorNetByAccount[accId] = (bankMirrorNetByAccount[accId] ?? 0) + delta
+      }
     }
 
     calculatedTransactions.push({
@@ -505,7 +806,9 @@ export async function fetchConsolidatedAccountingLedger(
   }
 
   // Se options.asOfDate foi passado, o saldo total de caixa é a soma de todas as contas da securitizadora até essa data
-  const totalCashBalance = Object.values(balancesByAccount).reduce((sum, v) => sum + (v || 0), 0)
+  const totalCashBalance = Object.entries(balancesByAccount)
+    .filter(([accId]) => accId !== 'default')
+    .reduce((sum, [, v]) => sum + (v || 0), 0)
 
   // Monta resumo das contas
   const accountSummaries: BankAccountBalanceSummary[] = (companyBanks || []).map((b: any) => ({
@@ -532,5 +835,8 @@ export async function fetchConsolidatedAccountingLedger(
     balancesByAccount,
     totalCashBalance,
     accountSummaries,
+    bankMirrorNetByAccount,
+    netByAccountAndRefType,
+    unassignedNet,
   }
 }

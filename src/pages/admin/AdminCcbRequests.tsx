@@ -48,6 +48,8 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { AdminNewCcbDialog } from '@/components/admin/AdminNewCcbDialog'
+import { QuitCcbDialog } from '@/components/admin/QuitCcbDialog'
+import { HandCoins } from 'lucide-react'
 
 export default function AdminCcbRequests() {
   const { user } = useAuth()
@@ -79,6 +81,23 @@ export default function AdminCcbRequests() {
 
   // Modal de Nova Solicitação Interna de CCB
   const [newCcbOpen, setNewCcbOpen] = useState(false)
+
+  // Diálogo de quitação de CCB
+  const [quitCcb, setQuitCcb] = useState<any>(null)
+
+  // Solicitações elegíveis para quitação (ainda não baixadas)
+  const podeQuitar = (req: any) => {
+    const st = String(req?.status || '').toLowerCase()
+    return ![
+      'quitado',
+      'liquidado',
+      'pago',
+      'reprovada',
+      'rejeitada',
+      'cancelada',
+      'excluido',
+    ].includes(st)
+  }
 
   // Filtros de busca e status na listagem
   const [searchTerm, setSearchTerm] = useState('')
@@ -679,6 +698,20 @@ export default function AdminCcbRequests() {
                           <Button
                             variant="secondary"
                             size="sm"
+                            className="text-emerald-700 border-emerald-600/30 hover:bg-emerald-50"
+                            onClick={() => setQuitCcb(req)}
+                            disabled={!podeQuitar(req)}
+                            title={
+                              podeQuitar(req)
+                                ? 'Calcular quitação e aplicar descontos'
+                                : 'Esta CCB já foi baixada'
+                            }
+                          >
+                            <HandCoins className="h-4 w-4 mr-1" /> Quitar
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
                             onClick={() => {
                               setManageId(req.id)
                               setStatusVal(req.status)
@@ -1089,6 +1122,14 @@ export default function AdminCcbRequests() {
         onSuccess={() => {
           fetchData()
         }}
+      />
+
+      {/* Diálogo de quitação de CCB com cálculo item a item */}
+      <QuitCcbDialog
+        ccb={quitCcb}
+        open={!!quitCcb}
+        onOpenChange={(v) => !v && setQuitCcb(null)}
+        onSuccess={() => fetchData()}
       />
     </div>
   )
