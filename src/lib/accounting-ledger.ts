@@ -264,38 +264,53 @@ export async function fetchConsolidatedAccountingLedger(
     })
   })
 
-  // Coleta referências já presentes em movimentações de caixa
-  const movsExternalRefs = new Set<string>()
+  // Coleta referências já presentes em movimentações de caixa, guardando também o
+  // SENTIDO do fluxo (in/out) de cada movimentação. Usada no passo 3 para suprimir
+  // a transação de tesouraria espelho — de forma SIMÉTRICA: um espelho real de
+  // parcela/liquidação/resgate sempre tem o mesmo sentido do evento; colisão de
+  // referência com sentido oposto indica um lançamento legítimo e distinto, que
+  // deve ser mantido (corrige a supressão assimétrica do passo 3).
+  const movsExternalRefs = new Map<string, 'in' | 'out'>()
   ;(movs || []).forEach((m: any) => {
-    if (m.referencia_id) {
-      movsExternalRefs.add(`op-liq-${m.referencia_id}`)
-      movsExternalRefs.add(`redemption-${m.referencia_id}`)
-      if (m.referencia_numero) {
-        movsExternalRefs.add(`op-bol-${m.referencia_id}-${m.referencia_numero}`)
-        movsExternalRefs.add(String(m.referencia_numero))
-      }
+    if (!m.referencia_id) return
+    const flow: 'in' | 'out' = classifyMovimentacaoCaixaAccounting(m.tipo)
+    const refs = [`op-liq-${m.referencia_id}`, `redemption-${m.referencia_id}`]
+    if (m.referencia_numero) {
+      refs.push(`op-bol-${m.referencia_id}-${m.referencia_numero}`)
+      refs.push(`ccb-bol-${m.referencia_id}-${m.referencia_numero}`)
+      refs.push(String(m.referencia_numero))
     }
+    refs.forEach((ref) => {
+      if (!movsExternalRefs.has(ref)) movsExternalRefs.set(ref, flow)
+    })
   })
 
   // 3. Transações do Tesoureiro
   const treasuryExternalRefs = new Set<string>()
-  // Mapa external_ref -> tipo ('in' | 'out') de TODAS as transações de tesouraria.
-  // Usado na deduplicação simétrica com movimentacoes_caixa (passo 8): uma
-  // movimentação de caixa que referencia o mesmo evento (mesma parcela,
-  // liquidação ou resgate) não pode somar duas vezes no saldo da conta.
-  const treasuryRefTypes = new Map<string, 'in' | 'out'>()
+  // Mapa external_ref -> { sentido, valor } das transações de tesouraria MANTIDAS
+  // no livro. Usado na deduplicação simétrica com movimentacoes_caixa (passo 8):
+  // uma movimentação de caixa que referencia o mesmo evento (mesma parcela,
+  // liquidação ou resgate) com o mesmo sentido não pode somar duas vezes no
+  // saldo da conta.
+  const treasuryRefTypes = new Map<string, { type: 'in' | 'out'; value: number }>()
   ;(tt || []).forEach((tx: any) => {
     if (isTaxProvisionTransaction(tx)) return
 
+    const txType: 'in' | 'out' = tx.type === 'out' ? 'out' : 'in'
     const ref = tx.external_ref ? String(tx.external_ref) : null
-    if (ref && movsExternalRefs.has(ref)) return
-    if (ref && treasuryExternalRefs.has(ref)) return
     if (ref) {
+      const movFlow = movsExternalRefs.get(ref)
+      // Espelho já lançado como movimentação de caixa, no MESMO sentido: suprime
+      // a transação para não duplicar o evento no saldo. Sentido oposto não
+      // suprime — é lançamento legítimo e complementar.
+      if (movFlow && movFlow === txType) return
+      if (treasuryExternalRefs.has(ref)) return
       treasuryExternalRefs.add(ref)
-      if (!treasuryRefTypes.has(ref)) treasuryRefTypes.set(ref, tx.type === 'out' ? 'out' : 'in')
+      if (!treasuryRefTypes.has(ref)) {
+        treasuryRefTypes.set(ref, { type: txType, value: Number(tx.amount || 0) })
+      }
     }
 
-    const txType: 'in' | 'out' = tx.type === 'out' ? 'out' : 'in'
     const bInfo = resolveBank(tx.bank_account_id)
     transactions.push({
       id: `tt-${tx.id}`,
@@ -309,6 +324,24 @@ export async function fetchConsolidatedAccountingLedger(
       bank_account_id: bInfo.id,
       bank_account_info: bInfo.info,
     })
+  })
+
+  // Mapa recebível -> external_refs das parcelas (boletos) pagas, nas formas
+  // usadas pela tesouraria: ccb-bol-{recId}-{indice} e op-bol-{recId}-{indice},
+  // onde o índice é a posição 1-based no array boletos — que pode diferir do
+  // campo numero do boleto. Usado no passo 8 para casar movimentações de caixa
+  // que apontam para o recebível (ou para a parcela) com as transações espelho.
+  const recebivelParcelaRefs = new Map<string, Set<string>>()
+  ;(recs || []).forEach((rec: any) => {
+    const boletos = Array.isArray(rec.boletos) ? rec.boletos : []
+    const refs = new Set<string>()
+    boletos.forEach((bol: any, i: number) => {
+      const bolStatus = (bol.status || '').toLowerCase()
+      if (bolStatus !== 'pago' && bolStatus !== 'liquidado') return
+      refs.add(`ccb-bol-${rec.id}-${i + 1}`)
+      refs.add(`op-bol-${rec.id}-${i + 1}`)
+    })
+    if (refs.size > 0) recebivelParcelaRefs.set(rec.id, refs)
   })
 
   // 4. Boletos de CCB quitados (dedup com treasuryExternalRefs)
@@ -331,15 +364,23 @@ export async function fetchConsolidatedAccountingLedger(
 
       const parcela = i + 1
       const extRef = bol.external_ref ? String(bol.external_ref) : `ccb-bol-${rec.id}-${parcela}`
+      // A tesouraria pode ter registrado a mesma parcela com a forma op-bol-...
+      // (Operação) — ambas apontam para o índice 1-based do array boletos.
+      const altRef = `op-bol-${rec.id}-${parcela}`
 
-      if (treasuryExternalRefs.has(extRef)) return
-      treasuryExternalRefs.add(extRef)
+      // Já lançada pela tesouraria em QUALQUER uma das formas — a parcela entra
+      // uma única vez no livro.
+      if (treasuryExternalRefs.has(extRef) || treasuryExternalRefs.has(altRef)) return
 
       const val =
         Number(bol.valor || bol.unit_value || 0) +
         Number(bol.interest_applied || 0) +
         Number(bol.penalty_applied || 0)
       if (!val) return
+      treasuryExternalRefs.add(extRef)
+      treasuryExternalRefs.add(altRef)
+      treasuryRefTypes.set(extRef, { type: 'in', value: val })
+      treasuryRefTypes.set(altRef, { type: 'in', value: val })
 
       const bInfo = resolveBank(bol.bank_account_id)
       transactions.push({
@@ -467,21 +508,49 @@ export async function fetchConsolidatedAccountingLedger(
     // Deduplicação simétrica Tesouraria ↔ Movimentações de Caixa (o espelho do
     // passo 3): se esta movimentação referencia o MESMO evento financeiro que
     // uma transação de tesouraria já lançada (mesma parcela de CCB/Operação,
-    // liquidação de recebível ou resgate) — via external_ref, op-bol-{id}-{n},
-    // op-liq-{id} ou redemption-{id} — ela NÃO pode somar de novo no saldo da
-    // conta. Corrige a dupla contagem das parcelas cuja movimentação ficou sem
-    // conta bancária vinculada e foi herdada pela conta principal. Exige ainda
-    // o mesmo sentido de fluxo (entrada/saída) para que lançamentos
-    // complementares de sinal oposto (ex.: tarifa) não sejam suprimidos.
+    // liquidação de recebível ou resgate), com o MESMO sentido de fluxo, ela
+    // NÃO pode somar de novo no saldo da conta. Formas de referência cobertas:
+    // op-liq-{id}, redemption-{id}, op-bol-{id}-{n} e ccb-bol-{id}-{n} — além do
+    // casamento complementar por índice de boleto + valor (parcela individual ou
+    // soma das já recebidas), que cobre o desalinhamento entre o campo numero da
+    // parcela e o índice 1-based usado pela tesouraria. Lançamentos de sentido
+    // oposto (ex.: tarifa complementar) nunca são suprimidos.
     if (mov.referencia_id) {
-      const refsCandidatas = [`op-liq-${mov.referencia_id}`, `redemption-${mov.referencia_id}`]
+      const rid = String(mov.referencia_id)
+      const refsCandidatas = [`op-liq-${rid}`, `redemption-${rid}`]
       if (mov.referencia_numero) {
-        refsCandidatas.push(`op-bol-${mov.referencia_id}-${mov.referencia_numero}`)
+        refsCandidatas.push(`op-bol-${rid}-${mov.referencia_numero}`)
+        refsCandidatas.push(`ccb-bol-${rid}-${mov.referencia_numero}`)
       }
-      const jaNaTesouraria = refsCandidatas.some((ref) => treasuryExternalRefs.has(ref))
-      if (jaNaTesouraria && refsCandidatas.length === 1) return
-      const mesmoSentido = refsCandidatas.some((ref) => treasuryRefTypes.get(ref) === type)
-      if (jaNaTesouraria && mesmoSentido) return
+      const mesmoSentidoExato = refsCandidatas.some(
+        (ref) => treasuryRefTypes.get(ref)?.type === type,
+      )
+
+      // Casamento complementar por índice de boleto: a movimentação referencia o
+      // recebível de CCB e as transações de tesouraria das parcelas usam
+      // ccb-bol-{recId}-{indice}. Exige mesmo sentido de fluxo e valor
+      // compatível para só suprimir o espelho real.
+      let casouPorIndice = false
+      if (!mesmoSentidoExato) {
+        const refsParcelas = recebivelParcelaRefs.get(rid)
+        if (refsParcelas) {
+          const valoresMesmoSentido: number[] = []
+          treasuryRefTypes.forEach((info, ref) => {
+            if (refsParcelas.has(ref) && info.type === type) {
+              valoresMesmoSentido.push(info.value)
+            }
+          })
+          if (valoresMesmoSentido.length > 0) {
+            const movVal = Number(mov.valor || 0)
+            const soma = valoresMesmoSentido.reduce((a, b) => a + b, 0)
+            casouPorIndice =
+              valoresMesmoSentido.some((v) => Math.abs(v - movVal) < 0.015) ||
+              Math.abs(soma - movVal) < 0.015
+          }
+        }
+      }
+
+      if (mesmoSentidoExato || casouPorIndice) return
     }
 
     const category =
