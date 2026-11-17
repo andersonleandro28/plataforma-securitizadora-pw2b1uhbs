@@ -218,11 +218,15 @@ export async function fetchConsolidatedAccountingLedger(
     }
   }
 
+  // Lançamento sem conta explícita NÃO é atribuído a nenhuma conta bancária:
+  // cai apenas no saldo global (Livro Caixa/DRE/DFC). Atribuir tudo à conta
+  // ativa inflava artificialmente o caixa da conta principal (BNK Digital),
+  // absorvendo lançamentos operacionais que não passaram por ela.
   const resolveBank = (id?: string | null) => {
     if (id && bankMap.has(id)) {
       return { id, info: bankMap.get(id)! }
     }
-    return { id: activeBankId, info: activeBankInfo }
+    return { id: null, info: null }
   }
 
   const transactions: Omit<AccountingTransaction, 'accumulated_balance'>[] = []
