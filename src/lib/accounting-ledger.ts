@@ -279,13 +279,21 @@ export async function fetchConsolidatedAccountingLedger(
 
   // 3. Transações do Tesoureiro
   const treasuryExternalRefs = new Set<string>()
+  // Mapa external_ref -> tipo ('in' | 'out') de TODAS as transações de tesouraria.
+  // Usado na deduplicação simétrica com movimentacoes_caixa (passo 8): uma
+  // movimentação de caixa que referencia o mesmo evento (mesma parcela,
+  // liquidação ou resgate) não pode somar duas vezes no saldo da conta.
+  const treasuryRefTypes = new Map<string, 'in' | 'out'>()
   ;(tt || []).forEach((tx: any) => {
     if (isTaxProvisionTransaction(tx)) return
 
     const ref = tx.external_ref ? String(tx.external_ref) : null
     if (ref && movsExternalRefs.has(ref)) return
     if (ref && treasuryExternalRefs.has(ref)) return
-    if (ref) treasuryExternalRefs.add(ref)
+    if (ref) {
+      treasuryExternalRefs.add(ref)
+      if (!treasuryRefTypes.has(ref)) treasuryRefTypes.set(ref, tx.type === 'out' ? 'out' : 'in')
+    }
 
     const txType: 'in' | 'out' = tx.type === 'out' ? 'out' : 'in'
     const bInfo = resolveBank(tx.bank_account_id)
@@ -455,6 +463,27 @@ export async function fetchConsolidatedAccountingLedger(
     }
 
     const type: 'in' | 'out' = classifyMovimentacaoCaixaAccounting(mov.tipo)
+
+    // Deduplicação simétrica Tesouraria ↔ Movimentações de Caixa (o espelho do
+    // passo 3): se esta movimentação referencia o MESMO evento financeiro que
+    // uma transação de tesouraria já lançada (mesma parcela de CCB/Operação,
+    // liquidação de recebível ou resgate) — via external_ref, op-bol-{id}-{n},
+    // op-liq-{id} ou redemption-{id} — ela NÃO pode somar de novo no saldo da
+    // conta. Corrige a dupla contagem das parcelas cuja movimentação ficou sem
+    // conta bancária vinculada e foi herdada pela conta principal. Exige ainda
+    // o mesmo sentido de fluxo (entrada/saída) para que lançamentos
+    // complementares de sinal oposto (ex.: tarifa) não sejam suprimidos.
+    if (mov.referencia_id) {
+      const refsCandidatas = [`op-liq-${mov.referencia_id}`, `redemption-${mov.referencia_id}`]
+      if (mov.referencia_numero) {
+        refsCandidatas.push(`op-bol-${mov.referencia_id}-${mov.referencia_numero}`)
+      }
+      const jaNaTesouraria = refsCandidatas.some((ref) => treasuryExternalRefs.has(ref))
+      if (jaNaTesouraria && refsCandidatas.length === 1) return
+      const mesmoSentido = refsCandidatas.some((ref) => treasuryRefTypes.get(ref) === type)
+      if (jaNaTesouraria && mesmoSentido) return
+    }
+
     const category =
       categoriaLabel[(mov.categoria || '').toLowerCase()] ||
       mov.categoria ||
