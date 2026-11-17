@@ -27,6 +27,12 @@ export interface AccountingTransaction {
    * evento entre uma única vez no saldo.
    */
   is_bank_mirror?: boolean
+  /**
+   * true quando o lançamento foi suprimido do SALDO pela deduplicação
+   * (passo 8): permanece na listagem do Livro Caixa, mas é ignorado no
+   * acumulado (runningGlobal) e nos saldos por conta bancária.
+   */
+  dedup_suppressed?: boolean
   bank_account_id?: string | null
   bank_account_info?: {
     bank_name: string
