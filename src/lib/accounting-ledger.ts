@@ -39,6 +39,13 @@ export interface AccountingLedgerResult {
   balancesByAccount: Record<string, number>
   totalCashBalance: number
   accountSummaries: BankAccountBalanceSummary[]
+  /**
+   * Líquido (entradas − saídas) das transações de tesouraria que são ESPELHOS
+   * contábeis automáticos (criadas pelo sistema, sem created_by) por conta
+   * bancária. Elas alimentam DRE/DFC/Livro Caixa, mas não representam fluxo
+   * real da conta — por isso são subtraídas APENAS do saldo exibido por conta.
+   */
+  bankMirrorNetByAccount: Record<string, number>
 }
 
 export interface FetchAccountingOptions {
@@ -131,7 +138,7 @@ export async function fetchConsolidatedAccountingLedger(
     supabase
       .from('treasury_transactions')
       .select(
-        'id, type, category, amount, description, date, external_ref, expense_id, bank_account_id',
+        'id, type, category, amount, description, date, external_ref, expense_id, bank_account_id, created_by, referencia_tipo, reference_id',
       )
       .is('deleted_at', null)
       .or('status.eq.Confirmado,status.is.null')
