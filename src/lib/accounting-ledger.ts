@@ -20,8 +20,11 @@ export interface AccountingTransaction {
   /**
    * true quando o lançamento é ESPELHO CONTÁBIL automático (parcela de CCB/
    * Operação, liquidação, resgate ou imposto de resgate — criado por trigger de
-   * banco, sem fluxo bancário real). Alimenta DRE/DFC/Livro Caixa, mas é
-   * excluído do saldo exibido por conta na tela Contas Bancárias.
+   * banco). Alimenta DRE/DFC/Livro Caixa e TAMBÉM o saldo bancário: provado em
+   * dados, os espelhos representam fluxo real da conta (entradas de parcelas e
+   * saídas de resgate passaram pelo banco). A deduplicação contra
+   * movimentacoes_caixa (passo 8) e contra boletos/expenses garante que cada
+   * evento entre uma única vez no saldo.
    */
   is_bank_mirror?: boolean
   bank_account_id?: string | null
@@ -48,9 +51,8 @@ export interface AccountingLedgerResult {
   accountSummaries: BankAccountBalanceSummary[]
   /**
    * Líquido (entradas − saídas) das transações de tesouraria que são ESPELHOS
-   * contábeis automáticos (criadas pelo sistema, sem created_by) por conta
-   * bancária. Elas alimentam DRE/DFC/Livro Caixa, mas não representam fluxo
-   * real da conta — por isso são subtraídas APENAS do saldo exibido por conta.
+   * contábeis automáticos (criadas por trigger) por conta bancária — apenas
+   * diagnóstico: quanto do saldo vem de espelhos automáticos.
    */
   bankMirrorNetByAccount: Record<string, number>
 }
@@ -89,9 +91,9 @@ export function normalizeAccountingDate(value: string | null | undefined): strin
  *
  * Cada transação carrega is_bank_mirror: true quando é espelho contábil
  * automático (parcela/liquidação/resgate criado por trigger). Os espelhos
- * permanecem na lista (DRE/DFC/Livro Caixa continuam vendo tudo), mas o saldo
- * por conta bancária (balancesByAccount / accountSummaries) soma apenas o
- * fluxo bancário real, deduplicado contra movimentacoes_caixa.
+ * permanecem na lista (DRE/DFC/Livro Caixa continuam vendo tudo) e TAMBÉM
+ * somam no saldo por conta bancária (balancesByAccount / accountSummaries):
+ * representam fluxo bancário real, já deduplicado contra movimentacoes_caixa.
  *
  * Garante consistência idêntica entre Livro Caixa (useAccounting / /admin/accounting),
  * Extrato Bancário (/admin/bank-accounts), DRE, DFC e Fluxo de Caixa Projetado (/reports).
@@ -723,11 +725,15 @@ export async function fetchConsolidatedAccountingLedger(
     const delta = t.type === 'in' ? t.value : -t.value
     runningGlobal += delta
 
-    // Espelho contábil NÃO soma no saldo da conta bancária: é lançamento
-    // contábil sem fluxo bancário real (parcela, liquidação, resgate, imposto
-    // de resgate criados por trigger). Permanece na lista para DRE/DFC/Livro
-    // Caixa; o saldo exibido por conta passa a refletir só o caixa real.
-    const effectiveDelta = t.is_bank_mirror ? 0 : delta
+    // Espelho contábil (parcela ccb-bol/op-bol, liquidação op-liq, resgate
+    // redemption) representa FLUXO BANCÁRIO REAL e volta a somar no saldo da
+    // conta: provado em dados vivos, as entradas de parcelas e as saídas de
+    // resgate passaram pela conta (a supressão v0.0.1183 zerava ~R$ 172 mil de
+    // entradas reais na BNK Digital, produzindo o saldo −R$ 31.991,44). Cada
+    // evento entra uma única vez porque o passo 8 deduplica as movimentações de
+    // caixa que repetem o mesmo evento (mesmo sentido) e o passo 4/5/7 dedup
+    // boletos, despesas e resgates contra a tesouraria.
+    const effectiveDelta = delta
     if (effectiveDelta !== 0 && (!cutoffDate || t.date <= cutoffDate)) {
       const accId = t.bank_account_id || activeBankId || 'default'
       balancesByAccount[accId] = (balancesByAccount[accId] ?? 0) + effectiveDelta
