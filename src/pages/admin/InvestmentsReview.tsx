@@ -1615,8 +1615,32 @@ export default function InvestmentsReview() {
                         </TableCell>
                         <TableCell>{formatDate(red.updated_at || red.created_at)}</TableCell>
                         <TableCell className="text-xs">
-                          {red.bank_name || red.bank_account ? (
+                          {red.payment_method === 'pix' ? (
                             <div className="space-y-0.5 leading-tight">
+                              <Badge
+                                variant="outline"
+                                className="bg-teal-100 text-teal-800 border-teal-200 text-[10px]"
+                              >
+                                PIX
+                              </Badge>
+                              <div className="font-medium text-foreground">
+                                Chave: {red.pix_key || '—'}
+                              </div>
+                              <div className="text-muted-foreground">
+                                Titular: {red.bank_holder_name || '—'}
+                                {red.bank_holder_document
+                                  ? ` • ${red.bank_holder_document.length > 11 ? 'CNPJ' : 'CPF'} ${maskDocument(red.bank_holder_document, red.bank_holder_document.length > 11 ? 'pj' : 'pf')}`
+                                  : ''}
+                              </div>
+                            </div>
+                          ) : red.bank_name || red.bank_account ? (
+                            <div className="space-y-0.5 leading-tight">
+                              <Badge
+                                variant="outline"
+                                className="bg-slate-100 text-slate-800 border-slate-200 text-[10px]"
+                              >
+                                TED
+                              </Badge>
                               <div className="font-medium text-foreground">
                                 {[red.bank_code, red.bank_name].filter(Boolean).join(' — ') ||
                                   red.bank_name}

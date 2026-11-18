@@ -47,6 +47,8 @@ interface AdminRequestRedemptionDialogProps {
   onSuccess?: () => void
 }
 
+type PaymentMethod = 'ted' | 'pix'
+
 const parseFlexibleNumber = (raw: string): number => {
   if (!raw) return 0
   const normalized = raw.replace(/\s/g, '').replace(/R\$/gi, '')
@@ -72,6 +74,7 @@ export function AdminRequestRedemptionDialog({
   const [bankOptions, setBankOptions] = useState<UserBankAccountOption[]>([])
   const [loadingBanks, setLoadingBanks] = useState(false)
   const [amountInput, setAmountInput] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('ted')
   const [form, setForm] = useState({
     bank_code: '',
     bank_name: '',
@@ -80,6 +83,7 @@ export function AdminRequestRedemptionDialog({
     bank_account_type: '',
     bank_holder_name: '',
     bank_holder_document: '',
+    pix_key: '',
     admin_notes: '',
   })
 
@@ -127,6 +131,7 @@ export function AdminRequestRedemptionDialog({
   useEffect(() => {
     if (open) {
       setAmountInput(availableValue > 0 ? String(availableValue) : '')
+      setPaymentMethod('ted')
       setForm({
         bank_code: '',
         bank_name: '',
@@ -135,6 +140,7 @@ export function AdminRequestRedemptionDialog({
         bank_account_type: '',
         bank_holder_name: '',
         bank_holder_document: '',
+        pix_key: '',
         admin_notes: '',
       })
     }
@@ -181,33 +187,44 @@ export function AdminRequestRedemptionDialog({
       return
     }
 
-    if (!form.bank_name && !form.bank_code) {
-      toast.error('Informe o banco para depósito do resgate.')
+    if (paymentMethod === 'ted') {
+      if (!form.bank_name && !form.bank_code) {
+        toast.error('Informe o banco para depósito do resgate.')
+        return
+      }
+      if (!form.bank_agency.trim()) {
+        toast.error('Informe a agência para depósito do resgate.')
+        return
+      }
+      if (!form.bank_account.trim()) {
+        toast.error('Informe a conta (com dígito) para depósito do resgate.')
+        return
+      }
+      if (!form.bank_account_type) {
+        toast.error('Informe o tipo de conta (corrente ou poupança).')
+        return
+      }
+    } else if (!form.pix_key.trim()) {
+      toast.error('Informe a chave PIX para o saque do resgate.')
       return
     }
-    if (!form.bank_agency.trim()) {
-      toast.error('Informe a agência para depósito do resgate.')
-      return
-    }
-    if (!form.bank_account.trim()) {
-      toast.error('Informe a conta (com dígito) para depósito do resgate.')
-      return
-    }
-    if (!form.bank_account_type) {
-      toast.error('Informe o tipo de conta (corrente ou poupança).')
-      return
-    }
+
     if (!form.bank_holder_name.trim()) {
-      toast.error('Informe o nome do titular da conta.')
+      toast.error(
+        paymentMethod === 'ted'
+          ? 'Informe o nome do titular da conta.'
+          : 'Informe o nome do titular da chave PIX.',
+      )
       return
     }
     if (!validateDocument(form.bank_holder_document, holderDocEntity)) {
-      toast.error('Informe um CPF/CNPJ válido do titular da conta.')
+      toast.error('Informe um CPF/CNPJ válido do titular.')
       return
     }
 
     setSubmitting(true)
     try {
+      const isPix = paymentMethod === 'pix'
       const payload = {
         investment_id: investment.id,
         user_id: investment.user_id,
@@ -224,11 +241,14 @@ export function AdminRequestRedemptionDialog({
         is_reinvestment: false,
         requested_by_admin: user?.id || null,
         admin_notes: form.admin_notes.trim() || null,
-        bank_code: form.bank_code.trim() || null,
-        bank_name: form.bank_name.trim(),
-        bank_agency: form.bank_agency.trim(),
-        bank_account: form.bank_account.trim(),
-        bank_account_type: form.bank_account_type,
+        payment_method: paymentMethod,
+        pix_key: isPix ? form.pix_key.trim() : null,
+        // Pedido PIX não tem dados bancários completos: banco/agência/conta/tipo ficam nulos.
+        bank_code: isPix ? null : form.bank_code.trim() || null,
+        bank_name: isPix ? null : form.bank_name.trim(),
+        bank_agency: isPix ? null : form.bank_agency.trim(),
+        bank_account: isPix ? null : form.bank_account.trim(),
+        bank_account_type: isPix ? null : form.bank_account_type,
         bank_holder_name: form.bank_holder_name.trim(),
         bank_holder_document: onlyDigits(form.bank_holder_document),
       }
@@ -246,7 +266,7 @@ export function AdminRequestRedemptionDialog({
       await sendNotification({
         userId: investment.user_id,
         title: 'Resgate Solicitado pela Administração',
-        message: `A administração solicitou um resgate de ${amountFormatted} (${requestedQuotas} cota(s)) em ${productName} em seu nome. Após aprovação, o valor será depositado na conta informada.`,
+        message: `A administração solicitou um resgate de ${amountFormatted} (${requestedQuotas} cota(s)) em ${productName} em seu nome. Após aprovação, o valor será ${isPix ? 'sacado via PIX' : 'depositado na conta informada'}.`,
         type: 'info',
         link: '/investidor',
         metadata: {
@@ -255,6 +275,7 @@ export function AdminRequestRedemptionDialog({
           netValue: effectiveAmount,
           status: 'pending',
           requestedByAdmin: true,
+          paymentMethod,
         },
       })
 
@@ -282,8 +303,8 @@ export function AdminRequestRedemptionDialog({
             Pedir Resgate para Cliente
           </DialogTitle>
           <DialogDescription>
-            Solicite um resgate em nome do investidor e informe os dados bancários de depósito. O
-            pedido entra na Fila de Resgates para aprovação e liquidação no fluxo normal.
+            Solicite um resgate em nome do investidor e informe os dados de pagamento. O pedido
+            entra na Fila de Resgates para aprovação e liquidação no fluxo normal.
           </DialogDescription>
         </DialogHeader>
 
@@ -340,124 +361,185 @@ export function AdminRequestRedemptionDialog({
               )}
             </div>
 
-            {/* Dados bancários */}
-            <div className="space-y-3 rounded-lg border p-3">
-              <div className="flex items-center justify-between gap-2">
-                <Label className="text-sm font-semibold">Dados bancários para depósito</Label>
-                {loadingBanks ? (
-                  <span className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Loader2 className="w-3 h-3 animate-spin" /> Carregando contas...
-                  </span>
-                ) : bankOptions.length > 0 ? (
-                  <Select onValueChange={applyBankOption}>
-                    <SelectTrigger className="h-8 w-[220px] text-xs">
-                      <SelectValue placeholder="Usar conta cadastrada" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {bankOptions.map((b) => (
-                        <SelectItem key={b.id} value={b.id}>
-                          {b.bank_name} • Ag {b.branch || '—'} • Cta {b.account_number || '—'}
-                          {b.is_active ? ' (ativa)' : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : null}
-              </div>
+            {/* Modalidade de pagamento */}
+            <div className="space-y-2">
+              <Label>Modalidade de pagamento</Label>
+              <Select
+                value={paymentMethod}
+                onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}
+              >
+                <SelectTrigger className={inputCls}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ted">TED — Transferência bancária</SelectItem>
+                  <SelectItem value="pix">PIX — Saque por PIX</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="ar-bank">Banco</Label>
-                  <Input
-                    id="ar-bank"
-                    className={inputCls}
-                    placeholder="Ex.: 001 — Banco do Brasil"
-                    value={
-                      form.bank_code ? `${form.bank_code} — ${form.bank_name}` : form.bank_name
-                    }
-                    onChange={(e) => {
-                      const raw = e.target.value
-                      const m = raw.match(/^(\S+)\s+—\s+(.*)$/)
-                      if (m) {
-                        setForm((p) => ({ ...p, bank_code: m[1], bank_name: m[2] }))
-                      } else {
-                        setForm((p) => ({ ...p, bank_name: raw, bank_code: '' }))
+            {paymentMethod === 'ted' ? (
+              /* Dados bancários (TED) */
+              <div className="space-y-3 rounded-lg border p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-sm font-semibold">Dados bancários para depósito</Label>
+                  {loadingBanks ? (
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Carregando contas...
+                    </span>
+                  ) : bankOptions.length > 0 ? (
+                    <Select onValueChange={applyBankOption}>
+                      <SelectTrigger className="h-8 w-[220px] text-xs">
+                        <SelectValue placeholder="Usar conta cadastrada" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {bankOptions.map((b) => (
+                          <SelectItem key={b.id} value={b.id}>
+                            {b.bank_name} • Ag {b.branch || '—'} • Cta {b.account_number || '—'}
+                            {b.is_active ? ' (ativa)' : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : null}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ar-bank">Banco</Label>
+                    <Input
+                      id="ar-bank"
+                      className={inputCls}
+                      placeholder="Ex.: 001 — Banco do Brasil"
+                      value={
+                        form.bank_code ? `${form.bank_code} — ${form.bank_name}` : form.bank_name
                       }
-                    }}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="ar-agency">Agência</Label>
-                  <Input
-                    id="ar-agency"
-                    className={inputCls}
-                    placeholder="Ex.: 1234-5"
-                    value={form.bank_agency}
-                    onChange={(e) => setForm((p) => ({ ...p, bank_agency: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="ar-account">Conta (com dígito)</Label>
-                  <Input
-                    id="ar-account"
-                    className={inputCls}
-                    placeholder="Ex.: 98765-4"
-                    value={form.bank_account}
-                    onChange={(e) => setForm((p) => ({ ...p, bank_account: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Tipo de conta</Label>
-                  <Select
-                    value={form.bank_account_type || undefined}
-                    onValueChange={(v) => setForm((p) => ({ ...p, bank_account_type: v }))}
-                  >
-                    <SelectTrigger className={inputCls}>
-                      <SelectValue placeholder="Selecione" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="corrente">Conta Corrente</SelectItem>
-                      <SelectItem value="poupanca">Conta Poupança</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="ar-holder">Titular da conta</Label>
-                  <Input
-                    id="ar-holder"
-                    className={inputCls}
-                    placeholder="Nome completo / Razão social"
-                    value={form.bank_holder_name}
-                    onChange={(e) => setForm((p) => ({ ...p, bank_holder_name: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="ar-doc">CPF/CNPJ do titular</Label>
-                  <Input
-                    id="ar-doc"
-                    className={inputCls}
-                    placeholder="000.000.000-00"
-                    value={form.bank_holder_document}
-                    onChange={(e) =>
-                      setForm((p) => ({
-                        ...p,
-                        bank_holder_document: maskDocument(e.target.value, holderDocEntity),
-                      }))
-                    }
-                  />
+                      onChange={(e) => {
+                        const raw = e.target.value
+                        const m = raw.match(/^(\S+)\s+—\s+(.*)$/)
+                        if (m) {
+                          setForm((p) => ({ ...p, bank_code: m[1], bank_name: m[2] }))
+                        } else {
+                          setForm((p) => ({ ...p, bank_name: raw, bank_code: '' }))
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ar-agency">Agência</Label>
+                    <Input
+                      id="ar-agency"
+                      className={inputCls}
+                      placeholder="Ex.: 1234-5"
+                      value={form.bank_agency}
+                      onChange={(e) => setForm((p) => ({ ...p, bank_agency: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ar-account">Conta (com dígito)</Label>
+                    <Input
+                      id="ar-account"
+                      className={inputCls}
+                      placeholder="Ex.: 98765-4"
+                      value={form.bank_account}
+                      onChange={(e) => setForm((p) => ({ ...p, bank_account: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Tipo de conta</Label>
+                    <Select
+                      value={form.bank_account_type || undefined}
+                      onValueChange={(v) => setForm((p) => ({ ...p, bank_account_type: v }))}
+                    >
+                      <SelectTrigger className={inputCls}>
+                        <SelectValue placeholder="Selecione" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="corrente">Conta Corrente</SelectItem>
+                        <SelectItem value="poupanca">Conta Poupança</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ar-holder">Titular da conta</Label>
+                    <Input
+                      id="ar-holder"
+                      className={inputCls}
+                      placeholder="Nome completo / Razão social"
+                      value={form.bank_holder_name}
+                      onChange={(e) => setForm((p) => ({ ...p, bank_holder_name: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ar-doc">CPF/CNPJ do titular</Label>
+                    <Input
+                      id="ar-doc"
+                      className={inputCls}
+                      placeholder="000.000.000-00"
+                      value={form.bank_holder_document}
+                      onChange={(e) =>
+                        setForm((p) => ({
+                          ...p,
+                          bank_holder_document: maskDocument(e.target.value, holderDocEntity),
+                        }))
+                      }
+                    />
+                  </div>
                 </div>
               </div>
+            ) : (
+              /* Dados do saque por PIX: chave, nome e CPF/CNPJ do titular */
+              <div className="space-y-3 rounded-lg border p-3">
+                <Label className="text-sm font-semibold">Dados do saque por PIX</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label htmlFor="ar-pix-key">Chave PIX</Label>
+                    <Input
+                      id="ar-pix-key"
+                      className={inputCls}
+                      placeholder="CPF, CNPJ, e-mail, telefone ou chave aleatória"
+                      value={form.pix_key}
+                      onChange={(e) => setForm((p) => ({ ...p, pix_key: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ar-pix-holder">Nome do titular da chave</Label>
+                    <Input
+                      id="ar-pix-holder"
+                      className={inputCls}
+                      placeholder="Nome completo / Razão social"
+                      value={form.bank_holder_name}
+                      onChange={(e) => setForm((p) => ({ ...p, bank_holder_name: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ar-pix-doc">CPF/CNPJ do titular</Label>
+                    <Input
+                      id="ar-pix-doc"
+                      className={inputCls}
+                      placeholder="000.000.000-00"
+                      value={form.bank_holder_document}
+                      onChange={(e) =>
+                        setForm((p) => ({
+                          ...p,
+                          bank_holder_document: maskDocument(e.target.value, holderDocEntity),
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
-              <div className="space-y-1.5">
-                <Label htmlFor="ar-notes">Observações (opcional)</Label>
-                <Input
-                  id="ar-notes"
-                  className={inputCls}
-                  placeholder="Ex.: solicitado por telefone pelo cliente"
-                  value={form.admin_notes}
-                  onChange={(e) => setForm((p) => ({ ...p, admin_notes: e.target.value }))}
-                />
-              </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ar-notes">Observações (opcional)</Label>
+              <Input
+                id="ar-notes"
+                className={inputCls}
+                placeholder="Ex.: solicitado por telefone pelo cliente"
+                value={form.admin_notes}
+                onChange={(e) => setForm((p) => ({ ...p, admin_notes: e.target.value }))}
+              />
             </div>
 
             <Alert className="border-amber-300 bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-100">
