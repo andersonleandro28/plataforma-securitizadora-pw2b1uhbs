@@ -57,6 +57,7 @@ import { Award } from 'lucide-react'
 import { Download } from 'lucide-react'
 import { Landmark } from 'lucide-react'
 import { AdminRequestRedemptionDialog } from '@/components/admin/AdminRequestRedemptionDialog'
+import { cn } from '@/lib/utils'
 
 export default function InvestmentsReview() {
   const { user } = useAuth()
@@ -1059,7 +1060,8 @@ export default function InvestmentsReview() {
     )
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up pb-10">
+    // min-w-0 + w-full: o conteúdo nunca empurra o layout além da viewport; tabelas largas rolam dentro do próprio card
+    <div className={cn('space-y-6 max-w-7xl mx-auto animate-fade-in-up pb-10 w-full min-w-0')}>
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Aprovação de Aportes e Resgates</h1>
         <p className="text-muted-foreground">
@@ -1137,408 +1139,432 @@ export default function InvestmentsReview() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Investidor</TableHead>
-                    <TableHead>Produto</TableHead>
-                    <TableHead>Valor / Cotas</TableHead>
-                    <TableHead>Data Transferência</TableHead>
-                    <TableHead>Carência / Liberação Saque</TableHead>
-                    <TableHead>Autorização do Investidor</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sortedInvestments
-                    .filter((item) => {
-                      const inv = item.investment
-                      if (invStatusFilter === 'pending') {
-                        return inv.status === 'awaiting_review' || inv.status === 'pending_transfer'
-                      }
-                      if (invStatusFilter === 'approved') {
-                        return inv.status === 'approved'
-                      }
-                      if (invStatusFilter === 'rejected') {
-                        return inv.status === 'rejected'
-                      }
-                      if (invStatusFilter === 'resgatado') {
-                        return inv.status === 'resgatado'
-                      }
-                      return true
-                    })
-                    .map((item) => {
-                      const inv = item.investment
-                      const isApproved = inv.status === 'approved'
-                      const isAwaitingReview = inv.status === 'awaiting_review'
-                      const isPendingTransfer = inv.status === 'pending_transfer'
-                      const isRejected = inv.status === 'rejected'
-                      const { graceEval, releaseDate, daysUntilRelease, isLiberado } = item
+              {/* Rola horizontalmente na tabela quando há muitas colunas, sem estourar a página */}
+              <div className="rounded-md border overflow-x-auto">
+                <Table className="min-w-[1100px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="min-w-[170px]">Investidor</TableHead>
+                      <TableHead className="min-w-[140px]">Produto</TableHead>
+                      <TableHead className="whitespace-nowrap">Valor / Cotas</TableHead>
+                      <TableHead className="whitespace-nowrap">Data Transferência</TableHead>
+                      <TableHead className="min-w-[150px] whitespace-nowrap">
+                        Carência / Liberação Saque
+                      </TableHead>
+                      <TableHead className="min-w-[150px]">Autorização do Investidor</TableHead>
+                      <TableHead className="min-w-[110px]">Status</TableHead>
+                      <TableHead className="text-right whitespace-nowrap">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  {/* Tabela interna: rola horizontalmente dentro do card quando há muitas colunas */}
+                  <TableBody>
+                    {sortedInvestments
+                      .filter((item) => {
+                        const inv = item.investment
+                        if (invStatusFilter === 'pending') {
+                          return (
+                            inv.status === 'awaiting_review' || inv.status === 'pending_transfer'
+                          )
+                        }
+                        if (invStatusFilter === 'approved') {
+                          return inv.status === 'approved'
+                        }
+                        if (invStatusFilter === 'rejected') {
+                          return inv.status === 'rejected'
+                        }
+                        if (invStatusFilter === 'resgatado') {
+                          return inv.status === 'resgatado'
+                        }
+                        return true
+                      })
+                      .map((item) => {
+                        const inv = item.investment
+                        const isApproved = inv.status === 'approved'
+                        const isAwaitingReview = inv.status === 'awaiting_review'
+                        const isPendingTransfer = inv.status === 'pending_transfer'
+                        const isRejected = inv.status === 'rejected'
+                        const { graceEval, releaseDate, daysUntilRelease, isLiberado } = item
 
-                      return (
-                        <TableRow key={inv.id}>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium text-foreground">
-                                {inv.profiles?.full_name || 'Investidor'}
-                              </span>
-                              {inv.is_internal_admin && (
-                                <Badge
-                                  variant="outline"
-                                  className="text-[10px] font-normal bg-purple-50 text-purple-700 border-purple-200 gap-1 px-1.5 py-0"
-                                  title="Aporte lançado internamente pelo administrador"
-                                >
-                                  <UserCheck className="w-2.5 h-2.5" /> Lançamento interno
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {inv.profiles?.document_number || '-'}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="font-medium">
-                              {inv.investment_products?.title || 'Debênture'}
-                            </div>
-                            {inv.investment_products?.rate && (
-                              <div className="text-xs text-muted-foreground">
-                                Taxa: {inv.investment_products.rate}
-                              </div>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div className="font-mono font-medium">
-                              R${' '}
-                              {Number(inv.total_value).toLocaleString('pt-BR', {
-                                minimumFractionDigits: 2,
-                              })}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {inv.status === 'resgatado' || Number(inv.total_value) === 0 ? (
-                                <span className="text-muted-foreground italic">
-                                  Resgatado ({Number(inv.redeemed_quotas || inv.quotas)} cotas)
+                        return (
+                          <TableRow key={inv.id}>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-foreground">
+                                  {inv.profiles?.full_name || 'Investidor'}
                                 </span>
-                              ) : Number(inv.redeemed_quotas || 0) > 0 ? (
-                                <span>
-                                  {Math.max(
-                                    0,
-                                    Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0),
-                                  )}{' '}
-                                  cota(s) ativa(s) ({inv.redeemed_quotas} resgatada(s)) a R${' '}
-                                  {Number(inv.unit_price || 0).toLocaleString('pt-BR')}
-                                </span>
-                              ) : (
-                                <span>
-                                  {inv.quotas} cota(s) a R${' '}
-                                  {Number(inv.unit_price || 0).toLocaleString('pt-BR')}
-                                </span>
-                              )}
-                            </div>{' '}
-                          </TableCell>
-                          <TableCell>{formatDate(inv.transfer_date)}</TableCell>
-                          <TableCell>
-                            {releaseDate ? (
-                              <div className="space-y-1">
-                                <div className="text-xs font-semibold text-foreground">
-                                  {releaseDate.toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
-                                </div>
-                                <div>
-                                  {isLiberado ? (
-                                    <Badge
-                                      variant="outline"
-                                      className="bg-emerald-50 text-emerald-700 border-emerald-300 text-[11px] font-medium inline-flex items-center gap-1"
-                                    >
-                                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                      {daysUntilRelease === 0
-                                        ? 'Libera hoje'
-                                        : `Liberado há ${Math.abs(daysUntilRelease)}d`}
-                                    </Badge>
-                                  ) : (
-                                    <Badge
-                                      variant="outline"
-                                      className="bg-amber-50 text-amber-800 border-amber-300 text-[11px] font-medium inline-flex items-center gap-1"
-                                    >
-                                      <Clock className="w-3 h-3 text-amber-600" />
-                                      {daysUntilRelease === 1
-                                        ? 'Libera em 1 dia'
-                                        : `Libera em ${daysUntilRelease} dias`}
-                                    </Badge>
-                                  )}
-                                </div>
-                                {graceEval?.gracePeriodMonths > 0 && (
-                                  <div className="text-[10px] text-muted-foreground">
-                                    Carência: {graceEval.gracePeriodMonths} meses
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <Badge
-                                variant="outline"
-                                className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[11px]"
-                              >
-                                Sem carência
-                              </Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {inv.is_internal_admin ? (
-                              inv.investor_authorization_status === 'accepted' ? (
-                                <div className="space-y-0.5">
+                                {inv.is_internal_admin && (
                                   <Badge
                                     variant="outline"
-                                    className="bg-emerald-50 text-emerald-800 border-emerald-300 gap-1 text-[11px]"
+                                    className="text-[10px] font-normal bg-purple-50 text-purple-700 border-purple-200 gap-1 px-1.5 py-0"
+                                    title="Aporte lançado internamente pelo administrador"
                                   >
-                                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                    Aceito
+                                    <UserCheck className="w-2.5 h-2.5" /> Lançamento interno
                                   </Badge>
-                                  {inv.investor_accepted_at && (
+                                )}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {inv.profiles?.document_number || '-'}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="font-medium">
+                                {inv.investment_products?.title || 'Debênture'}
+                              </div>
+                              {inv.investment_products?.rate && (
+                                <div className="text-xs text-muted-foreground">
+                                  Taxa: {inv.investment_products.rate}
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="font-mono font-medium">
+                                R${' '}
+                                {Number(inv.total_value).toLocaleString('pt-BR', {
+                                  minimumFractionDigits: 2,
+                                })}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {inv.status === 'resgatado' || Number(inv.total_value) === 0 ? (
+                                  <span className="text-muted-foreground italic">
+                                    Resgatado ({Number(inv.redeemed_quotas || inv.quotas)} cotas)
+                                  </span>
+                                ) : Number(inv.redeemed_quotas || 0) > 0 ? (
+                                  <span>
+                                    {Math.max(
+                                      0,
+                                      Number(inv.quotas || 0) - Number(inv.redeemed_quotas || 0),
+                                    )}{' '}
+                                    cota(s) ativa(s) ({inv.redeemed_quotas} resgatada(s)) a R${' '}
+                                    {Number(inv.unit_price || 0).toLocaleString('pt-BR')}
+                                  </span>
+                                ) : (
+                                  <span>
+                                    {inv.quotas} cota(s) a R${' '}
+                                    {Number(inv.unit_price || 0).toLocaleString('pt-BR')}
+                                  </span>
+                                )}
+                              </div>{' '}
+                            </TableCell>
+                            <TableCell>{formatDate(inv.transfer_date)}</TableCell>
+                            <TableCell>
+                              {releaseDate ? (
+                                <div className="space-y-1">
+                                  <div className="text-xs font-semibold text-foreground">
+                                    {releaseDate.toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
+                                  </div>
+                                  <div>
+                                    {isLiberado ? (
+                                      <Badge
+                                        variant="outline"
+                                        className="bg-emerald-50 text-emerald-700 border-emerald-300 text-[11px] font-medium inline-flex items-center gap-1"
+                                      >
+                                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                        {daysUntilRelease === 0
+                                          ? 'Libera hoje'
+                                          : `Liberado há ${Math.abs(daysUntilRelease)}d`}
+                                      </Badge>
+                                    ) : (
+                                      <Badge
+                                        variant="outline"
+                                        className="bg-amber-50 text-amber-800 border-amber-300 text-[11px] font-medium inline-flex items-center gap-1"
+                                      >
+                                        <Clock className="w-3 h-3 text-amber-600" />
+                                        {daysUntilRelease === 1
+                                          ? 'Libera em 1 dia'
+                                          : `Libera em ${daysUntilRelease} dias`}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  {graceEval?.gracePeriodMonths > 0 && (
                                     <div className="text-[10px] text-muted-foreground">
-                                      {formatDate(inv.investor_accepted_at)}
+                                      Carência: {graceEval.gracePeriodMonths} meses
                                     </div>
                                   )}
                                 </div>
-                              ) : inv.investor_authorization_status === 'revision_requested' ? (
-                                <div className="space-y-0.5">
-                                  <Badge
-                                    variant="outline"
-                                    className="bg-amber-50 text-amber-900 border-amber-400 gap-1 text-[11px]"
-                                  >
-                                    <AlertTriangle className="w-3 h-3 text-amber-600" />
-                                    Revisão solicitada
-                                  </Badge>
-                                  {inv.investor_accepted_note && (
-                                    <p
-                                      className="text-[10px] text-amber-800 dark:text-amber-300 line-clamp-1 max-w-[140px] cursor-help"
-                                      title={inv.investor_accepted_note}
-                                    >
-                                      &quot;{inv.investor_accepted_note}&quot;
-                                    </p>
-                                  )}
-                                </div>
                               ) : (
                                 <Badge
                                   variant="outline"
-                                  className="bg-amber-100 text-amber-900 border-amber-400 gap-1 text-[11px] animate-pulse"
+                                  className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[11px]"
                                 >
-                                  <Clock className="w-3 h-3 text-amber-700" />
-                                  Aguardando aceite
+                                  Sem carência
                                 </Badge>
-                              )
-                            ) : (
-                              <Badge
-                                variant="outline"
-                                className="text-muted-foreground border-dashed text-[11px]"
-                              >
-                                Realizado pelo cliente
-                              </Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {isApproved && (
-                              <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white">
-                                Aprovado
-                              </Badge>
-                            )}
-                            {isAwaitingReview && (
-                              <Badge
-                                variant="outline"
-                                className="bg-amber-100 text-amber-800 border-amber-300"
-                              >
-                                Em Análise
-                              </Badge>
-                            )}
-                            {isPendingTransfer && (
-                              <Badge
-                                variant="outline"
-                                className="bg-blue-50 text-blue-700 border-blue-200"
-                              >
-                                Pendente Transferência
-                              </Badge>
-                            )}
-                            {isRejected && (
-                              <div className="space-y-1">
-                                <Badge variant="destructive">Reprovado</Badge>
-                                {inv.rejection_reason && (
-                                  <p
-                                    className="text-[11px] text-muted-foreground line-clamp-1 max-w-[200px]"
-                                    title={inv.rejection_reason}
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {inv.is_internal_admin ? (
+                                inv.investor_authorization_status === 'accepted' ? (
+                                  <div className="space-y-0.5">
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-emerald-50 text-emerald-800 border-emerald-300 gap-1 text-[11px]"
+                                    >
+                                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                      Aceito
+                                    </Badge>
+                                    {inv.investor_accepted_at && (
+                                      <div className="text-[10px] text-muted-foreground">
+                                        {formatDate(inv.investor_accepted_at)}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : inv.investor_authorization_status === 'revision_requested' ? (
+                                  <div className="space-y-0.5">
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-amber-50 text-amber-900 border-amber-400 gap-1 text-[11px]"
+                                    >
+                                      <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                      Revisão solicitada
+                                    </Badge>
+                                    {inv.investor_accepted_note && (
+                                      <p
+                                        className="text-[10px] text-amber-800 dark:text-amber-300 line-clamp-1 max-w-[140px] cursor-help"
+                                        title={inv.investor_accepted_note}
+                                      >
+                                        &quot;{inv.investor_accepted_note}&quot;
+                                      </p>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <Badge
+                                    variant="outline"
+                                    className="bg-amber-100 text-amber-900 border-amber-400 gap-1 text-[11px] animate-pulse"
                                   >
-                                    Motivo: {inv.rejection_reason}
-                                  </p>
+                                    <Clock className="w-3 h-3 text-amber-700" />
+                                    Aguardando aceite
+                                  </Badge>
+                                )
+                              ) : (
+                                <Badge
+                                  variant="outline"
+                                  className="text-muted-foreground border-dashed text-[11px]"
+                                >
+                                  Realizado pelo cliente
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {isApproved && (
+                                <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white">
+                                  Aprovado
+                                </Badge>
+                              )}
+                              {isAwaitingReview && (
+                                <Badge
+                                  variant="outline"
+                                  className="bg-amber-100 text-amber-800 border-amber-300"
+                                >
+                                  Em Análise
+                                </Badge>
+                              )}
+                              {isPendingTransfer && (
+                                <Badge
+                                  variant="outline"
+                                  className="bg-blue-50 text-blue-700 border-blue-200"
+                                >
+                                  Pendente Transferência
+                                </Badge>
+                              )}
+                              {isRejected && (
+                                <div className="space-y-1">
+                                  <Badge variant="destructive">Reprovado</Badge>
+                                  {inv.rejection_reason && (
+                                    <p
+                                      className="text-[11px] text-muted-foreground line-clamp-1 max-w-[200px]"
+                                      title={inv.rejection_reason}
+                                    >
+                                      Motivo: {inv.rejection_reason}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                              {inv.status === 'resgatado' && (
+                                <Badge
+                                  variant="secondary"
+                                  className="bg-slate-100 text-slate-700 border-slate-300"
+                                >
+                                  Resgatado
+                                </Badge>
+                              )}
+                              {!isApproved &&
+                                !isAwaitingReview &&
+                                !isPendingTransfer &&
+                                !isRejected &&
+                                inv.status !== 'resgatado' && (
+                                  <Badge variant="outline">{inv.status}</Badge>
+                                )}
+                            </TableCell>
+                            <TableCell className="text-right align-top">
+                              {/* Coluna de Ações compacta: rola junto com a tabela, sem empurrar o conteúdo da página */}
+                              <div className="flex items-center justify-end gap-1.5 max-w-[240px]">
+                                {/* Ver / Gerar Contrato de Subscrição de Debêntures */}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-primary hover:text-primary hover:bg-primary/10 border-primary/30 px-2"
+                                  onClick={() => handleOpenContract(inv, false)}
+                                  disabled={generatingContractId === inv.id}
+                                  title={
+                                    generatingContractId === inv.id
+                                      ? 'Gerando Termo de Subscrição...'
+                                      : inv.contract_url
+                                        ? 'Visualizar Contrato de Subscrição'
+                                        : 'Emitir Termo de Subscrição de Debêntures em PDF'
+                                  }
+                                >
+                                  {generatingContractId === inv.id ? (
+                                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                                  ) : (
+                                    <FileText className="w-4 h-4 text-primary" />
+                                  )}
+                                  {inv.contract_url ? 'Contrato' : 'Emitir'}
+                                </Button>
+
+                                {/* Download direto do Contrato */}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-muted-foreground hover:text-primary w-8 h-8 p-0"
+                                  onClick={() => handleOpenContract(inv, true)}
+                                  disabled={generatingContractId === inv.id}
+                                  title="Baixar Contrato (PDF) diretamente no dispositivo"
+                                >
+                                  <Download className="w-4 h-4" />
+                                </Button>
+
+                                {/* Ver / Gerar Cautela de Debêntures */}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 px-2"
+                                  onClick={() => handleOpenCautela(inv, false)}
+                                  disabled={generatingCautelaId === inv.id}
+                                  title={
+                                    generatingCautelaId === inv.id
+                                      ? 'Gerando Cautela...'
+                                      : inv.cautela_url
+                                        ? 'Visualizar Cautela de Debêntures'
+                                        : 'Emitir Cautela de Debêntures em PDF'
+                                  }
+                                >
+                                  {generatingCautelaId === inv.id ? (
+                                    <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+                                  ) : (
+                                    <Award className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                                  )}
+                                  {inv.cautela_url ? 'Cautela' : 'Emitir'}
+                                </Button>
+
+                                {/* Download direto da Cautela */}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-muted-foreground hover:text-emerald-600 w-8 h-8 p-0"
+                                  onClick={() => handleOpenCautela(inv, true)}
+                                  disabled={generatingCautelaId === inv.id}
+                                  title="Baixar Cautela de Debêntures (PDF) diretamente no dispositivo"
+                                >
+                                  <Download className="w-4 h-4" />
+                                </Button>
+
+                                {/* Ver Comprovante (visível quando o aporte possui anexo) */}
+                                {proofsMap[inv.id] && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200 px-2"
+                                    onClick={() => handleViewProof(inv)}
+                                    title={`Ver Comprovante (${proofsMap[inv.id].file_name})`}
+                                  >
+                                    <FileCheck className="w-4 h-4 text-blue-600" />
+                                  </Button>
+                                )}
+
+                                {/* 1. Botão Aprovar (mantido para pendentes) */}
+                                {isAwaitingReview && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 px-2"
+                                    onClick={() => handleApprove(inv.id)}
+                                    title="Aprovar Aporte"
+                                  >
+                                    <CheckCircle className="w-4 h-4" /> Aprovar
+                                  </Button>
+                                )}
+
+                                {/* 2. Botão Reprovar (para aportes não aprovados) */}
+                                {!isApproved && !isRejected && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 px-2"
+                                    onClick={() => handleOpenRejectInvModal(inv)}
+                                    title="Reprovar Aporte"
+                                  >
+                                    <Ban className="w-4 h-4" /> Reprovar
+                                  </Button>
+                                )}
+
+                                {/* Botão de Edição de Datas e Valores */}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-8 h-8 p-0"
+                                  onClick={() => handleEditDates(inv)}
+                                  title="Editar Dados / Data"
+                                >
+                                  <CalendarDays className="w-4 h-4 text-muted-foreground" />
+                                </Button>
+
+                                {/* Pedir Resgate para o Cliente (aportes aprovados com saldo) */}
+                                {isApproved && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-violet-600 hover:text-violet-700 hover:bg-violet-50 border-violet-300 font-medium px-2"
+                                    onClick={() => {
+                                      setAdminRedemptionInv(inv)
+                                      setAdminRedemptionOpen(true)
+                                    }}
+                                    title={
+                                      availableQuotasFor(inv) > 0
+                                        ? 'Pedir Resgate para o Cliente'
+                                        : 'Sem saldo disponível para resgate'
+                                    }
+                                    disabled={availableQuotasFor(inv) <= 0}
+                                  >
+                                    <Landmark className="w-4 h-4 mr-1" /> Pedir resgate
+                                  </Button>
+                                )}
+
+                                {/* 3. Botão Excluir (apenas para aportes NÃO aprovados) */}
+                                {!isApproved && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 w-8 h-8 p-0"
+                                    onClick={() => handleOpenDeleteInvModal(inv)}
+                                    title="Excluir Permanentemente"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
                                 )}
                               </div>
-                            )}
-                            {inv.status === 'resgatado' && (
-                              <Badge
-                                variant="secondary"
-                                className="bg-slate-100 text-slate-700 border-slate-300"
-                              >
-                                Resgatado
-                              </Badge>
-                            )}
-                            {!isApproved &&
-                              !isAwaitingReview &&
-                              !isPendingTransfer &&
-                              !isRejected &&
-                              inv.status !== 'resgatado' && (
-                                <Badge variant="outline">{inv.status}</Badge>
-                              )}
-                          </TableCell>
-                          <TableCell className="text-right space-x-1.5 whitespace-nowrap">
-                            {/* Ver / Gerar Contrato de Subscrição de Debêntures */}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-primary hover:text-primary hover:bg-primary/10 border-primary/30"
-                              onClick={() => handleOpenContract(inv, false)}
-                              disabled={generatingContractId === inv.id}
-                              title="Visualizar ou emitir Termo de Subscrição de Debêntures em PDF"
-                            >
-                              <FileText className="w-4 h-4 mr-1.5" />
-                              {generatingContractId === inv.id
-                                ? 'Gerando...'
-                                : inv.contract_url
-                                  ? 'Contrato'
-                                  : 'Emitir Contrato'}
-                            </Button>
-
-                            {/* Download direto do Contrato */}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-muted-foreground hover:text-primary px-2"
-                              onClick={() => handleOpenContract(inv, true)}
-                              disabled={generatingContractId === inv.id}
-                              title="Baixar Contrato (PDF) diretamente no dispositivo"
-                            >
-                              <Download className="w-4 h-4" />
-                            </Button>
-
-                            {/* Ver / Gerar Cautela de Debêntures */}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800"
-                              onClick={() => handleOpenCautela(inv, false)}
-                              disabled={generatingCautelaId === inv.id}
-                              title="Visualizar ou emitir Cautela de Debêntures em PDF"
-                            >
-                              <Award className="w-4 h-4 mr-1.5 text-emerald-600 dark:text-emerald-400" />
-                              {generatingCautelaId === inv.id
-                                ? 'Gerando...'
-                                : inv.cautela_url
-                                  ? 'Cautela'
-                                  : 'Emitir Cautela'}
-                            </Button>
-
-                            {/* Download direto da Cautela */}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-muted-foreground hover:text-emerald-600 px-2"
-                              onClick={() => handleOpenCautela(inv, true)}
-                              disabled={generatingCautelaId === inv.id}
-                              title="Baixar Cautela de Debêntures (PDF) diretamente no dispositivo"
-                            >
-                              <Download className="w-4 h-4" />
-                            </Button>
-
-                            {/* Ver Comprovante (visível quando o aporte possui anexo) */}
-                            {proofsMap[inv.id] && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
-                                onClick={() => handleViewProof(inv)}
-                                title={`Ver Comprovante (${proofsMap[inv.id].file_name})`}
-                              >
-                                <FileCheck className="w-4 h-4 mr-1.5" /> Comprovante
-                              </Button>
-                            )}
-
-                            {/* 1. Botão Aprovar (mantido para pendentes) */}
-                            {isAwaitingReview && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
-                                onClick={() => handleApprove(inv.id)}
-                                title="Aprovar Aporte"
-                              >
-                                <CheckCircle className="w-4 h-4 mr-1.5" /> Aprovar
-                              </Button>
-                            )}
-
-                            {/* 2. Botão Reprovar (para aportes não aprovados) */}
-                            {!isApproved && !isRejected && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
-                                onClick={() => handleOpenRejectInvModal(inv)}
-                                title="Reprovar Aporte"
-                              >
-                                <Ban className="w-4 h-4 mr-1.5" /> Reprovar
-                              </Button>
-                            )}
-
-                            {/* Botão de Edição de Datas e Valores */}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleEditDates(inv)}
-                              title="Editar Dados / Data"
-                            >
-                              <CalendarDays className="w-4 h-4" />
-                            </Button>
-
-                            {/* Pedir Resgate para o Cliente (aportes aprovados com saldo) */}
-                            {isApproved && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-violet-600 hover:text-violet-700 hover:bg-violet-50 border-violet-300"
-                                onClick={() => {
-                                  setAdminRedemptionInv(inv)
-                                  setAdminRedemptionOpen(true)
-                                }}
-                                title={
-                                  availableQuotasFor(inv) > 0
-                                    ? 'Pedir Resgate para o Cliente'
-                                    : 'Sem saldo disponível para resgate'
-                                }
-                                disabled={availableQuotasFor(inv) <= 0}
-                              >
-                                <Landmark className="w-4 h-4 mr-1.5" /> Pedir resgate
-                              </Button>
-                            )}
-
-                            {/* 3. Botão Excluir (apenas para aportes NÃO aprovados) */}
-                            {!isApproved && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                                onClick={() => handleOpenDeleteInvModal(inv)}
-                                title="Excluir Permanentemente"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  {investments.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                        Nenhum aporte encontrado.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    {investments.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                          Nenhum aporte encontrado.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -1553,162 +1579,166 @@ export default function InvestmentsReview() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Investidor</TableHead>
-                    <TableHead>Produto</TableHead>
-                    <TableHead>Cotas</TableHead>
-                    <TableHead>Valor Líquido</TableHead>
-                    <TableHead>Data Efetiva</TableHead>
-                    <TableHead>Dados Bancários (Depósito)</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {redemptions.map((red) => (
-                    <TableRow key={red.id}>
-                      <TableCell>
-                        <div className="font-medium">
-                          {red.profiles?.full_name || 'Desconhecido'}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {red.profiles?.document_number}
-                        </div>
-                      </TableCell>
-                      <TableCell>{red.investments?.investment_products?.title}</TableCell>
-                      <TableCell>
-                        {red.redemption_type === 'interest_only' ? (
-                          <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-                            0 cotas (Preservadas)
-                          </span>
-                        ) : (
-                          red.requested_quotas
-                        )}
-                      </TableCell>
-                      <TableCell className="font-mono font-medium text-emerald-600">
-                        {formatC(red.net_value)}
-                      </TableCell>
-                      <TableCell>{formatDate(red.updated_at || red.created_at)}</TableCell>
-                      <TableCell className="text-xs max-w-[260px]">
-                        {red.bank_name || red.bank_account ? (
-                          <div className="space-y-0.5 leading-tight">
-                            <div className="font-medium text-foreground">
-                              {[red.bank_code, red.bank_name].filter(Boolean).join(' — ') ||
-                                red.bank_name}
-                            </div>
-                            <div className="text-muted-foreground">
-                              Ag.: {red.bank_agency || '—'} • Cta.: {red.bank_account || '—'}
-                              {red.bank_account_type
-                                ? ` (${red.bank_account_type === 'poupanca' ? 'Poupança' : 'Corrente'})`
-                                : ''}
-                            </div>
-                            <div className="text-muted-foreground">
-                              Titular: {red.bank_holder_name || '—'}
-                              {red.bank_holder_document
-                                ? ` • ${red.bank_holder_document.length > 11 ? 'CNPJ' : 'CPF'} ${maskDocument(red.bank_holder_document, red.bank_holder_document.length > 11 ? 'pj' : 'pf')}`
-                                : ''}
-                            </div>
+              {/* Rola horizontalmente na tabela quando há muitas colunas, sem estourar a página */}
+              <div className="rounded-md border overflow-x-auto">
+                <Table className="min-w-[980px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="min-w-[170px]">Investidor</TableHead>
+                      <TableHead className="min-w-[140px]">Produto</TableHead>
+                      <TableHead className="whitespace-nowrap">Cotas</TableHead>
+                      <TableHead className="whitespace-nowrap">Valor Líquido</TableHead>
+                      <TableHead className="whitespace-nowrap">Data Efetiva</TableHead>
+                      <TableHead className="min-w-[240px]">Dados Bancários (Depósito)</TableHead>
+                      <TableHead className="min-w-[160px]">Status</TableHead>
+                      <TableHead className="text-right whitespace-nowrap">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  {/* Tabela interna: rola horizontalmente dentro do card quando há muitas colunas */}
+                  <TableBody>
+                    {redemptions.map((red) => (
+                      <TableRow key={red.id}>
+                        <TableCell>
+                          <div className="font-medium">
+                            {red.profiles?.full_name || 'Desconhecido'}
                           </div>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="space-y-1">
-                        <div className="flex flex-col gap-1">
-                          {red.redemption_type === 'interest_only' && (
-                            <Badge className="bg-emerald-600 text-white hover:bg-emerald-700 gap-1 text-[11px] font-medium w-fit shadow-xs">
-                              <CheckCircle2 className="w-3 h-3" />
-                              Rendimento Mensal (Cotas Preservadas)
-                            </Badge>
+                          <div className="text-xs text-muted-foreground">
+                            {red.profiles?.document_number}
+                          </div>
+                        </TableCell>
+                        <TableCell>{red.investments?.investment_products?.title}</TableCell>
+                        <TableCell>
+                          {red.redemption_type === 'interest_only' ? (
+                            <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                              0 cotas (Preservadas)
+                            </span>
+                          ) : (
+                            red.requested_quotas
                           )}
-                          <div>
-                            {red.status === 'paid' ? (
-                              <Badge className="bg-emerald-500">Liquidado</Badge>
-                            ) : red.status === 'approved' ? (
-                              <Badge className="bg-primary">Aprovado</Badge>
-                            ) : red.status === 'rejected' ? (
-                              <Badge variant="destructive">Rejeitado</Badge>
-                            ) : (
-                              <Badge
-                                variant="outline"
-                                className="bg-amber-100 text-amber-800 border-amber-200"
-                              >
-                                Pendente
+                        </TableCell>
+                        <TableCell className="font-mono font-medium text-emerald-600">
+                          {formatC(red.net_value)}
+                        </TableCell>
+                        <TableCell>{formatDate(red.updated_at || red.created_at)}</TableCell>
+                        <TableCell className="text-xs max-w-[260px]">
+                          {red.bank_name || red.bank_account ? (
+                            <div className="space-y-0.5 leading-tight">
+                              <div className="font-medium text-foreground">
+                                {[red.bank_code, red.bank_name].filter(Boolean).join(' — ') ||
+                                  red.bank_name}
+                              </div>
+                              <div className="text-muted-foreground">
+                                Ag.: {red.bank_agency || '—'} • Cta.: {red.bank_account || '—'}
+                                {red.bank_account_type
+                                  ? ` (${red.bank_account_type === 'poupanca' ? 'Poupança' : 'Corrente'})`
+                                  : ''}
+                              </div>
+                              <div className="text-muted-foreground">
+                                Titular: {red.bank_holder_name || '—'}
+                                {red.bank_holder_document
+                                  ? ` • ${red.bank_holder_document.length > 11 ? 'CNPJ' : 'CPF'} ${maskDocument(red.bank_holder_document, red.bank_holder_document.length > 11 ? 'pj' : 'pf')}`
+                                  : ''}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="space-y-1">
+                          <div className="flex flex-col gap-1">
+                            {red.redemption_type === 'interest_only' && (
+                              <Badge className="bg-emerald-600 text-white hover:bg-emerald-700 gap-1 text-[11px] font-medium w-fit shadow-xs">
+                                <CheckCircle2 className="w-3 h-3" />
+                                Rendimento Mensal (Cotas Preservadas)
                               </Badge>
                             )}
+                            <div>
+                              {red.status === 'paid' ? (
+                                <Badge className="bg-emerald-500">Liquidado</Badge>
+                              ) : red.status === 'approved' ? (
+                                <Badge className="bg-primary">Aprovado</Badge>
+                              ) : red.status === 'rejected' ? (
+                                <Badge variant="destructive">Rejeitado</Badge>
+                              ) : (
+                                <Badge
+                                  variant="outline"
+                                  className="bg-amber-100 text-amber-800 border-amber-200"
+                                >
+                                  Pendente
+                                </Badge>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                        {red.is_reinvestment && (
-                          <div>
-                            <Badge
-                              variant="secondary"
-                              className="bg-blue-100 text-blue-800 border-blue-200 text-[10px]"
-                            >
-                              Reinvestimento
-                            </Badge>
-                          </div>
-                        )}
-                        {red.requested_by_admin && (
-                          <div>
-                            <Badge
-                              variant="outline"
-                              className="bg-violet-100 text-violet-800 border-violet-200 text-[10px] gap-1"
-                              title="Pedido de resgate solicitado pela administração em nome do investidor"
-                            >
-                              <Landmark className="w-2.5 h-2.5" /> Pedido pelo Admin
-                            </Badge>
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right space-x-2 whitespace-nowrap">
-                        {red.status === 'pending' && (
-                          <>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
-                              onClick={() => handleOpenApproveModal(red)}
-                              disabled={processing}
-                            >
-                              <CheckCircle className="w-4 h-4 mr-2" /> Aprovar
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                              onClick={() => {
-                                setSelectedRedemption(red)
-                                setRejectionReason('')
-                                setRejectOpen(true)
-                              }}
-                              disabled={processing}
-                            >
-                              <XCircle className="w-4 h-4 mr-2" /> Rejeitar
-                            </Button>
-                          </>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleOpenEditRedemption(red)}
-                          title="Edição Retroativa"
-                        >
-                          <Pencil className="w-4 h-4 text-muted-foreground hover:text-primary" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {redemptions.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center py-6 text-muted-foreground">
-                        Nenhuma solicitação de resgate encontrada.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+                          {red.is_reinvestment && (
+                            <div>
+                              <Badge
+                                variant="secondary"
+                                className="bg-blue-100 text-blue-800 border-blue-200 text-[10px]"
+                              >
+                                Reinvestimento
+                              </Badge>
+                            </div>
+                          )}
+                          {red.requested_by_admin && (
+                            <div>
+                              <Badge
+                                variant="outline"
+                                className="bg-violet-100 text-violet-800 border-violet-200 text-[10px] gap-1"
+                                title="Pedido de resgate solicitado pela administração em nome do investidor"
+                              >
+                                <Landmark className="w-2.5 h-2.5" /> Pedido pelo Admin
+                              </Badge>
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right space-x-2 whitespace-nowrap">
+                          {red.status === 'pending' && (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                onClick={() => handleOpenApproveModal(red)}
+                                disabled={processing}
+                              >
+                                <CheckCircle className="w-4 h-4 mr-2" /> Aprovar
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                                onClick={() => {
+                                  setSelectedRedemption(red)
+                                  setRejectionReason('')
+                                  setRejectOpen(true)
+                                }}
+                                disabled={processing}
+                              >
+                                <XCircle className="w-4 h-4 mr-2" /> Rejeitar
+                              </Button>
+                            </>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenEditRedemption(red)}
+                            title="Edição Retroativa"
+                          >
+                            <Pencil className="w-4 h-4 text-muted-foreground hover:text-primary" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {redemptions.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center py-6 text-muted-foreground">
+                          Nenhuma solicitação de resgate encontrada.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
