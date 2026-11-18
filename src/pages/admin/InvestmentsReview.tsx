@@ -47,6 +47,7 @@ import { toast } from 'sonner'
 import { useAuth } from '@/hooks/use-auth'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import { formatDate, toISODate } from '@/lib/utils'
+import { maskDocument } from '@/lib/cpf-cnpj'
 import { InvestmentProofModal, InvestmentProof } from '@/components/admin/InvestmentProofModal'
 import { sendNotification } from '@/services/notifications'
 import { evaluateGracePeriod } from '@/lib/redemption-utils'
@@ -54,6 +55,8 @@ import { getOrGenerateSubscriptionContract } from '@/services/subscription-contr
 import { getOrGenerateDebentureCautela } from '@/services/debenture-cautela'
 import { Award } from 'lucide-react'
 import { Download } from 'lucide-react'
+import { Landmark } from 'lucide-react'
+import { AdminRequestRedemptionDialog } from '@/components/admin/AdminRequestRedemptionDialog'
 
 export default function InvestmentsReview() {
   const { user } = useAuth()
@@ -183,6 +186,28 @@ export default function InvestmentsReview() {
   const [approveModalOpen, setApproveModalOpen] = useState(false)
   const [approveData, setApproveData] = useState<any>(null)
   const [manualTax, setManualTax] = useState('')
+
+  // Pedido de resgate pelo admin (com dados bancários)
+  const [adminRedemptionOpen, setAdminRedemptionOpen] = useState(false)
+  const [adminRedemptionInv, setAdminRedemptionInv] = useState<any>(null)
+
+  // Cotas já comprometidas por pedidos de resgate ainda não liquidados/rejeitados, por investment_id
+  const pendingRedemptionsByInvestment = useMemo(() => {
+    const map: Record<string, number> = {}
+    for (const red of redemptions) {
+      if (red.status === 'paid' || red.status === 'rejected') continue
+      const invId = red.investment_id as string
+      map[invId] = (map[invId] || 0) + (Number(red.requested_quotas) || 0)
+    }
+    return map
+  }, [redemptions])
+
+  const availableQuotasFor = (inv: any): number => {
+    const total = Number(inv?.quotas) || 0
+    const redeemed = Number(inv?.redeemed_quotas) || 0
+    const pending = pendingRedemptionsByInvestment[inv?.id] || 0
+    return Math.max(0, total - redeemed - pending)
+  }
 
   const fetchData = async () => {
     setLoading(true)
@@ -1468,6 +1493,27 @@ export default function InvestmentsReview() {
                               <CalendarDays className="w-4 h-4" />
                             </Button>
 
+                            {/* Pedir Resgate para o Cliente (aportes aprovados com saldo) */}
+                            {isApproved && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-violet-600 hover:text-violet-700 hover:bg-violet-50 border-violet-300"
+                                onClick={() => {
+                                  setAdminRedemptionInv(inv)
+                                  setAdminRedemptionOpen(true)
+                                }}
+                                title={
+                                  availableQuotasFor(inv) > 0
+                                    ? 'Pedir Resgate para o Cliente'
+                                    : 'Sem saldo disponível para resgate'
+                                }
+                                disabled={availableQuotasFor(inv) <= 0}
+                              >
+                                <Landmark className="w-4 h-4 mr-1.5" /> Pedir resgate
+                              </Button>
+                            )}
+
                             {/* 3. Botão Excluir (apenas para aportes NÃO aprovados) */}
                             {!isApproved && (
                               <Button
@@ -1515,6 +1561,7 @@ export default function InvestmentsReview() {
                     <TableHead>Cotas</TableHead>
                     <TableHead>Valor Líquido</TableHead>
                     <TableHead>Data Efetiva</TableHead>
+                    <TableHead>Dados Bancários (Depósito)</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
@@ -1544,6 +1591,30 @@ export default function InvestmentsReview() {
                         {formatC(red.net_value)}
                       </TableCell>
                       <TableCell>{formatDate(red.updated_at || red.created_at)}</TableCell>
+                      <TableCell className="text-xs max-w-[260px]">
+                        {red.bank_name || red.bank_account ? (
+                          <div className="space-y-0.5 leading-tight">
+                            <div className="font-medium text-foreground">
+                              {[red.bank_code, red.bank_name].filter(Boolean).join(' — ') ||
+                                red.bank_name}
+                            </div>
+                            <div className="text-muted-foreground">
+                              Ag.: {red.bank_agency || '—'} • Cta.: {red.bank_account || '—'}
+                              {red.bank_account_type
+                                ? ` (${red.bank_account_type === 'poupanca' ? 'Poupança' : 'Corrente'})`
+                                : ''}
+                            </div>
+                            <div className="text-muted-foreground">
+                              Titular: {red.bank_holder_name || '—'}
+                              {red.bank_holder_document
+                                ? ` • ${red.bank_holder_document.length > 11 ? 'CNPJ' : 'CPF'} ${maskDocument(red.bank_holder_document, red.bank_holder_document.length > 11 ? 'pj' : 'pf')}`
+                                : ''}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
                       <TableCell className="space-y-1">
                         <div className="flex flex-col gap-1">
                           {red.redemption_type === 'interest_only' && (
@@ -1576,6 +1647,17 @@ export default function InvestmentsReview() {
                               className="bg-blue-100 text-blue-800 border-blue-200 text-[10px]"
                             >
                               Reinvestimento
+                            </Badge>
+                          </div>
+                        )}
+                        {red.requested_by_admin && (
+                          <div>
+                            <Badge
+                              variant="outline"
+                              className="bg-violet-100 text-violet-800 border-violet-200 text-[10px] gap-1"
+                              title="Pedido de resgate solicitado pela administração em nome do investidor"
+                            >
+                              <Landmark className="w-2.5 h-2.5" /> Pedido pelo Admin
                             </Badge>
                           </div>
                         )}
@@ -1620,7 +1702,7 @@ export default function InvestmentsReview() {
                   ))}
                   {redemptions.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
+                      <TableCell colSpan={8} className="text-center py-6 text-muted-foreground">
                         Nenhuma solicitação de resgate encontrada.
                       </TableCell>
                     </TableRow>
@@ -2362,6 +2444,18 @@ export default function InvestmentsReview() {
         onOpenChange={setProofModalOpen}
         proof={selectedProof}
         investment={selectedProofInv}
+      />
+
+      {/* Modal de Pedido de Resgate pelo Admin (com dados bancários de depósito) */}
+      <AdminRequestRedemptionDialog
+        open={adminRedemptionOpen}
+        onOpenChange={setAdminRedemptionOpen}
+        investment={adminRedemptionInv}
+        availableQuotas={adminRedemptionInv ? availableQuotasFor(adminRedemptionInv) : 0}
+        onSuccess={() => {
+          fetchRedemptions()
+          fetchData()
+        }}
       />
     </div>
   )
