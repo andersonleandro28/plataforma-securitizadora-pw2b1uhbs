@@ -57,7 +57,6 @@ import { Award } from 'lucide-react'
 import { Download } from 'lucide-react'
 import { Landmark } from 'lucide-react'
 import { AdminRequestRedemptionDialog } from '@/components/admin/AdminRequestRedemptionDialog'
-import { cn } from '@/lib/utils'
 
 export default function InvestmentsReview() {
   const { user } = useAuth()
@@ -1060,8 +1059,7 @@ export default function InvestmentsReview() {
     )
 
   return (
-    // min-w-0 + w-full: o conteúdo nunca empurra o layout além da viewport; tabelas largas rolam dentro do próprio card
-    <div className={cn('space-y-6 max-w-7xl mx-auto animate-fade-in-up pb-10 w-full min-w-0')}>
+    <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up pb-10">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Aprovação de Aportes e Resgates</h1>
         <p className="text-muted-foreground">
@@ -1139,20 +1137,19 @@ export default function InvestmentsReview() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {/* Rola horizontalmente na tabela quando há muitas colunas, sem estourar a página */}
-              <div className="rounded-md border overflow-x-auto">
-                <Table className="min-w-[1100px]">
+              <div className="rounded-md border">
+                <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="min-w-[170px]">Investidor</TableHead>
-                      <TableHead className="min-w-[140px]">Produto</TableHead>
+                      <TableHead>Investidor</TableHead>
+                      <TableHead>Produto</TableHead>
                       <TableHead className="whitespace-nowrap">Valor / Cotas</TableHead>
                       <TableHead className="whitespace-nowrap">Data Transferência</TableHead>
-                      <TableHead className="min-w-[150px] whitespace-nowrap">
+                      <TableHead className="whitespace-nowrap">
                         Carência / Liberação Saque
                       </TableHead>
-                      <TableHead className="min-w-[150px]">Autorização do Investidor</TableHead>
-                      <TableHead className="min-w-[110px]">Status</TableHead>
+                      <TableHead>Autorização do Investidor</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead className="text-right whitespace-nowrap">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1395,8 +1392,7 @@ export default function InvestmentsReview() {
                                 )}
                             </TableCell>
                             <TableCell className="text-right align-top">
-                              {/* Coluna de Ações compacta: rola junto com a tabela, sem empurrar o conteúdo da página */}
-                              <div className="flex items-center justify-end gap-1.5 max-w-[240px]">
+                              <div className="flex items-center justify-end gap-1.5">
                                 {/* Ver / Gerar Contrato de Subscrição de Debêntures */}
                                 <Button
                                   variant="outline"
@@ -1579,22 +1575,20 @@ export default function InvestmentsReview() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {/* Rola horizontalmente na tabela quando há muitas colunas, sem estourar a página */}
-              <div className="rounded-md border overflow-x-auto">
-                <Table className="min-w-[980px]">
+              <div className="rounded-md border">
+                <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="min-w-[170px]">Investidor</TableHead>
-                      <TableHead className="min-w-[140px]">Produto</TableHead>
+                      <TableHead>Investidor</TableHead>
+                      <TableHead>Produto</TableHead>
                       <TableHead className="whitespace-nowrap">Cotas</TableHead>
                       <TableHead className="whitespace-nowrap">Valor Líquido</TableHead>
                       <TableHead className="whitespace-nowrap">Data Efetiva</TableHead>
-                      <TableHead className="min-w-[240px]">Dados Bancários (Depósito)</TableHead>
-                      <TableHead className="min-w-[160px]">Status</TableHead>
+                      <TableHead>Dados Bancários (Depósito)</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead className="text-right whitespace-nowrap">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
-                  {/* Tabela interna: rola horizontalmente dentro do card quando há muitas colunas */}
                   <TableBody>
                     {redemptions.map((red) => (
                       <TableRow key={red.id}>
@@ -1620,7 +1614,7 @@ export default function InvestmentsReview() {
                           {formatC(red.net_value)}
                         </TableCell>
                         <TableCell>{formatDate(red.updated_at || red.created_at)}</TableCell>
-                        <TableCell className="text-xs max-w-[260px]">
+                        <TableCell className="text-xs">
                           {red.bank_name || red.bank_account ? (
                             <div className="space-y-0.5 leading-tight">
                               <div className="font-medium text-foreground">
