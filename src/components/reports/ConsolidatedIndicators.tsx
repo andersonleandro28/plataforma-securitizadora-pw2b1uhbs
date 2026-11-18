@@ -19,6 +19,7 @@ export function ConsolidatedIndicators() {
       const { data, error } = await supabase
         .from('treasury_transactions')
         .select('type, amount, date')
+        .is('deleted_at', null)
       if (error) throw error
       setTreasuryData(data || [])
 
