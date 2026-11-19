@@ -243,6 +243,11 @@ export function useDre() {
         if (mov.referencia_id) {
           movsExternalRefs.add(`op-liq-${mov.referencia_id}`)
           movsExternalRefs.add(`redemption-${mov.referencia_id}`)
+          // Quitação de CCB: a movimentação espelho carrega referencia_numero
+          // = ccb-quit-{ccb_id}, a mesma external_ref da transação de tesouraria.
+          if ((mov.referencia_tipo || '').toLowerCase() === 'ccb_quitacao') {
+            movsExternalRefs.add(`ccb-quit-${mov.referencia_id}`)
+          }
           if (mov.referencia_numero) {
             movsExternalRefs.add(`op-bol-${mov.referencia_id}-${mov.referencia_numero}`)
             movsExternalRefs.add(String(mov.referencia_numero))

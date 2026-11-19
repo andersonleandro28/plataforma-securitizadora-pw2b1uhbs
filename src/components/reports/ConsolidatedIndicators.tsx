@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { TrendingUp, TrendingDown, DollarSign, RotateCcw } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { supabase } from '@/lib/supabase/client'
+import { isTaxProvisionTransaction } from '@/lib/financial-classification'
 
 export function ConsolidatedIndicators() {
   const [treasuryData, setTreasuryData] = useState<any[]>([])
@@ -16,14 +17,19 @@ export function ConsolidatedIndicators() {
     setLoadingTreasury(true)
     setErrorTreasury(false)
     try {
+      // Alinhado ao critério dos demais relatórios (DRE/DFC/Livro Caixa):
+      // só transações Confirmadas (ou sem status), excluídas as removidas
+      // (deleted_at) e as provisões de imposto (não são fluxo real de caixa).
       const { data, error } = await supabase
         .from('treasury_transactions')
-        .select('type, amount, date')
+        .select('type, amount, date, external_ref, description, category')
         .is('deleted_at', null)
+        .or('status.eq.Confirmado,status.is.null')
       if (error) throw error
-      setTreasuryData(data || [])
+      const cleanTreasury = (data || []).filter((t: any) => !isTaxProvisionTransaction(t))
+      setTreasuryData(cleanTreasury)
 
-      const months = Array.from(new Set((data || []).map((d) => d.date.substring(0, 7))))
+      const months = Array.from(new Set(cleanTreasury.map((d) => d.date.substring(0, 7))))
         .sort()
         .reverse()
       setAvailableMonths(months)

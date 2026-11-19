@@ -194,7 +194,7 @@ export async function fetchConsolidatedAccountingLedger(
       .is('deleted_at', null)
       .or('status.eq.Confirmado,status.is.null')
       .or(
-        'category.in.("Recebimento de Parcelas - CCB","Recebimento de Parcelas - Operação","Liquidação de Recebível","Resgate de Investidor","Resgates e Rendimentos","Receita Avulsa","Crédito em Conta","Receitas Diversas","Aporte de Capital","Rendimento Financeiro","Reembolso"),external_ref.like.manual-credit-%',
+        'category.in.("Recebimento de Parcelas - CCB","Recebimento de Parcelas - Operação","Liquidação de Recebível","Resgate de Investidor","Resgates e Rendimentos","Receita Avulsa","Crédito em Conta","Receitas Diversas","Aporte de Capital","Rendimento Financeiro","Reembolso","Quitação de CCB"),external_ref.like.manual-credit-%',
       ),
     supabase
       .from('company_bank_accounts')
@@ -339,6 +339,12 @@ export async function fetchConsolidatedAccountingLedger(
     if (!m.referencia_id) return
     const flow: 'in' | 'out' = classifyMovimentacaoCaixaAccounting(m.tipo)
     const refs = [`op-liq-${m.referencia_id}`, `redemption-${m.referencia_id}`]
+    // Quitação de CCB: a movimentação espelho usa referencia_numero =
+    // ccb-quit-{ccb_id} — mesma external_ref da transação de tesouraria.
+    // Registrar a referência aqui faz o passo 3 suprimir o lado duplicado.
+    if (m.referencia_tipo === 'ccb_quitacao') {
+      refs.push(`ccb-quit-${m.referencia_id}`)
+    }
     if (m.referencia_numero) {
       refs.push(`op-bol-${m.referencia_id}-${m.referencia_numero}`)
       refs.push(`ccb-bol-${m.referencia_id}-${m.referencia_numero}`)
@@ -771,6 +777,7 @@ export async function fetchConsolidatedAccountingLedger(
         'boleto',
         'resgate_investimento',
         'credit_operation',
+        'ccb_quitacao',
       ].includes(refTipoNormMirror)
 
     const category =

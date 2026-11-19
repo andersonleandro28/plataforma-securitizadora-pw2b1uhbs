@@ -301,6 +301,11 @@ export function useDfc() {
           if (refTipo === 'resgate_investimento') {
             redemptionsInMovs.add(String(mov.referencia_id))
           }
+          // Quitação de CCB: a movimentação espelho carrega referencia_numero
+          // = ccb-quit-{ccb_id}, a mesma external_ref da transação de tesouraria.
+          if (refTipo === 'ccb_quitacao') {
+            movsExternalRefs.add(`ccb-quit-${mov.referencia_id}`)
+          }
           if (mov.referencia_numero) {
             movsExternalRefs.add(`op-bol-${mov.referencia_id}-${mov.referencia_numero}`)
             movsExternalRefs.add(String(mov.referencia_numero))
