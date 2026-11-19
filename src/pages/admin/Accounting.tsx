@@ -131,7 +131,9 @@ export default function Accounting() {
         match = false
       if (activeFiltros.busca) {
         const b = activeFiltros.busca.toLowerCase()
-        if (!t.description.toLowerCase().includes(b) && !t.category.toLowerCase().includes(b)) {
+        const descriptionText = t.description ?? ''
+        const categoryText = t.category ?? ''
+        if (!descriptionText.toLowerCase().includes(b) && !categoryText.toLowerCase().includes(b)) {
           match = false
         }
       }
