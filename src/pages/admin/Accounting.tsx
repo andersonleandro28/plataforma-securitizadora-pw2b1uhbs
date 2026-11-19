@@ -54,6 +54,11 @@ function formatDisplayDate(dateStr: string): string {
 export default function Accounting() {
   const { data, loading, error, totalCashBalance, refetch } = useAccounting()
 
+  // Guard de nulos: lançamentos vindos da tesouraria podem ter description/
+  // category nulas no banco — a tela inteira (busca, modal de exclusão, render)
+  // precisa lidar com elas sem crashar (RoleGuard exibia erro de render).
+  const normalizeText = (v: string | null | undefined) => v ?? ''
+
   const now = new Date()
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]
@@ -131,8 +136,8 @@ export default function Accounting() {
         match = false
       if (activeFiltros.busca) {
         const b = activeFiltros.busca.toLowerCase()
-        const descriptionText = t.description ?? ''
-        const categoryText = t.category ?? ''
+        const descriptionText = normalizeText(t.description)
+        const categoryText = normalizeText(t.category)
         if (!descriptionText.toLowerCase().includes(b) && !categoryText.toLowerCase().includes(b)) {
           match = false
         }

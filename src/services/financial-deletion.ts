@@ -37,8 +37,13 @@ export function evaluateTransactionDeletionEligibility(params: {
   descricao?: string
   type?: string
 }): FinancialDeletionTarget {
-  const { id, descricao = '' } = params
-  const rawId = id.trim()
+  // Null guard: lançamentos vindos da tesouraria podem ter description/categoria
+  // nulas no banco. O default `= ''` do destructuring só cobre undefined —
+  // um null atravessava e explodia descricao.includes()/toLowerCase() no render
+  // do Livro Caixa (crash preso no RoleGuard em /admin/accounting).
+  const { id, categoria, type } = params
+  const descricao = params.descricao ?? ''
+  const rawId = (id ?? '').trim()
 
   // 1. Prefixos de tesouraria (Accounting usa tt-{uuid}, DRE usa tre-{uuid}, DFC usa tre-{uuid})
   if (rawId.startsWith('tt-') || rawId.startsWith('tre-')) {
