@@ -137,8 +137,16 @@ export default function Accounting() {
       }
 
       if (match) {
-        if (t.type === 'in') entradas += t.value
-        else saidas += t.value
+        // Totais do Livro Caixa = fluxo real (base do DFC, fonte da verdade):
+        // cada evento financeiro entra UMA única vez. Linhas dedup_suppressed
+        // são espelhos contábeis de um evento já lançado por outra fonte
+        // (tesouraria/despesa/resgate) — permanecem na LISTAGEM (nunca são
+        // escondidas), mas NÃO somam nos totais, para os cartões baterem com
+        // o DRE/DFC.
+        if (!t.dedup_suppressed) {
+          if (t.type === 'in') entradas += t.value
+          else saidas += t.value
+        }
       }
       return match
     })

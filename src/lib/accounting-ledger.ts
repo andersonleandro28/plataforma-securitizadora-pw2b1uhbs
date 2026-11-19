@@ -575,7 +575,21 @@ export async function fetchConsolidatedAccountingLedger(
       }
       const prof = Array.isArray(red.profiles) ? red.profiles[0] : red.profiles
       const investor = prof?.pj_company_name || prof?.full_name || 'Desconhecido'
-      const bInfo = resolveBank(null)
+      // Conta bancária REAL do débito do resgate pago: a movimentação de caixa
+      // gravada pela RPC process_redemption_payment registra em qual conta o
+      // PIX saiu; fallback = espelho de tesouraria redemption-{id}. Sem isso o
+      // lançamento red-{id} ficava SEM conta (resolveBank(null)) e o débito do
+      // resgate pago nunca chegava ao saldo da conta bancária (BNK) — a causa
+      // da divergência Contabilidade/BNK × DRE/DFC.
+      const movDaRed = (movs || []).find(
+        (m: any) =>
+          String(m.referencia_id) === String(red.id) &&
+          (m.referencia_tipo || '').toLowerCase() === 'resgate_investimento',
+      )
+      const ttDaRed = (tt || []).find(
+        (tx: any) => String(tx.external_ref || '') === `redemption-${red.id}`,
+      )
+      const bInfo = resolveBank(movDaRed?.bank_account_id || ttDaRed?.bank_account_id || null)
       transactions.push({
         id: `red-${red.id}`,
         date: normalizeAccountingDate(red.updated_at || red.created_at),
@@ -621,12 +635,15 @@ export async function fetchConsolidatedAccountingLedger(
       }
     }
 
-    if (!dedupSuppressed && refTipo === 'resgate_investimento' && mov.referencia_id) {
-      const redId = String(mov.referencia_id)
-      const redMatch = redemptionMap.get(redId)
-      if (redMatch && redMatch.status === 'paid') {
-        dedupSuppressed = true
-      }
+    // REGRA DE RESGATE (espelha o DFC, fonte da verdade): a movimentação de
+    // caixa de um resgate NUNCA entra no Livro Caixa. O resgate PAGO é lançado
+    // uma única vez pelo passo 7 (red-{id}, com a conta bancária real do PIX);
+    // resgate NÃO-pago (pendente/aprovado/rejeitado/cancelado) e ÓRFÃO de
+    // resgate já EXCLUÍDO da tabela investment_redemptions (referencia_id
+    // aponta para registro que não existe mais) não geram lançamento nenhum —
+    // nem no extrato, nem nos totais, nem nos saldos.
+    if (refTipo === 'resgate_investimento' && mov.referencia_id) {
+      return
     }
 
     let effectiveDate = normalizeAccountingDate(mov.created_at)
