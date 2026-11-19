@@ -365,6 +365,18 @@ export async function fetchConsolidatedAccountingLedger(
     const txType: 'in' | 'out' = tx.type === 'out' ? 'out' : 'in'
     const ref = tx.external_ref ? String(tx.external_ref) : null
     txExternalRefById.set(`tt-${tx.id}`, ref)
+    // REGRA DE RESGATE: espelhos redemption-{id} / tax-redemption-{id} só são
+    // lançamento financeiro legítimo quando o resgate está LIQUIDADO
+    // (status 'paid', gravado pela RPC process_redemption_payment). Resgate
+    // pendente/aprovado/rejeitado/cancelado — ou órfão de resgate excluído —
+    // NÃO gera fluxo nenhum no Livro Caixa, no DRE/DFC e nos saldos.
+    if (ref) {
+      const redRefMatch = ref.match(/^(?:redemption|tax-redemption)-(.+)$/)
+      if (redRefMatch) {
+        const redStatus = redemptionMap.get(redRefMatch[1])?.status
+        if (redStatus !== 'paid') return
+      }
+    }
     if (ref) {
       const movFlow = movsExternalRefs.get(ref)
       // Espelho já lançado como movimentação de caixa, no MESMO sentido: suprime
