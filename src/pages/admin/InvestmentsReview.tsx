@@ -191,6 +191,10 @@ export default function InvestmentsReview() {
   const [adminRedemptionOpen, setAdminRedemptionOpen] = useState(false)
   const [adminRedemptionInv, setAdminRedemptionInv] = useState<any>(null)
 
+  // Exclusão de pedidos de resgate rejeitados
+  const [deleteRedOpen, setDeleteRedOpen] = useState(false)
+  const [redToDelete, setRedToDelete] = useState<any>(null)
+
   // Cotas já comprometidas por pedidos de resgate ainda não liquidados/rejeitados, por investment_id
   const pendingRedemptionsByInvestment = useMemo(() => {
     const map: Record<string, number> = {}
@@ -740,6 +744,39 @@ export default function InvestmentsReview() {
       fetchRedemptions()
     } catch (err: any) {
       toast.error(err.message)
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  const handleOpenDeleteRedemption = (red: any) => {
+    setRedToDelete(red)
+    setDeleteRedOpen(true)
+  }
+
+  const handleConfirmDeleteRedemption = async () => {
+    if (!redToDelete) return
+    // Regra do projeto: resgates liquidados/pagos NUNCA podem ser excluídos
+    if (redToDelete.status !== 'rejected') {
+      toast.error('Somente pedidos de resgate rejeitados podem ser excluídos.')
+      setDeleteRedOpen(false)
+      setRedToDelete(null)
+      return
+    }
+
+    setProcessing(true)
+    try {
+      const { error } = await (supabase.rpc as any)('delete_rejected_redemption', {
+        p_redemption_id: redToDelete.id,
+      })
+      if (error) throw error
+
+      toast.success('Pedido de resgate rejeitado excluído com sucesso.')
+      setDeleteRedOpen(false)
+      setRedToDelete(null)
+      fetchRedemptions()
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao excluir o pedido de resgate.')
     } finally {
       setProcessing(false)
     }
@@ -1744,6 +1781,18 @@ export default function InvestmentsReview() {
                           >
                             <Pencil className="w-4 h-4 text-muted-foreground hover:text-primary" />
                           </Button>
+                          {red.status === 'rejected' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 w-8 h-8 p-0"
+                              onClick={() => handleOpenDeleteRedemption(red)}
+                              title="Excluir Pedido Rejeitado"
+                              disabled={processing}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -2475,6 +2524,87 @@ export default function InvestmentsReview() {
               Cancelar
             </Button>
             <Button variant="destructive" onClick={handleConfirmDeleteInv} disabled={processing}>
+              {processing ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <Trash2 className="w-4 h-4 mr-2" />
+              )}
+              Excluir Definitivamente
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Exclusão de Pedido de Resgate Rejeitado */}
+      <Dialog open={deleteRedOpen} onOpenChange={setDeleteRedOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-rose-600">
+              <Trash2 className="w-5 h-5" /> Excluir Pedido de Resgate
+            </DialogTitle>
+            <DialogDescription>
+              Esta ação é <strong>irreversível</strong>. O pedido rejeitado será removido
+              permanentemente da fila de resgates.
+            </DialogDescription>
+          </DialogHeader>
+
+          {redToDelete && (
+            <div className="py-2 space-y-3">
+              <Alert className="bg-rose-50 border-rose-200 text-rose-900">
+                <AlertTriangle className="h-4 w-4 text-rose-600" />
+                <AlertTitle className="text-rose-800 font-semibold">Atenção</AlertTitle>
+                <AlertDescription className="text-rose-700 text-xs mt-1">
+                  Apenas pedidos com status <strong>Rejeitado</strong> podem ser excluídos. Pedidos
+                  liquidados, pagos, aprovados ou pendentes nunca são afetados por esta ação.
+                </AlertDescription>
+              </Alert>
+
+              <div className="text-xs bg-muted/50 p-3 rounded-md space-y-1 border">
+                <div>
+                  <span className="text-muted-foreground">Investidor: </span>
+                  <span className="font-semibold">
+                    {redToDelete.profiles?.full_name || 'Desconhecido'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Produto: </span>
+                  <span className="font-medium">
+                    {redToDelete.investments?.investment_products?.title || '—'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Valor Líquido: </span>
+                  <span className="font-mono font-semibold">
+                    R${' '}
+                    {Number(redToDelete.net_value).toLocaleString('pt-BR', {
+                      minimumFractionDigits: 2,
+                    })}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Cotas: </span>
+                  <span className="font-medium">{redToDelete.requested_quotas}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteRedOpen(false)
+                setRedToDelete(null)
+              }}
+              disabled={processing}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmDeleteRedemption}
+              disabled={processing}
+            >
               {processing ? (
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
               ) : (
