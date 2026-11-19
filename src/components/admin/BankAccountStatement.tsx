@@ -555,11 +555,16 @@ export function BankAccountStatement({
                   </TableRow>
                 ) : (
                   paginatedList.map((t) => {
+                    // Guarda contra categoria/descrição nulas vindas do ledger:
+                    // um acesso .toLowerCase() sobre null crashava o render da
+                    // árvore inteira (sem ErrorBoundary) e a rota caía no RoleGuard.
+                    const categoryText = t.category ?? ''
+                    const descriptionText = t.description ?? ''
                     const isTransfer =
-                      t.category.toLowerCase().includes('transferência') ||
-                      t.category.toLowerCase().includes('transferencia') ||
-                      t.description.toLowerCase().includes('transferência entre contas') ||
-                      t.description.toLowerCase().includes('transferencia entre contas')
+                      categoryText.toLowerCase().includes('transferência') ||
+                      categoryText.toLowerCase().includes('transferencia') ||
+                      descriptionText.toLowerCase().includes('transferência entre contas') ||
+                      descriptionText.toLowerCase().includes('transferencia entre contas')
 
                     return (
                       <TableRow key={t.id} className="hover:bg-muted/40">
@@ -601,14 +606,14 @@ export function BankAccountStatement({
                               Transferência entre Contas
                             </Badge>
                           ) : (
-                            t.category
+                            categoryText || '-'
                           )}
                         </TableCell>
                         <TableCell
                           className="text-xs text-muted-foreground max-w-[320px] truncate"
-                          title={t.description}
+                          title={descriptionText}
                         >
-                          {t.description}
+                          {descriptionText || '-'}
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs text-emerald-600 font-medium">
                           {t.type === 'in' ? `+${formatCurrency(t.value)}` : '-'}
