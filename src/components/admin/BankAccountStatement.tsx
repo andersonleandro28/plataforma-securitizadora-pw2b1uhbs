@@ -57,8 +57,14 @@ function formatDisplayDate(dateStr: string): string {
   return `${d}/${m}/${y}`
 }
 
+// Null guard: valor nulo/undefined/NaN vindo do ledger (ou de um saldo ausente)
+// não pode derrubar o render do extrato — crash sem ErrorBoundary fazia a rota
+// /admin/bank-accounts cair no RoleGuard.
 function formatCurrency(val: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
+  const num = Number(val)
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+    Number.isFinite(num) ? num : 0,
+  )
 }
 
 export function BankAccountStatement({

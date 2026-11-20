@@ -45,8 +45,12 @@ export function DeleteFinancialRecordModal({
 
   if (!record) return null
 
+  // Null guard: valor nulo/undefined/NaN vindo do ledger não pode derrubar o
+  // render do modal (crash sem ErrorBoundary fazia a rota cair no RoleGuard).
   const formatCurrency = (val: number) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+      Number.isFinite(Number(val)) ? Number(val) : 0,
+    )
 
   const handleDelete = async () => {
     if (!record.deletionTarget.canDelete) {
