@@ -4,9 +4,10 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 // Edge function de DIAGNÓSTICO (somente leitura): reproduz o pipeline COMPLETO
 // do motor contábil (src/lib/accounting-ledger.ts) — passos 3 a 8 + loop de
 // saldos, regra por regra — e devolve os saldos por conta bancária, a
-// decomposição por fonte e os lançamentos da BNK em novembro/2026, para
-// localizar por que a parcela 16 da CCB aabecf04 (R$ 881,58, 2026-11-18, BNK)
-// não entra no saldo da tela. NÃO escreve nada no banco.
+// decomposição por fonte, os lançamentos da BNK em novembro/2026 e o DUMP
+// BRUTO das fontes (tts, movs, ops, reds, exps, recs, subs, invs, bancos,
+// mapeamentos) para validação do cálculo fora do navegador. NÃO escreve nada
+// no banco.
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -99,8 +100,8 @@ Deno.serve(async (_req: Request) => {
   const companyBanks = (banksRes.data ?? []) as Record<string, unknown>[]
   const mapMovs = (mapRes.data ?? []) as Record<string, unknown>[]
   const recs = (recsRes.data ?? []) as Record<string, unknown>[]
-
-  // ===== Filtros da query tt do ledger (replicados exatamente) =====
+  const subs = (subsRes.data ?? []) as Record<string, unknown>[]
+  const invs = [] as Record<string, unknown>[]
   const tt = ttAll.filter((tx) => {
     if (tx.deleted_at) return false
     const st = tx.status == null ? null : String(tx.status)
@@ -274,17 +275,20 @@ Deno.serve(async (_req: Request) => {
     }
   })
 
-  // Passo 4: boletos pagos
   recs.forEach((rec) => {
     const bols = Array.isArray(rec.boletos) ? (rec.boletos as Record<string, unknown>[]) : []
+    const prof = rec.profiles as Record<string, unknown> | undefined
+    const tomador = String(
+      (prof?.pj_company_name as string) ?? (prof?.full_name as string) ?? 'Desconhecido',
+    )
     bols.forEach((bol, i) => {
       const st = String(bol.status ?? '').toLowerCase()
       if (st !== 'pago' && st !== 'liquidado') return
       const pDate =
-        bol.data_pagamento ||
-        bol.payment_date ||
-        bol.data_liquidacao ||
-        bol.data_vencimento ||
+        bol.data_pagamento ??
+        bol.payment_date ??
+        bol.data_liquidacao ??
+        bol.data_vencimento ??
         bol.due_date
       if (!pDate) return
       const parcela = i + 1
@@ -292,22 +296,22 @@ Deno.serve(async (_req: Request) => {
       const altRef = `op-bol-${rec.id}-${parcela}`
       if (treasuryExternalRefs.has(extRef) || treasuryExternalRefs.has(altRef)) return
       const val =
-        Number(bol.valor || bol.unit_value || 0) +
-        Number(bol.interest_applied || 0) +
-        Number(bol.penalty_applied || 0)
+        Number(bol.valor ?? bol.unit_value ?? 0) +
+        Number(bol.interest_applied ?? 0) +
+        Number(bol.penalty_applied ?? 0)
       if (!val) return
       treasuryExternalRefs.add(extRef)
       treasuryExternalRefs.add(altRef)
-      const dataPag = normDate(pDate)
-      treasuryRefTypes.set(extRef, { type: 'in', value: val, date: dataPag })
-      treasuryRefTypes.set(altRef, { type: 'in', value: val, date: dataPag })
+      const dataPagBoleto = normDate(pDate)
+      treasuryRefTypes.set(extRef, { type: 'in', value: val, date: dataPagBoleto })
+      treasuryRefTypes.set(altRef, { type: 'in', value: val, date: dataPagBoleto })
       const b = resolveBank(bol.bank_account_id)
       transactions.push({
         id: `ccb-bol-${rec.id}-${parcela}`,
-        date: dataPag,
+        date: dataPagBoleto,
         type: 'in',
         category: 'Recebimento de Parcelas - CCB',
-        description: `Boleto ${parcela} de ${rec.id}`,
+        description: `Recebimento Parcela ${bol.numero ?? bol.number ?? parcela} - CCB nº ${String(rec.ccb_id ?? rec.id).slice(0, 8)} - Tomador: ${tomador}`,
         value: val,
         is_bank_mirror: true,
         bank_account_id: b.id,
@@ -316,127 +320,144 @@ Deno.serve(async (_req: Request) => {
     })
   })
 
-  // Passo 5: despesas
   exps.forEach((exp) => {
-    if (exp.status !== 'paid') return
-    if (exp.recurrence_group_id && !exp.payment_date) return
-    if (exp.id && ttExpenseIds.has(String(exp.id))) return
-    const b = resolveBank(exp.bank_account_id)
-    transactions.push({
-      id: `exp-${exp.id}`,
-      date: normDate(exp.payment_date || exp.due_date),
-      type: 'out',
-      category: 'Despesa',
-      description: String(exp.description ?? ''),
-      value: Number(exp.amount || 0),
-      is_bank_mirror: false,
-      bank_account_id: b.id,
-    })
+    if (String(exp.status) === 'paid') {
+      if (exp.recurrence_group_id && !exp.payment_date) return
+      const b = resolveBank(exp.bank_account_id)
+      if (exp.id && ttExpenseIds.has(String(exp.id))) return
+      transactions.push({
+        id: `exp-${exp.id}`,
+        date: normDate(exp.payment_date ?? exp.due_date),
+        type: 'out',
+        category: 'Despesa',
+        description: String(exp.description ?? 'Despesa'),
+        value: Number(exp.amount || 0),
+        is_bank_mirror: false,
+        bank_account_id: b.id,
+        ref: null,
+      })
+    }
   })
 
-  // Passo 6: operações (sem conta — não afetam saldos, mas entram na lista p/ fidelidade)
   ops.forEach((op) => {
-    if (!['pago', 'liquidado'].includes(String(op.status ?? ''))) return
-    const calc = Array.isArray(op.operation_calculations)
-      ? op.operation_calculations[0]
-      : op.operation_calculations
-    const val = (calc as Record<string, unknown> | null)?.net_value || op.requested_value
-    transactions.push({
-      id: `op-out-${op.id}`,
-      date: normDate(op.issue_date),
-      type: 'out',
-      category: 'Desembolso de Crédito',
-      description: 'Operação de Crédito',
-      value: Number(val || 0),
-      is_bank_mirror: false,
-      bank_account_id: null,
-    })
+    if (['pago', 'liquidado'].includes(String(op.status ?? ''))) {
+      const calc = Array.isArray(op.operation_calculations)
+        ? (op.operation_calculations as Record<string, unknown>[])[0]
+        : op.operation_calculations
+      const val = Number((calc?.net_value as number) ?? op.requested_value ?? 0)
+      const b = resolveBank(null)
+      transactions.push({
+        id: `op-out-${op.id}`,
+        date: normDate(op.issue_date),
+        type: 'out',
+        category: 'Desembolso de Crédito',
+        description: `Operação de Crédito — Sacado: ${String(op.sacado ?? 'Sacado')}`,
+        value: val,
+        is_bank_mirror: false,
+        bank_account_id: b.id,
+        ref: null,
+      })
+    }
   })
 
-  // Passo 7: resgates pagos
   reds.forEach((red) => {
-    if (red.status !== 'paid') return
-    if (treasuryExternalRefs.has(`redemption-${red.id}`)) return
-    const movDaRed = movs.find(
-      (m) =>
-        String(m.referencia_id) === String(red.id) &&
-        String(m.referencia_tipo ?? '').toLowerCase() === 'resgate_investimento',
-    )
-    const ttDaRed = tt.find((tx) => String(tx.external_ref ?? '') === `redemption-${red.id}`)
-    const b = resolveBank(movDaRed?.bank_account_id || ttDaRed?.bank_account_id || null)
-    transactions.push({
-      id: `red-${red.id}`,
-      date: normDate(red.updated_at || red.created_at),
-      type: 'out',
-      category: 'Resgate de Investimento',
-      description: 'Resgate',
-      value: Number(red.net_value || 0),
-      is_bank_mirror: true,
-      bank_account_id: b.id,
-      ref: `redemption-${red.id}`,
-    })
+    if (String(red.status) === 'paid') {
+      if (treasuryExternalRefs.has(`redemption-${red.id}`)) return
+      const b = resolveBank(null)
+      transactions.push({
+        id: `red-${red.id}`,
+        date: normDate(red.updated_at ?? red.created_at),
+        type: 'out',
+        category: 'Resgate de Investimento',
+        description: 'Resgate',
+        value: Number(red.net_value ?? 0),
+        is_bank_mirror: true,
+        bank_account_id: b.id,
+        ref: `redemption-${red.id}`,
+      })
+    }
   })
 
-  // Passo 8: movimentações de caixa
+  const categoriaLabel: Record<string, string> = {
+    liquidação_recebível: 'Liquidação de Recebível',
+    liquidacao_recebivel: 'Liquidação de Recebível',
+    juros_entrada: 'Juros Recebidos',
+    transferencia_entre_contas: 'Transferência entre Contas',
+    fornecedor: 'Pagamento Fornecedor',
+    despesa: 'Despesa Operacional',
+  }
+
   movs.forEach((mov) => {
     const catLower = String(mov.categoria ?? '').toLowerCase()
     const refTipo = String(mov.referencia_tipo ?? '').toLowerCase()
     let dedupSuppressed = false
     const linkedExpenseId =
-      movIdToExpenseId.get(String(mov.id)) || (refTipo === 'despesa' ? mov.referencia_id : null)
+      movIdToExpenseId.get(String(mov.id)) ?? (refTipo === 'despesa' ? mov.referencia_id : null)
     if (linkedExpenseId && expenseMap.has(String(linkedExpenseId))) dedupSuppressed = true
     if (catLower === 'fornecedor' || catLower === 'despesa') {
-      if (linkedExpenseId || (mov.referencia_id && expenseMap.has(String(mov.referencia_id))))
+      if (linkedExpenseId || (mov.referencia_id && expenseMap.has(String(mov.referencia_id)))) {
         dedupSuppressed = true
+      }
     }
     if (refTipo === 'resgate_investimento' && mov.referencia_id) return
-
+    let effectiveDate = normDate(mov.created_at)
+    if (
+      refTipo === 'resgate_investimento' &&
+      mov.referencia_id &&
+      redemptionMap.has(String(mov.referencia_id))
+    ) {
+      const red = redemptionMap.get(String(mov.referencia_id))!
+      effectiveDate = normDate(red.updated_at ?? red.created_at)
+    }
     const type = classifyMovCaixa(mov.tipo)
-
     if (mov.referencia_id) {
       const rid = String(mov.referencia_id)
       const recIdsDaOperacao = opIdToRecIds.get(rid) || []
+      // FONTE ÚNICA — parcela de OPERAÇÃO espelhada na tesouraria (mesma
+      // correção do accounting-ledger.ts 0.0.1223): o tt op-bol-{op}-{n} é
+      // descartado no passo 3, logo a mov é a ÚNICA fonte do evento.
+      const refEspelhoOperacao =
+        refTipo === 'parcela_operacao' && mov.referencia_numero
+          ? `op-bol-${rid}-${mov.referencia_numero}`
+          : null
+      const ttEspelhoPresente = refEspelhoOperacao
+        ? treasuryRefTypes.get(refEspelhoOperacao)?.type === type
+        : false
       const refsCandidatas = [`op-liq-${rid}`, `redemption-${rid}`]
-      recIdsDaOperacao.forEach((recId) =>
-        refsCandidatas.push(`op-liq-${recId}`, `redemption-${recId}`),
-      )
+      recIdsDaOperacao.forEach((recId) => {
+        refsCandidatas.push(`op-liq-${recId}`, `redemption-${recId}`)
+      })
       if (mov.referencia_numero) {
-        refsCandidatas.push(
-          `op-bol-${rid}-${mov.referencia_numero}`,
-          `ccb-bol-${rid}-${mov.referencia_numero}`,
-        )
+        refsCandidatas.push(`op-bol-${rid}-${mov.referencia_numero}`)
+        refsCandidatas.push(`ccb-bol-${rid}-${mov.referencia_numero}`)
         recIdsDaOperacao.forEach((recId) => {
-          refsCandidatas.push(
-            `op-bol-${recId}-${mov.referencia_numero}`,
-            `ccb-bol-${recId}-${mov.referencia_numero}`,
-          )
+          refsCandidatas.push(`op-bol-${recId}-${mov.referencia_numero}`)
+          refsCandidatas.push(`ccb-bol-${recId}-${mov.referencia_numero}`)
         })
       }
-      const mesmoSentidoExato = refsCandidatas.some(
-        (ref) => treasuryRefTypes.get(ref)?.type === type,
-      )
-
+      const mesmoSentidoExato =
+        !ttEspelhoPresente && refsCandidatas.some((ref) => treasuryRefTypes.get(ref)?.type === type)
       let casouPorIndice = false
-      if (!mesmoSentidoExato) {
+      if (!mesmoSentidoExato && !ttEspelhoPresente) {
         const conjuntos = [recebivelParcelaRefs.get(rid)]
         recIdsDaOperacao.forEach((recId) => conjuntos.push(recebivelParcelaRefs.get(recId)))
         const refsParcelas = conjuntos.find((s) => s && s.size > 0)
         if (refsParcelas) {
-          const valores: number[] = []
+          const valoresMesmoSentido: number[] = []
           treasuryRefTypes.forEach((info, ref) => {
-            if (refsParcelas.has(ref) && info.type === type) valores.push(info.value)
+            if (refsParcelas.has(ref) && info.type === type) valoresMesmoSentido.push(info.value)
           })
-          if (valores.length > 0) {
+          if (valoresMesmoSentido.length > 0) {
             const movVal = Number(mov.valor || 0)
-            const soma = valores.reduce((a, b) => a + b, 0)
+            const soma = valoresMesmoSentido.reduce((a, b) => a + b, 0)
             casouPorIndice =
-              valores.some((v) => Math.abs(v - movVal) < 0.015) || Math.abs(soma - movVal) < 0.015
+              valoresMesmoSentido.some((v) => Math.abs(v - movVal) < 0.015) ||
+              Math.abs(soma - movVal) < 0.015
           }
         }
       }
-
       let casouPorValorData = false
-      if (!mesmoSentidoExato && !casouPorIndice) {
+      if (!mesmoSentidoExato && !casouPorIndice && !ttEspelhoPresente) {
         const refTipoNorm = refTipo
           .normalize('NFD')
           .replace(/[\u0300-\u036f]/g, '')
@@ -464,59 +485,64 @@ Deno.serve(async (_req: Request) => {
           })
         }
       }
-
-      if (mesmoSentidoExato || casouPorIndice || casouPorValorData) dedupSuppressed = true
+      if (mesmoSentidoExato || casouPorIndice || casouPorValorData) {
+        dedupSuppressed = true
+      }
     }
-
+    const category = String(categoriaLabel[catLower] ?? mov.categoria ?? 'Movimentação de Caixa')
     const b = resolveBank(mov.bank_account_id)
     transactions.push({
       id: `mov-${mov.id}`,
-      date: normDate(mov.created_at),
+      date: effectiveDate,
       type,
-      category: String(mov.categoria ?? 'Movimentação de Caixa'),
-      description: String(mov.descricao ?? ''),
+      category,
+      description: String(mov.descricao ?? category),
       value: Number(mov.valor || 0),
       is_bank_mirror: false,
       dedup_suppressed: dedupSuppressed,
       bank_account_id: b.id,
+      ref: mov.referencia_numero
+        ? `${String(mov.referencia_tipo ?? '')}#${mov.referencia_numero}`
+        : String(mov.referencia_tipo ?? ''),
     })
   })
 
   transactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-
+  let runningGlobal = 0
   const balancesByAccount: Record<string, number> = {}
+  const bankMirrorNetByAccount: Record<string, number> = {}
   companyBanks.forEach((b) => {
     balancesByAccount[String(b.id)] = 0
   })
-  const sourceOf = (tx: Tx) =>
-    tx.id.startsWith('tt-')
-      ? `tt-${(tx.ref ?? '').split('-').slice(0, 2).join('-') || 'sem-ref'}`
-      : tx.id.startsWith('mov-')
-        ? 'mov-caixa'
-        : tx.id.startsWith('ccb-bol-')
-          ? 'boletos-ccb'
-          : tx.id.startsWith('exp-')
-            ? 'despesas'
-            : tx.id.startsWith('op-out-')
-              ? 'operacoes-credito'
-              : tx.id.startsWith('red-')
-                ? 'resgates'
-                : 'outros'
   const netByAccountAndSource: Record<string, Record<string, number>> = {}
-
+  const calculatedTransactions: Tx[] = []
   for (const t of transactions) {
     const delta = t.type === 'in' ? t.value : -t.value
-    if (t.bank_account_id && !t.dedup_suppressed) {
-      balancesByAccount[t.bank_account_id] = (balancesByAccount[t.bank_account_id] ?? 0) + delta
+    const accId = t.bank_account_id
+    if (accId && !t.dedup_suppressed) {
+      runningGlobal += delta
+      balancesByAccount[accId] = (balancesByAccount[accId] ?? 0) + delta
+      const sourceOf = (tx: Tx): string => {
+        if (tx.id.startsWith('tt-')) return 'tesouraria'
+        if (tx.id.startsWith('mov-')) return 'mov-caixa'
+        if (tx.id.startsWith('ccb-bol-')) return 'boletos-ccb'
+        if (tx.id.startsWith('exp-')) return 'despesas'
+        if (tx.id.startsWith('op-out-')) return 'operacoes-credito'
+        if (tx.id.startsWith('red-')) return 'resgates'
+        if (tx.id.startsWith('acq-')) return 'aquisicoes-ccb'
+        return 'captacoes'
+      }
       const src = sourceOf(t)
-      netByAccountAndSource[t.bank_account_id] = netByAccountAndSource[t.bank_account_id] || {}
-      netByAccountAndSource[t.bank_account_id][src] =
-        (netByAccountAndSource[t.bank_account_id][src] ?? 0) + delta
+      netByAccountAndSource[accId] = netByAccountAndSource[accId] || {}
+      netByAccountAndSource[accId][src] = (netByAccountAndSource[accId][src] ?? 0) + delta
+      if (t.is_bank_mirror)
+        bankMirrorNetByAccount[accId] = (bankMirrorNetByAccount[accId] ?? 0) + delta
     }
+    calculatedTransactions.push(t)
   }
 
   const BNK = '97c394bd-6334-43ab-9db5-b8717581ae61'
-  const bnkNovembro = transactions
+  const bnkNovembro = calculatedTransactions
     .filter((t) => t.bank_account_id === BNK && t.date >= '2026-11-01' && !t.dedup_suppressed)
     .map((t) => ({
       id: t.id,
@@ -525,31 +551,47 @@ Deno.serve(async (_req: Request) => {
       value: t.value,
       desc: t.description.slice(0, 70),
       ref: t.ref ?? null,
-      src: sourceOf(t),
+      src: ((): string => {
+        if (t.id.startsWith('tt-')) return 'tesouraria'
+        if (t.id.startsWith('mov-')) return 'mov-caixa'
+        if (t.id.startsWith('ccb-bol-')) return 'boletos-ccb'
+        if (t.id.startsWith('exp-')) return 'despesas'
+        if (t.id.startsWith('op-out-')) return 'operacoes-credito'
+        if (t.id.startsWith('red-')) return 'resgates'
+        return 'captacoes'
+      })(),
     }))
 
-  const parcela16 = transactions.filter(
+  const parcela16 = calculatedTransactions.filter(
     (t) => t.id === 'ccb-bol-aabecf04-a549-4fbf-a80e-d98a47f2d827-16',
   )
 
-  return new Response(
-    JSON.stringify(
-      {
-        saldos_por_conta: balancesByAccount,
-        contas: companyBanks.map((b) => ({
-          id: b.id,
-          bank_name: b.bank_name,
-          account_number: b.account_number,
-          is_active: b.is_active,
-        })),
-        net_bnk_por_fonte: netByAccountAndSource[BNK] ?? {},
-        parcela_16_no_livro: parcela16,
-        bnk_lancamentos_novembro_2026: bnkNovembro,
-        total_lancamentos: transactions.length,
-      },
-      null,
-      2,
-    ),
-    { headers: { 'Content-Type': 'application/json', ...corsHeaders } },
-  )
+  const dump = {
+    saldos_por_conta: balancesByAccount,
+    contas: companyBanks.map((b) => ({
+      id: b.id,
+      bank_name: b.bank_name,
+      account_number: b.account_number,
+      is_active: b.is_active,
+    })),
+    net_bnk_por_fonte: netByAccountAndSource[BNK] ?? {},
+    parcela_16_no_livro: parcela16,
+    bnk_lancamentos_novembro_2026: bnkNovembro,
+    total_lancamentos: calculatedTransactions.length,
+    raw: {
+      tt: tt,
+      movs: movs,
+      ops: ops,
+      reds: reds,
+      exps: exps,
+      recs: recs,
+      subs: subs,
+      invs: invs,
+      banks: companyBanks,
+      mapMovs: mapMovs,
+    },
+  }
+  return new Response(JSON.stringify(dump), {
+    headers: { 'Content-Type': 'application/json', ...corsHeaders },
+  })
 })
