@@ -392,7 +392,17 @@ export async function fetchConsolidatedAccountingLedger(
       // que a consulta para NÃO lançar também a movimentação espelho. Registrar
       // depois do return (como antes) fazia a dedup do passo 8 nunca casar.
       if (movFlow && movFlow === txType) {
-        if (!treasuryRefTypes.has(ref)) {
+        // Liquidação de recebível (op-liq-*) não tem terceira fonte no
+        // consolidador (parcelas CCB têm os boletos; resgates têm red-*).
+        // Registrar a referência aqui fazia o passo 8 suprimir também o
+        // espelho do Livro Caixa — o evento somava ZERO vezes (aparecia na
+        // lista e não entrava no total, ex.: liquidação de R$ 6.000 em
+        // 12/11/2026 listada sem somar). Para op-liq, o espelho do Livro
+        // Caixa é a fonte única do evento: não registra a referência, o
+        // espelho conta exatamente 1 vez. Demais referências (ccb-bol/op-bol/
+        // redemption) seguem com o registro para o passo 8 deduplicar.
+        const isLiquidacaoRecebivel = ref.startsWith('op-liq-')
+        if (!isLiquidacaoRecebivel && !treasuryRefTypes.has(ref)) {
           treasuryRefTypes.set(ref, {
             type: txType,
             value: Number(tx.amount || 0),

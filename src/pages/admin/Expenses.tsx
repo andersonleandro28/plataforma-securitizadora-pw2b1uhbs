@@ -401,6 +401,35 @@ export default function Expenses() {
     return true
   }
 
+  // TROCA DE CONTA DE DESPESA = MIGRAÇÃO (nunca duplicação): atualiza a conta
+  // dos lançamentos JÁ derivados dessa despesa — espelho contábil de tesouraria
+  // (criado pela trigger on_expense_paid, que casa por expense_id) e espelho de
+  // caixa (movimentacoes_caixa via mapeamento_movimentacoes). Nenhum lançamento
+  // novo é criado: apenas a conta do lançamento existente migra.
+  const migrateExpenseBankEntries = async (expenseId: string, newBankAccountId: string | null) => {
+    try {
+      await (supabase.from('treasury_transactions') as any)
+        .update({ bank_account_id: newBankAccountId })
+        .eq('expense_id', expenseId)
+        .is('deleted_at', null)
+
+      const { data: mappedRows } = await supabase
+        .from('mapeamento_movimentacoes')
+        .select('movimentacao_caixa_id')
+        .eq('origem_id', expenseId)
+        .in('origem_tabela', ['despesas', 'fornecedores'])
+
+      const movIds = (mappedRows || []).map((m: any) => m.movimentacao_caixa_id)
+      if (movIds.length > 0) {
+        await (supabase.from('movimentacoes_caixa') as any)
+          .update({ bank_account_id: newBankAccountId })
+          .in('id', movIds)
+      }
+    } catch (err) {
+      console.warn('Falha ao migrar conta dos lançamentos da despesa:', err)
+    }
+  }
+
   const handleSaveExpense = async () => {
     if (expForm.status === 'paid' && !expForm.id) {
       const { data: movs } = await supabase.from('movimentacoes_caixa').select('tipo, valor')
@@ -458,9 +487,16 @@ export default function Expenses() {
     }
 
     if (expForm.id) {
+      const contaAnterior = expenses.find((e) => e.id === expForm.id)?.bank_account_id || null
       const { error } = await supabase.from('expenses').update(payload).eq('id', expForm.id)
       if (error) toast.error(error.message)
       else {
+        // A conta mudou? Migra os lançamentos derivados para a nova conta em vez
+        // de deixá-los na antiga (que era lido como "lançamento novo na BNK" +
+        // "lançamento antigo na Principal" — a duplicação relatada).
+        if ((contaAnterior || null) !== (finalBankAccountId || null)) {
+          await migrateExpenseBankEntries(expForm.id, finalBankAccountId)
+        }
         if (expForm.status === 'paid') {
           const expense = {
             ...expForm,
