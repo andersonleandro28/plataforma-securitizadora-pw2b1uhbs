@@ -693,6 +693,25 @@ export async function fetchConsolidatedAccountingLedger(
       // A movimentação pode apontar para a OPERAÇÃO de crédito (parcela_operacao)
       // em vez do recebível — resolve via ponte ccb_id (opIdToRecIds).
       const recIdsDaOperacao = opIdToRecIds.get(rid) || []
+      // FONTE ÚNICA — parcela de OPERAÇÃO espelhada na tesouraria: o tt
+      // op-bol-{op}-{n} correspondente é descartado no passo 3 (return do ramo
+      // movFlow === txType), logo esta movimentação é a ÚNICA fonte do evento
+      // no consolidador. Sem este desvio, as redes de dedup abaixo (sentido
+      // exato, índice de boleto, valor+data) suprimiam também o espelho e o
+      // evento somava ZERO vezes — listado sem entrar no total (ex.:
+      // liquidação de R$ 6.000 em 12/11/2026 listada sem somar).
+      // RESTRITO a referencia_tipo parcela_operacao: espelhos de CCB
+      // (parcela/recebível/boleto) seguem nas redes normais — têm os boletos
+      // como terceira fonte e NÃO podem contar 2× (o passo de boletos registra
+      // op-bol-{rec}-{n} em treasuryRefTypes, então sem a guarda uma mov de CCB
+      // com o id completo do recebível escaparia da dedup e duplicaria).
+      const refEspelhoOperacao =
+        refTipo === 'parcela_operacao' && mov.referencia_numero
+          ? `op-bol-${rid}-${mov.referencia_numero}`
+          : null
+      const ttEspelhoPresente = refEspelhoOperacao
+        ? treasuryRefTypes.get(refEspelhoOperacao)?.type === type
+        : false
       const refsCandidatas = [`op-liq-${rid}`, `redemption-${rid}`]
       recIdsDaOperacao.forEach((recId) => {
         refsCandidatas.push(`op-liq-${recId}`, `redemption-${recId}`)
@@ -705,16 +724,15 @@ export async function fetchConsolidatedAccountingLedger(
           refsCandidatas.push(`ccb-bol-${recId}-${mov.referencia_numero}`)
         })
       }
-      const mesmoSentidoExato = refsCandidatas.some(
-        (ref) => treasuryRefTypes.get(ref)?.type === type,
-      )
+      const mesmoSentidoExato =
+        !ttEspelhoPresente && refsCandidatas.some((ref) => treasuryRefTypes.get(ref)?.type === type)
 
       // Casamento complementar por índice de boleto: a movimentação referencia o
       // recebível de CCB (diretamente ou via operação) e as transações de
       // tesouraria das parcelas usam ccb-bol-{recId}-{indice}. Exige mesmo
       // sentido de fluxo e valor compatível para só suprimir o espelho real.
       let casouPorIndice = false
-      if (!mesmoSentidoExato) {
+      if (!mesmoSentidoExato && !ttEspelhoPresente) {
         const conjuntos = [recebivelParcelaRefs.get(rid)]
         recIdsDaOperacao.forEach((recId) => conjuntos.push(recebivelParcelaRefs.get(recId)))
         const refsParcelas = conjuntos.find((s) => s && s.size > 0)
@@ -739,7 +757,7 @@ export async function fetchConsolidatedAccountingLedger(
       // da operação, recebível, liquidação) casadas por valor + data + sentido
       // contra as refs de evento da tesouraria — cobre ccb_id nulo/desalinhado.
       let casouPorValorData = false
-      if (!mesmoSentidoExato && !casouPorIndice) {
+      if (!mesmoSentidoExato && !casouPorIndice && !ttEspelhoPresente) {
         const refTipoNorm = refTipo
           .normalize('NFD')
           .replace(/[\u0300-\u036f]/g, '')
