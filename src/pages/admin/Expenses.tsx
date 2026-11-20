@@ -42,6 +42,7 @@ import {
   Calendar,
   Layers,
   Filter,
+  Search,
 } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
@@ -51,6 +52,7 @@ import { cn, formatDate } from '@/lib/utils'
 import { onlyDigits, maskCpf, maskCnpj, validateCpf, validateCnpj } from '@/lib/cpf-cnpj'
 import { CompanyBankAccountSelect } from '@/components/admin/CompanyBankAccountSelect'
 import { useCompanyBankAccounts } from '@/hooks/use-company-bank-accounts'
+import { normalizeText } from '@/hooks/use-sacado-suggestions'
 
 export default function Expenses() {
   const { activeRole } = useAuth()
@@ -96,6 +98,7 @@ export default function Expenses() {
   const [categoryHighlight, setCategoryHighlight] = useState(false)
   const [recurrenceFilter, setRecurrenceFilter] = useState<'all' | 'recurring' | 'single'>('all')
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>('all')
+  const [supplierSearch, setSupplierSearch] = useState('')
 
   useEffect(() => {
     fetchData()
@@ -734,6 +737,17 @@ export default function Expenses() {
                   </div>
                 </div>
 
+                {/* Busca por fornecedor (combina com os filtros acima) */}
+                <div className="relative w-full sm:w-[240px]">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por fornecedor..."
+                    value={supplierSearch}
+                    onChange={(e) => setSupplierSearch(e.target.value)}
+                    className="pl-8"
+                  />
+                </div>
+
                 {/* Filtro por grupo recorrente se houver grupos */}
                 {recurrenceFilter === 'recurring' && (
                   <div className="flex items-center gap-2 text-xs">
@@ -781,6 +795,13 @@ export default function Expenses() {
                   }
                   if (recurrenceFilter === 'single') {
                     return !e.recurrence_group_id
+                  }
+                  // Busca por fornecedor: case-insensitive e sem acentos,
+                  // com null guard (fornecedor pode vir nulo na despesa)
+                  if (supplierSearch.trim()) {
+                    const b = normalizeText(supplierSearch)
+                    const supplierName = e.suppliers?.company_name ?? ''
+                    if (!normalizeText(supplierName).includes(b)) return false
                   }
                   return true
                 })
