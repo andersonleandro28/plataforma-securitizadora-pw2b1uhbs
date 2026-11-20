@@ -438,7 +438,11 @@ export async function fetchConsolidatedAccountingLedger(
       category:
         tx.category ||
         (txType === 'out' ? 'Resgate de Investidor' : 'Recebimento de Parcelas - CCB'),
-      description: tx.description,
+      // Null guard: transações de tesouraria podem ter description/categoria
+      // nulas no banco — null cru no lançamento explodia qualquer
+      // .toLowerCase()/.includes() de consumo no render (Extrato /admin/
+      // bank-accounts, Livro Caixa) e a rota caía presa no RoleGuard.
+      description: tx.description || tx.category || 'Lançamento de Tesouraria',
       value: Number(tx.amount || 0),
       date: normalizeAccountingDate(tx.date),
       is_bank_mirror: Boolean(ref && MIRROR_REF.test(ref)) || manualSemConta,
