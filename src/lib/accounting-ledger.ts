@@ -650,7 +650,15 @@ export async function fetchConsolidatedAccountingLedger(
       dedupSuppressed = true
     }
     if (catLower === 'fornecedor' || catLower === 'despesa') {
-      if (linkedExpenseId || (mov.referencia_id && expenseMap.has(mov.referencia_id))) {
+      // Mesma regra do DRE (use-dre.ts): só suprime o espelho do caixa se a
+      // despesa oficial EXISTE em expenses — ela é quem entra pelo passo 5.
+      // Vinculada a despesa APAGADA não suprime: o espelho é o único registro
+      // do evento e deve contar (ex.: fornecedor de R$ 1.621 e R$ 100 de
+      // 12/11 suprimidos com a despesa deletada — saída listada sem somar).
+      if (
+        (linkedExpenseId && expenseMap.has(linkedExpenseId)) ||
+        (mov.referencia_id && expenseMap.has(mov.referencia_id))
+      ) {
         dedupSuppressed = true
       }
     }

@@ -363,7 +363,13 @@ Deno.serve(async (_req: Request) => {
   reds.forEach((red) => {
     if (String(red.status) === 'paid') {
       if (treasuryExternalRefs.has(`redemption-${red.id}`)) return
-      const b = resolveBank(null)
+      const movDaRed = movs.find(
+        (m) =>
+          String(m.referencia_id) === String(red.id) &&
+          String(m.referencia_tipo ?? '').toLowerCase() === 'resgate_investimento',
+      )
+      const ttDaRed = tt.find((tx) => String(tx.external_ref ?? '') === `redemption-${red.id}`)
+      const b = resolveBank(movDaRed?.bank_account_id || ttDaRed?.bank_account_id || null)
       transactions.push({
         id: `red-${red.id}`,
         date: normDate(red.updated_at ?? red.created_at),
