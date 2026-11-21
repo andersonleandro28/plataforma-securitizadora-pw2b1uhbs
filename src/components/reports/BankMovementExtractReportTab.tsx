@@ -40,6 +40,7 @@ import {
 import { exportToCSV } from '@/lib/export-utils'
 import { useAccounting, type Transaction } from '@/hooks/use-accounting'
 import { useCompanyBankAccounts } from '@/hooks/use-company-bank-accounts'
+import { fetchConsolidatedAccountingLedger } from '@/lib/accounting-ledger'
 import { cn } from '@/lib/utils'
 import { printWithReportTitle } from '@/lib/print-with-title'
 
@@ -49,8 +50,14 @@ function formatDisplayDate(dateStr: string): string {
   return `${d}/${m}/${y}`
 }
 
+// Null guard: valor nulo/undefined/NaN vindo do ledger (ou de um saldo ausente)
+// não pode derrubar o render do relatório — crash sem ErrorBoundary fazia a
+// rota /reports cair no RoleGuard.
 function formatCurrency(val: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
+  const num = Number(val)
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+    Number.isFinite(num) ? num : 0,
+  )
 }
 
 export interface BankMovementExtractReportTabProps {
@@ -71,8 +78,27 @@ export function BankMovementExtractReportTab({
   const secEndereco = settings ? formatCompanyAddress(settings) : 'São Paulo - SP | Brasil'
   const secContato = [settings?.telefone, settings?.email].filter(Boolean).join(' • ')
 
-  const { data: rawTransactions, loading, error, refetch } = useAccounting()
+  const { data: rawTransactions, loading, error, refetch, runningBalances } = useAccounting()
   const { accounts } = useCompanyBankAccounts()
+
+  // Saldos oficiais por conta, vindos do mesmo motor contábil único
+  // (fetchConsolidatedAccountingLedger) que alimenta o topo de Contas Bancárias —
+  // garante que os totais do relatório reconciliem com aquela tela.
+  const [ledgerBalances, setLedgerBalances] = useState<Record<string, number>>({})
+  useEffect(() => {
+    let alive = true
+    fetchConsolidatedAccountingLedger()
+      .then((result) => {
+        if (!alive) return
+        setLedgerBalances(result.balancesByAccount || {})
+      })
+      .catch(() => {
+        /* saldos oficiais são best-effort; fallback usa acumulado do ledger */
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
 
   const [selectedAccountId, setSelectedAccountId] = useState<string>('todas')
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
@@ -129,32 +155,36 @@ export function BankMovementExtractReportTab({
     return act ? act.id : accounts[0]?.id || null
   }, [accounts])
 
-  // Ordena cronologicamente e calcula o saldo acumulado corrido por conta e global
+  // Saldo acumulado OFICIAL do motor contábil (runningBalances, chave = id da
+  // transação): a coluna "Saldo Acumulado" exibe o mesmo cálculo que produz os
+  // totais do topo de Contas Bancárias (dedup movs↔tesouraria, fantasmas
+  // manual-credit- sem conta, lançamentos sem conta herdando a conta ativa).
+  // NADA é recalculado aqui — recalcular o running balance com regras próprias
+  // (sem dedup, somando fantasmas) fazia a coluna divergir de forma irreal.
   const transactionsWithRunningBalance = useMemo(() => {
-    // Cronológico crescente para correr o saldo
-    const chronological = [...rawTransactions].sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-    )
+    // O ledger entrega a lista em ordem DECRESCENTE (filteredList.reverse());
+    // revertendo reproduz exatamente a ordem ASCENDENTE em que o motor calculou
+    // o running balance — empates de data inclusivos (mesma chave de sort).
+    const chronological = [...rawTransactions].reverse()
 
-    const runningBalances: Record<string, number> = {}
-    let globalRunning = 0
-
-    return chronological.map((t) => {
+    const calculated = chronological.map((t) => {
       const accId = t.bank_account_id || activeAccountId || 'default'
-      const prevBal = runningBalances[accId] ?? 0
-      const delta = t.type === 'in' ? t.value : -t.value
-      const newBal = prevBal + delta
-      runningBalances[accId] = newBal
-      globalRunning += delta
+      // Fallback defensivo (nunca deve faltar: o motor calcula para todas as
+      // linhas com conta): mostra o saldo oficial da conta até a linha — sem
+      // inventar acúmulo próprio.
+      const account_running_balance = runningBalances.get(t.id) ?? ledgerBalances[accId] ?? 0
+      const global_running_balance = t.accumulated_balance ?? account_running_balance
 
       return {
         ...t,
         computed_account_id: accId,
-        account_running_balance: newBal,
-        global_running_balance: globalRunning,
+        account_running_balance,
+        global_running_balance,
       }
     })
-  }, [rawTransactions, activeAccountId])
+
+    return calculated
+  }, [rawTransactions, activeAccountId, runningBalances, ledgerBalances])
 
   // Determina intervalo de datas da competência
   const { monthStart, monthEnd } = useMemo(() => {
@@ -169,51 +199,6 @@ export function BankMovementExtractReportTab({
     const lastDay = `${selectedMonth}-${String(lastDayDate.getDate()).padStart(2, '0')}`
     return { monthStart: firstDay, monthEnd: lastDay }
   }, [selectedMonth])
-
-  // Cálculo de saldos: Inicial, Entradas, Saídas, Saldo Período e Saldo Final Acumulado
-  const summaryMetrics = useMemo(() => {
-    let saldoInicial = 0
-    let totalEntradas = 0
-    let totalSaidas = 0
-    let saldoFinalAcumulado = 0
-
-    // Filtra transações que batem com a conta selecionada
-    const accountEligible = transactionsWithRunningBalance.filter((t) => {
-      if (selectedAccountId === 'todas') return true
-      return t.computed_account_id === selectedAccountId
-    })
-
-    accountEligible.forEach((t) => {
-      const delta = t.type === 'in' ? t.value : -t.value
-      const dStr = t.date?.slice(0, 10) || ''
-
-      if (selectedMonth !== 'todos' && monthStart && dStr < monthStart) {
-        saldoInicial += delta
-      }
-
-      if (
-        selectedMonth === 'todos' ||
-        ((!monthStart || dStr >= monthStart) && (!monthEnd || dStr <= monthEnd))
-      ) {
-        if (t.type === 'in') totalEntradas += t.value
-        else totalSaidas += t.value
-      }
-
-      if (selectedMonth === 'todos' || !monthEnd || dStr <= monthEnd) {
-        saldoFinalAcumulado += delta
-      }
-    })
-
-    const saldoPeriodo = totalEntradas - totalSaidas
-
-    return {
-      saldoInicial,
-      totalEntradas,
-      totalSaidas,
-      saldoPeriodo,
-      saldoFinalAcumulado,
-    }
-  }, [transactionsWithRunningBalance, selectedAccountId, selectedMonth, monthStart, monthEnd])
 
   // Filtra as transações para a listagem (período, conta e busca)
   const filteredTransactions = useMemo(() => {
@@ -249,7 +234,55 @@ export function BankMovementExtractReportTab({
     searchTerm,
   ])
 
-  // Ordenação para exibição: decrescente por data (mais recentes primeiro)
+  // Cálculo de saldos: Entradas, Saídas, Saldo Período e Saldo Final Acumulado.
+  // Entradas/Saídas somam o MESMO conjunto de linhas exibido pela tabela (mesmos
+  // filtros), sem regra própria de saldo: o "Saldo Final Acumulado" mostra o
+  // saldo OFICIAL do motor contábil no fim da competência — a última linha da
+  // conta/consolidado dentro do período (mesma fonte da coluna Saldo Acumulado,
+  // que reconcilia com o topo de Contas Bancárias). Nunca recalcular fora dele.
+  const summaryMetrics = useMemo(() => {
+    let totalEntradas = 0
+    let totalSaidas = 0
+
+    filteredTransactions.forEach((t) => {
+      if (t.type === 'in') totalEntradas += t.value
+      else totalSaidas += t.value
+    })
+
+    // filteredTransactions está em ordem ASCENDENTE (ordem do ledger revertida):
+    // a última linha dentro do período carrega o saldo oficial no fim dele.
+    // - consolidado: acumulado global do ledger (runningGlobal do motor).
+    // - conta específica: runningBalance oficial da conta.
+    // Sem linha no período: saldo oficial da conta vindo do motor, ou 0.
+    const inPeriod = filteredTransactions.filter(
+      (t) => selectedMonth === 'todos' || !monthEnd || (t.date?.slice(0, 10) || '') <= monthEnd,
+    )
+    let saldoFinalAcumulado: number
+    if (selectedAccountId === 'todas') {
+      const last = inPeriod[inPeriod.length - 1]
+      saldoFinalAcumulado = last?.global_running_balance ?? last?.account_running_balance ?? 0
+    } else {
+      const lastOfAccount = [...inPeriod]
+        .reverse()
+        .find((t) => t.computed_account_id === selectedAccountId)
+      saldoFinalAcumulado =
+        lastOfAccount?.account_running_balance ?? ledgerBalances[selectedAccountId] ?? 0
+    }
+
+    const saldoPeriodo = totalEntradas - totalSaidas
+
+    return {
+      totalEntradas,
+      totalSaidas,
+      saldoPeriodo,
+      saldoFinalAcumulado,
+    }
+  }, [filteredTransactions, selectedAccountId, selectedMonth, monthStart, monthEnd, ledgerBalances])
+
+  // Ordenação para exibição: decrescente por data (mais recentes primeiro).
+  // Apenas a ORDEM DE EXIBIÇÃO é invertida — cada linha continua exibindo o
+  // saldo OFICIAL do motor contábil (runningBalances), calculado em ordem
+  // cronológica; nenhum saldo é recalculado aqui.
   const displayList = useMemo(() => {
     return [...filteredTransactions].sort(
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
@@ -279,7 +312,7 @@ export function BankMovementExtractReportTab({
     }))
 
     const labelConta = selectedAccount
-      ? selectedAccount.bank_name.replace(/\s+/g, '_')
+      ? (selectedAccount.bank_name || 'Conta').replace(/\s+/g, '_')
       : 'Todas_Contas'
     exportToCSV(csvData, `Extrato_Movimentacoes_Bancarias_${labelConta}_${selectedMonth}.csv`)
   }, [displayList, selectedAccountId, selectedAccount, selectedMonth])
@@ -727,11 +760,16 @@ export function BankMovementExtractReportTab({
                   <TableBody>
                     {displayList.map((t) => {
                       const isEntrada = t.type === 'in'
+                      // Guarda contra categoria/descrição nulas vindas do ledger:
+                      // um acesso .toLowerCase() sobre null crashava o render da
+                      // árvore inteira (sem ErrorBoundary) e a rota caía no RoleGuard.
+                      const categoryText = t.category ?? ''
+                      const descriptionText = t.description ?? ''
                       const isTransfer =
-                        t.category.toLowerCase().includes('transferência') ||
-                        t.category.toLowerCase().includes('transferencia') ||
-                        t.description.toLowerCase().includes('transferência entre contas') ||
-                        t.description.toLowerCase().includes('transferencia entre contas')
+                        categoryText.toLowerCase().includes('transferência') ||
+                        categoryText.toLowerCase().includes('transferencia') ||
+                        descriptionText.toLowerCase().includes('transferência entre contas') ||
+                        descriptionText.toLowerCase().includes('transferencia entre contas')
 
                       const currentAccumulated =
                         selectedAccountId === 'todas'
@@ -777,14 +815,14 @@ export function BankMovementExtractReportTab({
                                 Transferência Interna
                               </Badge>
                             ) : (
-                              t.category
+                              categoryText || '—'
                             )}
                           </TableCell>
                           <TableCell
                             className="text-xs text-muted-foreground max-w-[320px] truncate"
-                            title={t.description}
+                            title={descriptionText}
                           >
-                            {t.description}
+                            {descriptionText || '—'}
                           </TableCell>
                           <TableCell className="text-right font-mono text-xs text-emerald-600 font-medium">
                             {isEntrada ? `+${formatCurrency(t.value)}` : '—'}
@@ -795,7 +833,7 @@ export function BankMovementExtractReportTab({
                           <TableCell
                             className={cn(
                               'text-right font-mono text-xs font-semibold',
-                              currentAccumulated >= 0 ? 'text-foreground' : 'text-rose-600',
+                              Number(currentAccumulated) >= 0 ? 'text-foreground' : 'text-rose-600',
                             )}
                           >
                             {formatCurrency(currentAccumulated)}
