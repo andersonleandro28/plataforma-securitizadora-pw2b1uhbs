@@ -170,7 +170,7 @@ export default function Dfc() {
 
   const variacao = dados?.variacaoLiquidaPeriodo ?? 0
   const saldoInicial = dados?.saldoInicialCaixa ?? 0
-  const saldoFinal = dados?.saldoFinalCalculado ?? 0
+  const saldoFinal = dados?.saldoFinalLivroCaixa ?? 0
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up pb-10">
@@ -873,7 +873,7 @@ function SecaoFasb95({
         {/* Subtotal da Seção */}
         <div className="flex items-center justify-between border-t pt-3 mt-4 text-sm font-semibold">
           <span className="text-muted-foreground">
-            (=) Caixa líquido gerado pelas (aplicado nas) {titulo.toLowerCase()}
+            (=) Caixa líquido gerado pelas (aplicado nas) {(titulo ?? '').toLowerCase()}
           </span>
           <span
             className={cn(

@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import { fetchConsolidatedAccountingLedger } from '@/lib/accounting-ledger'
 import {
   classifyMovimentacaoCaixaDfc,
   isTaxProvisionTransaction,
@@ -567,10 +568,6 @@ export function useDfc() {
       // Ordena cronologicamente todos os itens para cálculo de saldo acumulado de caixa
       rawItems.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
-      let saldoAcumulado = 0
-      let saldoInicialCaixa = 0
-      let saldoFinalLivroCaixa = 0
-
       // Converte itens e classifica FASB 95
       const allClassified: DfcLancamento[] = rawItems.map((item) => {
         const { secao, label } = classificarFasb95(item.categoriaOriginal, item.sinal)
@@ -587,19 +584,21 @@ export function useDfc() {
         }
       })
 
-      // Calcula saldos acumulados:
-      // Saldo inicial: acumulado de tudo com date < inicio (usando datas reais)
-      // Saldo final: acumulado de tudo com date <= fim (usando datas reais)
-      allClassified.forEach((item) => {
-        const delta = item.sinal === 'entrada' ? item.valor : -item.valor
-        if (item.date < inicio) {
-          saldoInicialCaixa += delta
-        }
-        if (item.date <= fim) {
-          saldoFinalLivroCaixa += delta
-        }
-        saldoAcumulado += delta
-      })
+      // Saldos de caixa vêm do MOTOR CONTÁBIL ÚNICO (mesma fonte de Contabilidade e
+      // Contas Bancárias): saldo inicial = até o dia anterior ao início; saldo final =
+      // até o fim do período; saldo global = atual. Não há mais soma própria aqui.
+      const pad2 = (n: number) => String(n).padStart(2, '0')
+      const diaAnterior = new Date(inicio + 'T12:00:00')
+      diaAnterior.setDate(diaAnterior.getDate() - 1)
+      const asOfInicioAnterior = `${diaAnterior.getFullYear()}-${pad2(diaAnterior.getMonth() + 1)}-${pad2(diaAnterior.getDate())}`
+      const [ledgerInicial, ledgerFinal, ledgerGlobal] = await Promise.all([
+        fetchConsolidatedAccountingLedger({ asOfDate: asOfInicioAnterior }),
+        fetchConsolidatedAccountingLedger({ asOfDate: fim }),
+        fetchConsolidatedAccountingLedger(),
+      ])
+      const saldoInicialCaixa = ledgerInicial.totalCashBalance
+      const saldoFinalLivroCaixa = ledgerFinal.totalCashBalance
+      const saldoAcumulado = ledgerGlobal.totalCashBalance
 
       // Filtra os lançamentos ESTRITAMENTE do período selecionado: nenhum lançamento fora do período vaza
       const lancamentosPeriodo = allClassified.filter((l) => l.date >= inicio && l.date <= fim)
