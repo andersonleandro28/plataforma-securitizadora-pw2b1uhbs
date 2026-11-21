@@ -320,14 +320,13 @@ export function useDfc() {
         // a tabela `expenses` é a fonte exclusiva da verdade (passo 3).
         const linkedExpenseId =
           movIdToExpenseId.get(mov.id) || (refTipo === 'despesa' ? mov.referencia_id : null)
+        // A fonte oficial `expenses` (passo 3) só suprime a movimentação de caixa
+        // quando a despesa vinculada EXISTE na tabela — mesma regra do DRE. Quando o
+        // mapeamento aponta para uma despesa que não existe mais (ou para um id de
+        // fornecedor, que nunca está em expenseMap), a movimentação de caixa é o
+        // único registro do pagamento e DEVE entrar no fluxo (não descartar aqui).
         if (linkedExpenseId && expenseMap.has(linkedExpenseId)) {
           return
-        }
-        if (catLower === 'fornecedor' || catLower === 'despesa') {
-          // Se houver despesa vinculada no mapa de mapeamentos ou se referencia_id apontar para expense
-          if (linkedExpenseId || (mov.referencia_id && expenseMap.has(mov.referencia_id))) {
-            return
-          }
         }
 
         // REGRA DE OURO FASB 95 / DFC: Transferências entre contas da própria empresa
