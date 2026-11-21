@@ -192,10 +192,17 @@ export async function fetchConsolidatedAccountingLedger(
         'id, type, category, amount, description, date, external_ref, expense_id, bank_account_id, created_by, referencia_tipo, reference_id',
       )
       .is('deleted_at', null)
-      .or('status.eq.Confirmado,status.is.null')
-      .or(
-        'category.in.("Recebimento de Parcelas - CCB","Recebimento de Parcelas - Operação","Liquidação de Recebível","Resgate de Investidor","Resgates e Rendimentos","Receita Avulsa","Crédito em Conta","Receitas Diversas","Aporte de Capital","Rendimento Financeiro","Reembolso","Quitação de CCB","Impostos e Taxas"),external_ref.like.manual-credit-%',
-      ),
+      .or('status.eq.Confirmado,status.is.null'),
+    // SEM whitelist de categorias (conserto do mês 9/2026): toda transação de
+    // tesouraria confirmada é lançamento financeiro legítimo — tarifa bancária,
+    // manutenção de conta, advogados etc. — e tem de aparecer no Livro Caixa
+    // (com lixeira) e somar nos totais do mês, exatamente como o DRE as conta
+    // (use-dre.ts busca a tesouraria SEM filtro de categoria). A whitelist
+    // antiga escondia do extrato categorias manuais de backfill (as saídas
+    // ficavam sem lixeira E fora do cálculo do mês). Duplicação com expenses
+    // já é coberta: a despesa espelhada por tt (expense_id) é suprimida no
+    // passo 5 e a tt com expense_id é suprimida contra expenseIdsInDre no
+    // fluxo abaixo (mesma regra do DRE).
     supabase
       .from('company_bank_accounts')
       .select('id, bank_name, branch, account_number, is_active')
