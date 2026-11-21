@@ -11,6 +11,11 @@ export function useAccounting() {
   // Caixa real consolidado (soma dos saldos por conta do motor contábil único —
   // accountSummaries), não o acumulado bruto do livro.
   const [totalCashBalance, setTotalCashBalance] = useState(0)
+  // Saldo acumulado OFICIAL por lançamento (mesma chave de data), calculado no
+  // mesmo loop dos saldos por conta do motor — é o que o extrato de contas
+  // bancárias exibe na coluna "Saldo Acumulado", garantindo reconciliação com
+  // os totais do topo.
+  const [runningBalances, setRunningBalances] = useState<Map<string, number>>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -22,6 +27,7 @@ export function useAccounting() {
       const result = await fetchConsolidatedAccountingLedger({ inicio, fim })
       setData(result.transactions)
       setTotalCashBalance(result.totalCashBalance)
+      setRunningBalances(result.runningBalances || new Map())
     } catch (err: any) {
       console.error(err)
       setError(err.message || 'Erro ao consolidar dados da contabilidade.')
@@ -30,5 +36,5 @@ export function useAccounting() {
     }
   }, [])
 
-  return { data, loading, error, totalCashBalance, refetch: fetchData }
+  return { data, loading, error, totalCashBalance, runningBalances, refetch: fetchData }
 }

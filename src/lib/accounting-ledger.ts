@@ -76,6 +76,16 @@ export interface AccountingLedgerResult {
    * BNK = −412,61 e Celcoin = 0.
    */
   unassignedNet?: number
+  /**
+   * Saldo acumulado OFICIAL de cada lançamento, calculado NO MESMO loop que
+   * produz os saldos por conta (balancesByAccount / accountSummaries): o
+   * lançamento que soma em conta alguma carrega o saldo corrido da sua conta
+   * (dedup_suppressed, fantasmas manual-credit- sem conta e cortes asOfDate
+   * já aplicados, exatamente como nos totais do topo). O extrato
+   * (/admin/bank-accounts) exibe estes valores — nunca recalcule o running
+   * balance fora do motor, senão a coluna diverge dos totais.
+   */
+  runningBalances?: Map<string, number>
 }
 
 export interface FetchAccountingOptions {
@@ -879,6 +889,12 @@ export async function fetchConsolidatedAccountingLedger(
   // (op-bol/op-liq/manual-credit herdados) não soma, nem por conta nem no
   // global (regra de ouro provada na v0.0.1187 para os saldos por conta).
   let runningGlobal = 0
+  // Saldo corrido por conta para a coluna "Saldo Acumulado" do extrato: cada
+  // lançamento que soma em conta alguma carrega o saldo da SUA conta naquele
+  // ponto — calculado AQUI, no mesmo loop dos saldos oficiais, garantindo que
+  // a última linha do extrato de cada conta termine no total do topo.
+  const runningBalancesByAccount: Record<string, number> = {}
+  const runningBalances = new Map<string, number>()
   const balancesByAccount: Record<string, number> = {}
   // Líquido (in − out) dos ESPELHOS contábeis por conta — apenas diagnóstico.
   const bankMirrorNetByAccount: Record<string, number> = {}
@@ -930,6 +946,7 @@ export async function fetchConsolidatedAccountingLedger(
     if (accId && !t.dedup_suppressed && (!cutoffDate || t.date <= cutoffDate)) {
       runningGlobal += delta
       balancesByAccount[accId] = (balancesByAccount[accId] ?? 0) + delta
+      runningBalancesByAccount[accId] = balancesByAccount[accId]
       const src = sourceOf(t)
       netByAccountAndRefType[accId] = netByAccountAndRefType[accId] || {}
       netByAccountAndRefType[accId][src] = (netByAccountAndRefType[accId][src] ?? 0) + delta
@@ -937,6 +954,13 @@ export async function fetchConsolidatedAccountingLedger(
         bankMirrorNetByAccount[accId] = (bankMirrorNetByAccount[accId] ?? 0) + delta
       }
     }
+
+    // Saldo acumulado OFICIAL desta linha (coluna do extrato): o saldo corrido
+    // da conta do lançamento quando ele soma em saldo (mesma condição acima);
+    // suprimido pela dedup ou fantasma sem conta fica com o saldo corrente da
+    // conta (o evento não altera saldo nenhum — coerente com os totais do topo).
+    const accBalance = accId ? (runningBalancesByAccount[accId] ?? 0) : 0
+    if (accId) runningBalances.set(t.id, accBalance)
 
     calculatedTransactions.push({
       ...t,
@@ -977,5 +1001,6 @@ export async function fetchConsolidatedAccountingLedger(
     bankMirrorNetByAccount,
     netByAccountAndRefType,
     unassignedNet,
+    runningBalances,
   }
 }

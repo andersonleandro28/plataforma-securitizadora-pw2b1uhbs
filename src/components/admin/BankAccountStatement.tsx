@@ -46,6 +46,14 @@ interface BankAccountStatementProps {
   transactions: Transaction[]
   accounts: CompanyBankAccount[]
   balances: Record<string, number>
+  /**
+   * Saldo acumulado OFICIAL por lançamento (chave = id da transação), vindo do
+   * MESMO loop do motor contábil que produz os saldos do topo. A coluna "Saldo
+   * Acumulado" exibe estes valores — recalcular o running balance aqui com
+   * regras próprias (sem dedup, contando fantasmas manual-credit- herdados pela
+   * conta ativa) fazia a coluna divergir irreal dos totais corretos.
+   */
+  runningBalances: Map<string, number>
   loading: boolean
   canWrite: boolean
   onRefresh: () => void
@@ -71,6 +79,7 @@ export function BankAccountStatement({
   transactions,
   accounts,
   balances,
+  runningBalances,
   loading,
   canWrite,
   onRefresh,
@@ -104,36 +113,38 @@ export function BankAccountStatement({
     return act ? act.id : accounts[0]?.id || null
   }, [accounts])
 
-  // Lança o saldo corrido por conta (ou global se todas as contas)
+  // Saldo acumulado OFICIAL do motor contábil (runningBalances): a coluna "Saldo
+  // Acumulado" exibe o mesmo cálculo que produz os totais do topo (dedup
+  // movs↔tesouraria, fantasmas manual-credit- sem conta e lançamentos sem conta
+  // herdando a conta ativa — regras idênticas ao balancesByAccount do motor).
+  // NADA é recalculado aqui: recalcular o running balance com regras próprias
+  // fazia a coluna divergir irreal dos totais corretos.
   const transactionsWithAccountBalance = useMemo(() => {
-    // Ordena cronologicamente crescente para correr o saldo
-    const chronological = [...transactions].sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-    )
-
-    // Mapa de acumulador de saldo por conta bancária
-    const runningBalances: Record<string, number> = {}
-    let globalRunning = 0
+    // O ledger entrega a lista em ordem DECRESCENTE (filteredList.reverse());
+    // revertendo reproduz exatamente a ordem ASCENDENTE em que o motor calculou
+    // o running balance — empates de data inclusivos (mesma chave de sort).
+    const chronological = [...transactions].reverse()
 
     const calculated = chronological.map((t) => {
       // Determina a conta bancária da transação
       const accId = t.bank_account_id || activeAccountId || 'default'
-      const prevBal = runningBalances[accId] ?? 0
-      const delta = t.type === 'in' ? t.value : -t.value
-      const newBal = prevBal + delta
-      runningBalances[accId] = newBal
-      globalRunning += delta
+      const officialBalance = runningBalances.get(t.id)
+      // Fallback defensivo (nunca deve faltar: o motor calcula para todas as
+      // linhas com conta): mostra o total oficial da conta até a linha —
+      // sem inventar acúmulo próprio.
+      const account_running_balance = officialBalance ?? balances[accId] ?? 0
+      const global_running_balance = t.accumulated_balance ?? account_running_balance
 
       return {
         ...t,
         computed_account_id: accId,
-        account_running_balance: newBal,
-        global_running_balance: globalRunning,
+        account_running_balance,
+        global_running_balance,
       }
     })
 
     return calculated
-  }, [transactions, activeAccountId])
+  }, [transactions, activeAccountId, runningBalances, balances])
   // Filtra por conta, mês e busca
   const filteredTransactions = useMemo(() => {
     return transactionsWithAccountBalance.filter((t) => {
@@ -161,11 +172,12 @@ export function BankAccountStatement({
     })
   }, [transactionsWithAccountBalance, selectedAccountId, selectedMonth, searchTerm])
 
-  // Ordena decrescente para exibição (mais recente primeiro)
+  // Exibição em ordem cronológica ASCENDENTE (mais antigo primeiro): a coluna
+  // "Saldo Acumulado" lê como extrato bancário — saldo anterior + entrada / −
+  // saída da linha — e a última linha de cada conta termina exatamente no
+  // saldo total da conta exibido no topo da tela.
   const displayList = useMemo(() => {
-    return [...filteredTransactions].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-    )
+    return filteredTransactions
   }, [filteredTransactions])
 
   // Totais do período/filtro atual

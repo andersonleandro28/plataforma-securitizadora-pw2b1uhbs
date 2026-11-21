@@ -52,6 +52,7 @@ export default function BankAccounts() {
     data: accountingTransactions,
     loading: loadingAccounting,
     refetch: refetchAccounting,
+    runningBalances: accountingRunningBalances,
   } = useAccounting()
 
   // Saldos oficiais por conta + consolidado, vindos do motor contábil único
@@ -290,6 +291,7 @@ export default function BankAccounts() {
             transactions={accountingTransactions}
             accounts={accounts}
             balances={balances}
+            runningBalances={accountingRunningBalances}
             loading={loading || loadingAccounting}
             canWrite={canWrite}
             onRefresh={handleRefreshAll}
