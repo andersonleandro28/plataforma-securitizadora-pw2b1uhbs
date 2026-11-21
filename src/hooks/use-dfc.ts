@@ -282,6 +282,7 @@ export function useDfc() {
       const redemptionsInMovs = new Set<string>()
 
       ;(movsRes.data || []).forEach((mov: any) => {
+        if (!mov) return
         // Normalização fail-safe: SOMENTE 'entrada' normalizado vira 'entrada'; qualquer outro vira 'saida'
         const sinal: 'entrada' | 'saida' = classifyMovimentacaoCaixaDfc(mov.tipo)
         const catLower = (mov.categoria || '').toLowerCase()
@@ -397,7 +398,7 @@ export function useDfc() {
       // 3. Despesas pagas (expenses) - Fonte exclusiva da verdade para despesas
       const expenseIdsInCaixa = new Set<string>()
       ;(expsRes.data || []).forEach((exp: any) => {
-        if (exp.status !== 'paid') return
+        if (!exp || exp.status !== 'paid') return
         // Filtro estrito: se for despesa recorrente sem pagamento realizado, não impacta o fluxo de caixa
         if (exp.recurrence_group_id && !exp.payment_date) return
         expenseIdsInCaixa.add(exp.id)
@@ -421,6 +422,7 @@ export function useDfc() {
 
       // 4. Operações de Crédito (desembolso concedido ao tomador - Investimento)
       ;(credRes.data || []).forEach((op) => {
+        if (!op) return
         const st = (op.status || '').toLowerCase()
         if (st !== 'liquidado' && st !== 'pago') return
         if (creditOpIdsNoCaixa.has(op.id)) return
@@ -445,6 +447,7 @@ export function useDfc() {
       // 5. Transações de Tesouraria (treasury_transactions) - Prioritária
       const treasuryExternalRefs = new Set<string>()
       ;(tresRes.data || []).forEach((t) => {
+        if (!t) return
         const sinal: 'entrada' | 'saida' = t.type === 'out' ? 'saida' : 'entrada'
 
         // Exclui provisões de IRRF retido sobre resgate: são lançamentos contábeis de
@@ -475,11 +478,13 @@ export function useDfc() {
 
       // 6. Recebíveis CCB (boletos pagos via JSONB de recebiveis_ccb) - Fallback
       ;(recsRes.data || []).forEach((rec: any) => {
+        if (!rec) return
         const prof = Array.isArray(rec.profiles) ? rec.profiles[0] : rec.profiles
         const tomador = prof?.pj_company_name || prof?.full_name || 'Desconhecido'
 
         const boletos = Array.isArray(rec.boletos) ? rec.boletos : []
         boletos.forEach((bol: any, i: number) => {
+          if (!bol) return
           const bolStatus = (bol.status || '').toLowerCase()
           if (bolStatus !== 'pago' && bolStatus !== 'liquidado') return
 
@@ -520,6 +525,7 @@ export function useDfc() {
       // 6.1 Aquisições de CCB (desembolso/saída - Atividades de Investimento FASB 95)
       // Mesma fonte e valor do Livro Caixa (acq-{id}) e do DRE para garantir conciliação
       ;(recsRes.data || []).forEach((rec: any) => {
+        if (!rec) return
         const valAcq = Number(rec.acquisition_value || 0)
         if (valAcq <= 0) return
 
@@ -539,6 +545,7 @@ export function useDfc() {
 
       // 7. Resgates de Investidores via tabela investment_redemptions (Financiamento - Saída)
       ;(redsRes.data || []).forEach((red: any) => {
+        if (!red) return
         if (red.status === 'paid') {
           if (treasuryExternalRefs.has(`redemption-${red.id}`)) {
             return
