@@ -172,12 +172,13 @@ export function BankAccountStatement({
     })
   }, [transactionsWithAccountBalance, selectedAccountId, selectedMonth, searchTerm])
 
-  // Exibição em ordem cronológica ASCENDENTE (mais antigo primeiro): a coluna
-  // "Saldo Acumulado" lê como extrato bancário — saldo anterior + entrada / −
-  // saída da linha — e a última linha de cada conta termina exatamente no
-  // saldo total da conta exibido no topo da tela.
+  // Exibição em ordem DECRESCENTE (mais recente primeiro, a pedido do usuário):
+  // apenas a ORDEM DE EXIBIÇÃO é invertida — cada linha continua exibindo o
+  // runningBalance OFICIAL do motor contábil (runningBalances), calculado em
+  // ordem cronológica; nenhuma saldo é recalculado aqui. Empates de data
+  // mantêm a coerência determinística da mesma chave de sort do ledger.
   const displayList = useMemo(() => {
-    return filteredTransactions
+    return [...filteredTransactions].reverse()
   }, [filteredTransactions])
 
   // Totais do período/filtro atual
