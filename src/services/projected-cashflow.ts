@@ -280,7 +280,8 @@ export async function getConsolidatedProjectedCashflow(
   }
 
   // 3. Resgates de investimentos:
-  // a) Solicitações já registradas com status 'pending'
+  // a) Solicitações 'pending' (projeção) + 'paid' (saída já realizada no mês corrente,
+  //    que entra como fluxo REAL quando a projeção partiu no passado — ver bloco b.1.1)
   // IMPORTANTE: desambiguar explicitamente FKs para profiles!
   const { data: pendingRedemptions, error: redErr } = await supabase
     .from('investment_redemptions')
@@ -292,6 +293,7 @@ export async function getConsolidatedProjectedCashflow(
       net_value,
       status,
       created_at,
+      updated_at,
       profiles!investment_redemptions_user_id_fkey (
         id,
         full_name,
@@ -307,7 +309,7 @@ export async function getConsolidatedProjectedCashflow(
         )
       )
     `)
-    .eq('status', 'pending')
+    .in('status', ['pending', 'paid'])
 
   if (redErr) {
     console.error('Erro ao buscar resgates pendentes:', redErr)
@@ -480,6 +482,7 @@ export async function getConsolidatedProjectedCashflow(
   // B. Processar Resgates de Investimentos (Saídas com Principal + Juros/Rendimentos)
   // b.1: Resgates pendentes solicitados formalmente
   ;(pendingRedemptions || []).forEach((red: any) => {
+    if (red.status !== 'pending') return // resgates pagos são tratados no bloco b.1.1
     const prof = Array.isArray(red.profiles) ? red.profiles[0] : red.profiles
     const inv = Array.isArray(red.investments) ? red.investments[0] : red.investments
     const prod = Array.isArray(inv?.investment_products)
@@ -540,6 +543,44 @@ export async function getConsolidatedProjectedCashflow(
       principalAmount: principalVal,
       yieldAmount: yieldVal,
       status: 'pendente',
+      referenceId: red.id,
+      isManual: false,
+    })
+  })
+
+  // b.1.1: Resgates de investimento JÁ PAGOS dentro da janela do relatório
+  // (startDate <= data de pagamento <= hoje) entram como SAÍDAS REALIZADAS no mês
+  // correspondente quando a projeção partiu no passado — mesmo tratamento das parcelas
+  // baixadas de Antecipação/CCB (itens `*-paid-*`), pois ficaram de fora do Saldo Inicial.
+  // Se a projeção parte de hoje/futuro, o valor já está incorporado no saldo inicial em tempo real.
+  ;(pendingRedemptions || []).forEach((red: any) => {
+    if (red.status !== 'paid') return
+    if (!isPastStart || !options.startDate) return
+
+    const paidDateStr = String(red.updated_at || red.created_at || todayStr).split('T')[0]
+    if (paidDateStr < options.startDate || paidDateStr > todayStr) return
+
+    const prof = Array.isArray(red.profiles) ? red.profiles[0] : red.profiles
+    const investorName = prof?.pj_company_name || prof?.full_name || 'Investidor'
+    const investorDoc = prof?.document_number || ''
+
+    // Valor pago = líquido creditado ao investidor (mesma fonte do motor contábil:
+    // movimentacao_caixa espelho `resgate_investimento` / treasury `redemption-{id}`)
+    const paidVal = Number(red.net_value || red.gross_value || 0)
+    if (paidVal <= 0) return
+
+    items.push({
+      id: `red-paid-${red.id}`,
+      date: paidDateStr,
+      type: 'out',
+      origin: 'resgate_investimento',
+      originLabel: 'Resgate Realizado',
+      description: `Resgate pago — ${investorName}`,
+      entityName: investorName,
+      entityDocument: investorDoc,
+      category: 'Resgate de Investimento (Realizado)',
+      amount: paidVal,
+      status: 'realizado',
       referenceId: red.id,
       isManual: false,
     })
