@@ -194,7 +194,7 @@ export async function fetchConsolidatedAccountingLedger(
       .is('deleted_at', null)
       .or('status.eq.Confirmado,status.is.null')
       .or(
-        'category.in.("Recebimento de Parcelas - CCB","Recebimento de Parcelas - Operação","Liquidação de Recebível","Resgate de Investidor","Resgates e Rendimentos","Receita Avulsa","Crédito em Conta","Receitas Diversas","Aporte de Capital","Rendimento Financeiro","Reembolso","Quitação de CCB"),external_ref.like.manual-credit-%',
+        'category.in.("Recebimento de Parcelas - CCB","Recebimento de Parcelas - Operação","Liquidação de Recebível","Resgate de Investidor","Resgates e Rendimentos","Receita Avulsa","Crédito em Conta","Receitas Diversas","Aporte de Capital","Rendimento Financeiro","Reembolso","Quitação de CCB","Impostos e Taxas"),external_ref.like.manual-credit-%',
       ),
     supabase
       .from('company_bank_accounts')
