@@ -881,6 +881,11 @@ export async function fetchConsolidatedAccountingLedger(
     balancesByAccount[b.id] = 0
   })
 
+  // Conta ativa = herdeira dos lançamentos sem conta bancária explícita.
+  const activeAccountId =
+    (companyBanks || []).find((b: any) => b.is_active)?.id ??
+    (companyBanks && companyBanks.length > 0 ? companyBanks[0].id : null)
+
   const cutoffDate = options.asOfDate || null
 
   const calculatedTransactions: AccountingTransaction[] = []
@@ -900,7 +905,19 @@ export async function fetchConsolidatedAccountingLedger(
     // a tesouraria. Lançamento SEM conta (tesouraria op-bol/op-liq/manual-credit
     // herdados, despesa sem conta, captação, aquisição, desembolso, resgate
     // avulso) não soma em saldo algum — nem no global.
-    const accId = t.bank_account_id
+    // Lançamento SEM conta bancária explícita volta a ser CONTABILIZADO no saldo:
+    // herda a CONTA ATIVA. É aqui que as ENTRADAS anteriores a janeiro/2026
+    // (captações de investidores, boletos/liquidações herdados, movimentações
+    // antigas de caixa) apareciam no extrato mas não somavam em saldo nenhum —
+    // nem por conta, nem no global — divergindo do DRE/DFC, que somam todo o
+    // fluxo. Exceção (fantasmas comprovados da migração): créditos manuais de
+    // tesouraria sem conta (external_ref manual-credit-…) não somam em saldo
+    // algum — permanecem apenas no livro (unassignedNet).
+    const ehFantasmaSemConta =
+      !t.bank_account_id &&
+      t.id.startsWith('tt-') &&
+      String(txExternalRefById.get(t.id) || '').startsWith('manual-credit-')
+    const accId = t.bank_account_id ?? (ehFantasmaSemConta ? null : activeAccountId)
     // Lançamento suprimido pela deduplicação (dedup_suppressed) permanece na
     // listagem, mas NÃO soma em saldo algum — dedup afeta somente o saldo.
     if (accId && !t.dedup_suppressed && (!cutoffDate || t.date <= cutoffDate)) {
