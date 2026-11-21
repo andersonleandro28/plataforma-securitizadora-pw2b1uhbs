@@ -12,9 +12,9 @@ export interface KnownSacado {
   lastUsedAt?: string
 }
 
-/** Normaliza strings para busca sem acentos e em minúsculas */
-export const normalizeText = (text: string = ''): string =>
-  text
+/** Normaliza strings para busca sem acentos e em minúsculas (null/undefined → string vazia) */
+export const normalizeText = (text?: string | null): string =>
+  (text ?? '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
